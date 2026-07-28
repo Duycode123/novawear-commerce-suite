@@ -3,6 +3,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCli = process.env.npm_execpath;
 
 const services = [
   {
@@ -26,10 +27,15 @@ const services = [
 ];
 
 const children = services.map((service) => {
-  const child = spawn(npm, service.args, {
+  const command = npmCli ? process.execPath : npm;
+  const args = npmCli ? [npmCli, ...service.args] : service.args;
+  const child = spawn(command, args, {
     cwd: service.cwd,
     env: { ...process.env, ...service.env },
     stdio: "inherit",
+    // Recent Node.js releases on Windows reject spawning .cmd files directly.
+    // npm_execpath lets us launch npm's JavaScript entrypoint with Node instead.
+    shell: !npmCli && process.platform === "win32",
   });
 
   child.on("error", (error) => {
@@ -63,4 +69,3 @@ function stopAll() {
 
 process.on("SIGINT", stopAll);
 process.on("SIGTERM", stopAll);
-
