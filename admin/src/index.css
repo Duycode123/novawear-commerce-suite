@@ -1,24 +1,24 @@
 :root {
-  --ops-ink: #171a16;
-  --ops-ink-2: #282c25;
-  --ops-bg: #f3f1eb;
-  --ops-paper: #fffefa;
-  --ops-muted: #70736c;
-  --ops-line: #dedad0;
-  --ops-line-dark: #c5c0b6;
-  --ops-lime: #cddd68;
-  --ops-blue: #b8d3ee;
-  --ops-coral: #ff6a4a;
-  --ops-peach: #ecc1ae;
+  --ops-ink: #0b1720;
+  --ops-ink-2: #26343d;
+  --ops-bg: #f3f5f5;
+  --ops-paper: #ffffff;
+  --ops-muted: #66727a;
+  --ops-line: #dce1e2;
+  --ops-line-dark: #bec7ca;
+  --ops-lime: #d8ff6d;
+  --ops-blue: #b9dafa;
+  --ops-coral: #ff5b38;
+  --ops-peach: #f1b5a5;
   --ops-green: #166b4d;
   --ops-red: #a74035;
   --ops-amber: #8a6215;
   --ops-purple: #6b4b8b;
-  --ops-sidebar: 258px;
-  --ops-radius: 14px;
-  --ops-shadow: 0 20px 55px rgba(23, 26, 22, 0.12);
-  --ops-serif: Georgia, "Times New Roman", serif;
-  --ops-sans: "Segoe UI", Arial, Helvetica, sans-serif;
+  --ops-sidebar: 272px;
+  --ops-radius: 18px;
+  --ops-shadow: 0 22px 60px rgba(11, 23, 32, 0.13);
+  --ops-serif: "Manrope", "Be Vietnam Pro", Arial, sans-serif;
+  --ops-sans: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
 }
 
 * {
@@ -36,8 +36,9 @@ body {
   color: var(--ops-ink);
   background: var(--ops-bg);
   font-family: var(--ops-sans);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
+  letter-spacing: -0.008em;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -3169,6 +3170,421 @@ p {
   gap: 8px;
   padding: 16px 22px;
   border-top: 1px solid var(--ops-line);
+}
+
+/* NOVA OPS visual system — clear type, usable density and consistent controls */
+h1,
+h2,
+h3 {
+  font-family: var(--ops-serif);
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+.ops-sidebar {
+  background: #08151e;
+  box-shadow: 14px 0 45px rgba(11, 23, 32, 0.08);
+}
+
+.ops-brand {
+  min-height: 84px;
+  padding: 0 20px;
+  border-color: rgba(255, 255, 255, 0.11);
+  grid-template-columns: 42px 1fr auto;
+  gap: 12px;
+}
+
+.ops-brand > span,
+.ops-login__brand > span {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px 13px 13px 4px;
+  background: var(--ops-coral);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.ops-brand strong,
+.ops-login__brand strong {
+  font-family: var(--ops-serif);
+  font-size: 0.84rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.ops-brand small,
+.ops-login__brand small {
+  color: #8b99a2;
+  font-size: 0.66rem;
+}
+
+.ops-sidebar nav {
+  padding: 20px 14px 28px;
+}
+
+.ops-nav-group + .ops-nav-group {
+  margin-top: 25px;
+}
+
+.ops-nav-group > p {
+  margin: 0 12px 9px;
+  color: #71808a;
+  font-size: 0.65rem;
+  letter-spacing: 0.13em;
+}
+
+.ops-nav-group a {
+  min-height: 46px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: #aeb8be;
+  font-size: 0.79rem;
+  font-weight: 550;
+  grid-template-columns: 30px 1fr auto;
+}
+
+.ops-nav-group a > span {
+  display: grid;
+  color: #89969e;
+  place-items: center;
+}
+
+.ops-nav-group a:hover,
+.ops-nav-group a.is-active {
+  color: #fff;
+  background: #162732;
+}
+
+.ops-nav-group a.is-active {
+  box-shadow: inset 3px 0 0 var(--ops-coral);
+}
+
+.ops-nav-group a.is-active > span {
+  color: var(--ops-lime);
+}
+
+.ops-sidebar__footer {
+  padding: 16px;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.ops-sidebar__footer > a {
+  min-height: 58px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  background: #12232e;
+}
+
+.ops-sidebar__footer strong {
+  font-size: 0.74rem;
+}
+
+.ops-sidebar__footer small,
+.ops-version {
+  font-size: 0.62rem;
+}
+
+.ops-topbar {
+  min-height: 80px;
+  padding: 0 38px;
+  background: rgba(243, 245, 245, 0.88);
+  box-shadow: 0 5px 24px rgba(11, 23, 32, 0.035);
+}
+
+.ops-topbar__date strong {
+  font-family: var(--ops-sans);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.ops-topbar__date span {
+  margin-top: 2px;
+  font-size: 0.68rem;
+}
+
+.ops-notification,
+.ops-profile-trigger {
+  border-color: var(--ops-line);
+  box-shadow: 0 7px 20px rgba(11, 23, 32, 0.05);
+}
+
+.ops-notification {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+}
+
+.ops-notification > span {
+  width: 18px;
+  height: 18px;
+  font-size: 0.56rem;
+}
+
+.ops-profile-trigger {
+  min-height: 46px;
+  padding-right: 10px;
+  border-radius: 14px;
+}
+
+.ops-profile-trigger > span {
+  border-radius: 11px;
+  font-family: var(--ops-serif);
+  font-weight: 800;
+}
+
+.ops-profile-trigger strong {
+  font-size: 0.74rem;
+}
+
+.ops-profile-trigger small {
+  font-size: 0.62rem;
+}
+
+.ops-profile-menu a,
+.ops-profile-menu button {
+  font-size: 0.76rem;
+}
+
+.ops-content {
+  max-width: 1640px;
+  padding: 42px 38px 90px;
+}
+
+.ops-primary-button,
+.ops-secondary-button,
+.ops-danger-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 11px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  box-shadow: 0 0 0 rgba(11, 23, 32, 0);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.ops-primary-button:hover,
+.ops-secondary-button:hover {
+  box-shadow: 0 11px 25px rgba(11, 23, 32, 0.12);
+}
+
+.ops-primary-button {
+  border-color: var(--ops-coral);
+  color: var(--ops-ink);
+  background: var(--ops-coral);
+}
+
+.ops-secondary-button {
+  background: var(--ops-paper);
+}
+
+.ops-link-button {
+  font-size: 0.72rem;
+}
+
+.ops-page-header {
+  margin-bottom: 34px;
+}
+
+.ops-page-header > div:first-child > p,
+.ops-panel > header p,
+.ops-section-title p {
+  font-size: 0.65rem;
+  letter-spacing: 0.13em;
+}
+
+.ops-page-header h1 {
+  font-size: clamp(2.35rem, 3.7vw, 4rem);
+  font-weight: 750;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.ops-page-header > div:first-child > span {
+  margin-top: 12px;
+  font-size: 0.8rem;
+}
+
+.ops-panel {
+  border-color: var(--ops-line);
+  box-shadow: 0 9px 28px rgba(11, 23, 32, 0.045);
+}
+
+.ops-panel > header {
+  padding: 22px 24px;
+}
+
+.ops-panel > header h2,
+.ops-section-title h2 {
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.ops-panel > header > a,
+.ops-panel > header > span,
+.ops-section-title > a {
+  font-size: 0.7rem;
+}
+
+.ops-stat-grid {
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.ops-stat-card {
+  min-height: 168px;
+  padding: 22px;
+  border-radius: 18px;
+  box-shadow: 0 9px 26px rgba(11, 23, 32, 0.05);
+}
+
+.ops-stat-card--dark {
+  background: linear-gradient(145deg, #0b1720, #172a36);
+}
+
+.ops-stat-card > div span {
+  font-size: 0.7rem;
+}
+
+.ops-stat-card > strong {
+  font-size: clamp(1.75rem, 2.5vw, 2.45rem);
+  font-weight: 750;
+}
+
+.ops-stat-card > p {
+  font-size: 0.66rem;
+}
+
+.ops-dashboard-grid {
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.ops-chart__column > span,
+.ops-chart__column small {
+  font-size: 0.58rem;
+}
+
+.ops-chart__column > i {
+  border-radius: 8px 8px 3px 3px;
+}
+
+.ops-chart__column > i > b {
+  border-radius: 8px 8px 3px 3px;
+  background: var(--ops-coral);
+}
+
+.ops-donut-legend span,
+.ops-donut-legend strong {
+  font-size: 0.66rem;
+}
+
+.ops-donut > span {
+  font-size: 0.64rem;
+}
+
+.ops-donut > span strong {
+  font-weight: 750;
+}
+
+.ops-table th,
+.ops-table td {
+  padding: 15px 16px;
+  font-size: 0.72rem;
+}
+
+.ops-table th {
+  font-size: 0.64rem;
+  letter-spacing: 0.045em;
+}
+
+.ops-table tbody tr:hover {
+  background: #f7f9f9;
+}
+
+.ops-product-cell strong,
+.ops-stock-item strong,
+.ops-top-product-grid strong {
+  font-size: 0.7rem;
+}
+
+.ops-product-cell small,
+.ops-stock-item small,
+.ops-top-product-grid small {
+  font-size: 0.6rem;
+}
+
+.ops-status {
+  padding: 6px 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.ops-field > span,
+.ops-login__panel label > span {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.ops-field input,
+.ops-field select,
+.ops-field textarea,
+.ops-login__panel input,
+.ops-search input,
+.ops-list-toolbar select {
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 0.76rem;
+  background-color: var(--ops-paper);
+}
+
+.ops-modal {
+  border-radius: 20px;
+  box-shadow: 0 30px 90px rgba(11, 23, 32, 0.22);
+}
+
+.ops-modal > header h2,
+.ops-empty h3,
+.ops-login__panel h1,
+.ops-employee-grid h2,
+.ops-workspace-person h2,
+.ops-workspace-note h2 {
+  font-weight: 750;
+}
+
+.ops-empty p,
+.ops-error p,
+.ops-toast p,
+.ops-login__panel form > p:not(.ops-kicker) {
+  font-size: 0.74rem;
+}
+
+.ops-top-product-grid article,
+.ops-employee-grid article,
+.ops-category-grid article,
+.ops-purchase-card {
+  border-radius: 16px;
+  box-shadow: 0 8px 26px rgba(11, 23, 32, 0.05);
+}
+
+.ops-employee-grid article > p,
+.ops-employee-grid dt,
+.ops-employee-grid dd,
+.ops-inbox > aside strong,
+.ops-inbox > aside p,
+.ops-message-meta span,
+.ops-message-meta time,
+.ops-message-meta strong {
+  font-size: 0.68rem;
+}
+
+.ops-message-body p {
+  font-family: var(--ops-sans);
+  font-size: 0.88rem;
 }
 
 /* Responsive */

@@ -10,7 +10,7 @@ test("deployment contains both branded interfaces", async () => {
     readFile(new URL("../dist/client/ops/index.html", import.meta.url), "utf8"),
   ]);
   assert.match(storefront, /NOVAWEAR/);
-  assert.match(storefront, /og\.png/);
+  assert.match(storefront, /og-novawear\.png/);
   assert.match(operations, /NOVA OPS/);
   assert.doesNotMatch(storefront, /codex-preview|Your site is taking shape/);
 });
@@ -26,8 +26,7 @@ test("deployment contains the Worker, D1 declaration and migration", async () =>
   assert.equal(JSON.parse(hosting).d1, "DB");
   assert.ok(JSON.parse(hosting).project_id);
   assert.match(migration, /CREATE TABLE `app_state`/);
-  await access(new URL("../dist/client/og.png", import.meta.url));
+  await access(new URL("../dist/client/og-novawear.png", import.meta.url));
   await access(new URL("../dist/client/Images/about-us-model.webp", import.meta.url));
   await access(root);
 });
-

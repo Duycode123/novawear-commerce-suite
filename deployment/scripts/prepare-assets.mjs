@@ -32,6 +32,7 @@ const storefrontFiles = [
   "index.html",
   "manifest.json",
   "og.png",
+  "og-novawear.png",
   "robots.txt",
 ];
 
@@ -109,4 +110,3 @@ await writeFile(
 );
 
 console.log(`Đã chuẩn bị ${activeImages.length} ảnh đang sử dụng và hai giao diện.`);
-

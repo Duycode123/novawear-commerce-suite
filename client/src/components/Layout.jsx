@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
 import { Logo, ToastViewport } from "./Common";
+import Icon from "./Icon";
 
 const navItems = [
   { to: "/cua-hang", label: "Cửa hàng" },
@@ -50,7 +51,7 @@ export default function Layout() {
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((value) => !value)}
           >
-            {mobileOpen ? "×" : "☰"}
+            <Icon name={mobileOpen ? "close" : "menu"} size={23} />
           </button>
           <Logo />
           <nav className="desktop-nav" aria-label="Điều hướng chính">
@@ -71,17 +72,17 @@ export default function Layout() {
               onClick={() => setSearchOpen((value) => !value)}
               aria-expanded={searchOpen}
             >
-              <span aria-hidden="true">⌕</span><span className="header-action__label">Tìm kiếm</span>
+              <span aria-hidden="true"><Icon name="search" /></span><span className="header-action__label">Tìm kiếm</span>
             </button>
             <Link className="header-action" to="/yeu-thich">
-              <span aria-hidden="true">♡</span><span className="header-action__label">Đã lưu</span>
+              <span aria-hidden="true"><Icon name="heart" /></span><span className="header-action__label">Đã lưu</span>
               {wishlist.length > 0 && <b>{wishlist.length}</b>}
             </Link>
             <Link className="header-action" to={user ? "/tai-khoan" : "/dang-nhap"}>
-              <span aria-hidden="true">○</span><span className="header-action__label">{user ? user.name.split(" ").slice(-1)[0] : "Tài khoản"}</span>
+              <span aria-hidden="true"><Icon name="user" /></span><span className="header-action__label">{user ? user.name.split(" ").slice(-1)[0] : "Tài khoản"}</span>
             </Link>
             <Link className="header-action" to="/gio-hang">
-              <span aria-hidden="true">▢</span><span className="header-action__label">Giỏ hàng</span>
+              <span aria-hidden="true"><Icon name="bag" /></span><span className="header-action__label">Giỏ hàng</span>
               {cartCount > 0 && <b>{cartCount}</b>}
             </Link>
           </div>

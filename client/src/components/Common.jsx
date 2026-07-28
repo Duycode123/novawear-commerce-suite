@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { formatMoney, ORDER_STATUS } from "../config/site";
 import { useShop } from "../context/ShopContext";
+import Icon from "./Icon";
 
 export function Logo({ inverted = false }) {
   return (
@@ -58,7 +59,7 @@ export function ProductCard({ product, compact = false }) {
           aria-label={wished ? "Bỏ khỏi yêu thích" : "Thêm vào yêu thích"}
           onClick={() => toggleWishlist(product)}
         >
-          {wished ? "♥" : "♡"}
+          <Icon name="heart" size={19} filled={wished} />
         </button>
         <button
           className="product-card__quick"

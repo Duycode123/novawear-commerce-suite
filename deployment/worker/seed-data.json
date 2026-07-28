@@ -2,8 +2,8 @@
   "meta": {
     "version": 1,
     "brand": "NOVAWEAR",
-    "createdAt": "2026-07-28T14:35:32.550Z",
-    "updatedAt": "2026-07-28T14:35:32.550Z",
+    "createdAt": "2026-07-28T18:55:22.187Z",
+    "updatedAt": "2026-07-28T18:55:22.187Z",
     "deployment": "sites"
   },
   "categories": [
@@ -79,7 +79,7 @@
       "rating": 4.9,
       "reviewCount": 128,
       "sold": 842,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-002",
@@ -116,7 +116,7 @@
       "rating": 4.8,
       "reviewCount": 76,
       "sold": 429,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-003",
@@ -153,7 +153,7 @@
       "rating": 4.7,
       "reviewCount": 45,
       "sold": 206,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-004",
@@ -188,7 +188,7 @@
       "rating": 4.9,
       "reviewCount": 91,
       "sold": 318,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-005",
@@ -226,7 +226,7 @@
       "rating": 4.8,
       "reviewCount": 67,
       "sold": 287,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-006",
@@ -265,7 +265,7 @@
       "rating": 4.7,
       "reviewCount": 53,
       "sold": 194,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-007",
@@ -302,7 +302,7 @@
       "rating": 4.9,
       "reviewCount": 114,
       "sold": 593,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "prd-008",
@@ -339,7 +339,7 @@
       "rating": 4.6,
       "reviewCount": 28,
       "sold": 122,
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "createdAt": "2026-07-28T18:55:22.187Z"
     }
   ],
   "users": [
@@ -352,7 +352,7 @@
       "employeeId": "emp-001",
       "customerId": null,
       "status": "active",
-      "createdAt": "2026-07-28T14:35:32.550Z",
+      "createdAt": "2026-07-28T18:55:22.187Z",
       "passwordHash": ""
     },
     {
@@ -364,7 +364,7 @@
       "employeeId": "emp-002",
       "customerId": null,
       "status": "active",
-      "createdAt": "2026-07-28T14:35:32.550Z",
+      "createdAt": "2026-07-28T18:55:22.187Z",
       "passwordHash": ""
     },
     {
@@ -376,7 +376,7 @@
       "employeeId": null,
       "customerId": "cus-001",
       "status": "active",
-      "createdAt": "2026-07-28T14:35:32.550Z",
+      "createdAt": "2026-07-28T18:55:22.187Z",
       "passwordHash": ""
     }
   ],
@@ -391,7 +391,7 @@
       "totalSpent": 4360000,
       "orderCount": 8,
       "status": "active",
-      "createdAt": "2026-01-29T14:35:32.551Z"
+      "createdAt": "2026-01-29T18:55:22.189Z"
     },
     {
       "id": "cus-002",
@@ -403,7 +403,7 @@
       "totalSpent": 2180000,
       "orderCount": 4,
       "status": "active",
-      "createdAt": "2026-03-30T14:35:32.551Z"
+      "createdAt": "2026-03-30T18:55:22.189Z"
     },
     {
       "id": "cus-003",
@@ -415,7 +415,7 @@
       "totalSpent": 999000,
       "orderCount": 2,
       "status": "active",
-      "createdAt": "2026-05-29T14:35:32.551Z"
+      "createdAt": "2026-05-29T18:55:22.189Z"
     },
     {
       "id": "cus-004",
@@ -427,7 +427,7 @@
       "totalSpent": 629000,
       "orderCount": 1,
       "status": "active",
-      "createdAt": "2026-07-04T14:35:32.551Z"
+      "createdAt": "2026-07-04T18:55:22.189Z"
     }
   ],
   "employees": [
@@ -540,26 +540,26 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-25T14:35:32.718Z"
+          "at": "2026-07-25T18:55:22.439Z"
         },
         {
           "status": "confirmed",
           "label": "Đã xác nhận",
-          "at": "2026-07-25T14:35:32.718Z"
+          "at": "2026-07-25T18:55:22.439Z"
         },
         {
           "status": "packing",
           "label": "Đang đóng gói",
-          "at": "2026-07-26T14:35:32.718Z"
+          "at": "2026-07-26T18:55:22.439Z"
         },
         {
           "status": "shipping",
           "label": "Đang giao hàng",
-          "at": "2026-07-27T14:35:32.718Z"
+          "at": "2026-07-27T18:55:22.439Z"
         }
       ],
-      "createdAt": "2026-07-25T14:35:32.718Z",
-      "updatedAt": "2026-07-27T14:35:32.718Z"
+      "createdAt": "2026-07-25T18:55:22.440Z",
+      "updatedAt": "2026-07-27T18:55:22.440Z"
     },
     {
       "id": "ORD-2026-002",
@@ -598,16 +598,16 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-27T14:35:32.718Z"
+          "at": "2026-07-27T18:55:22.440Z"
         },
         {
           "status": "confirmed",
           "label": "Đã xác nhận",
-          "at": "2026-07-27T14:35:32.718Z"
+          "at": "2026-07-27T18:55:22.440Z"
         }
       ],
-      "createdAt": "2026-07-27T14:35:32.718Z",
-      "updatedAt": "2026-07-27T14:35:32.718Z"
+      "createdAt": "2026-07-27T18:55:22.440Z",
+      "updatedAt": "2026-07-27T18:55:22.440Z"
     },
     {
       "id": "ORD-2026-003",
@@ -646,31 +646,31 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-18T14:35:32.718Z"
+          "at": "2026-07-18T18:55:22.440Z"
         },
         {
           "status": "confirmed",
           "label": "Đã xác nhận",
-          "at": "2026-07-18T14:35:32.718Z"
+          "at": "2026-07-18T18:55:22.440Z"
         },
         {
           "status": "packing",
           "label": "Đang đóng gói",
-          "at": "2026-07-19T14:35:32.718Z"
+          "at": "2026-07-19T18:55:22.440Z"
         },
         {
           "status": "shipping",
           "label": "Đang giao hàng",
-          "at": "2026-07-20T14:35:32.718Z"
+          "at": "2026-07-20T18:55:22.440Z"
         },
         {
           "status": "delivered",
           "label": "Giao thành công",
-          "at": "2026-07-21T14:35:32.718Z"
+          "at": "2026-07-21T18:55:22.440Z"
         }
       ],
-      "createdAt": "2026-07-18T14:35:32.718Z",
-      "updatedAt": "2026-07-21T14:35:32.718Z"
+      "createdAt": "2026-07-18T18:55:22.440Z",
+      "updatedAt": "2026-07-21T18:55:22.440Z"
     },
     {
       "id": "ORD-2026-004",
@@ -709,18 +709,18 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-27T14:35:32.718Z"
+          "at": "2026-07-27T18:55:22.440Z"
         }
       ],
-      "createdAt": "2026-07-27T14:35:32.718Z",
-      "updatedAt": "2026-07-27T14:35:32.718Z"
+      "createdAt": "2026-07-27T18:55:22.440Z",
+      "updatedAt": "2026-07-27T18:55:22.440Z"
     }
   ],
   "purchaseOrders": [
     {
       "id": "PO-2026-001",
       "supplier": "Dệt Minh Phúc",
-      "expectedDate": "2026-08-01T14:35:32.718Z",
+      "expectedDate": "2026-08-01T18:55:22.440Z",
       "status": "ordered",
       "total": 12480000,
       "items": [
@@ -735,12 +735,12 @@
           "unitCost": 148000
         }
       ],
-      "createdAt": "2026-07-26T14:35:32.718Z"
+      "createdAt": "2026-07-26T18:55:22.440Z"
     },
     {
       "id": "PO-2026-002",
       "supplier": "May An Thịnh",
-      "expectedDate": "2026-07-26T14:35:32.718Z",
+      "expectedDate": "2026-07-26T18:55:22.440Z",
       "status": "received",
       "total": 10620000,
       "items": [
@@ -750,8 +750,8 @@
           "unitCost": 177000
         }
       ],
-      "createdAt": "2026-07-16T14:35:32.718Z",
-      "receivedAt": "2026-07-26T14:35:32.718Z"
+      "createdAt": "2026-07-16T18:55:22.440Z",
+      "receivedAt": "2026-07-26T18:55:22.440Z"
     }
   ],
   "attendance": [
@@ -788,8 +788,8 @@
       "description": "Kiểm tra địa chỉ và ghi chú của các đơn đang chờ.",
       "priority": "high",
       "status": "in_progress",
-      "dueDate": "2026-07-28T14:35:32.718Z",
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "dueDate": "2026-07-28T18:55:22.440Z",
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "task-002",
@@ -798,8 +798,8 @@
       "description": "Đưa thêm size M/L của Airy Cotton ra quầy.",
       "priority": "medium",
       "status": "todo",
-      "dueDate": "2026-07-28T14:35:32.718Z",
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "dueDate": "2026-07-28T18:55:22.440Z",
+      "createdAt": "2026-07-28T18:55:22.187Z"
     },
     {
       "id": "task-003",
@@ -808,8 +808,8 @@
       "description": "Liên hệ khách của đơn ORD-2026-002 để xác nhận khung giờ giao.",
       "priority": "low",
       "status": "done",
-      "dueDate": "2026-07-27T14:35:32.718Z",
-      "createdAt": "2026-07-28T14:35:32.550Z"
+      "dueDate": "2026-07-27T18:55:22.440Z",
+      "createdAt": "2026-07-28T18:55:22.187Z"
     }
   ],
   "reviews": [
@@ -821,7 +821,7 @@
       "rating": 5,
       "content": "Vải mềm, phom lên gọn và màu đúng ảnh.",
       "status": "published",
-      "createdAt": "2026-07-08T14:35:32.718Z"
+      "createdAt": "2026-07-08T18:55:22.440Z"
     },
     {
       "id": "rev-002",
@@ -831,7 +831,7 @@
       "rating": 5,
       "content": "Mặc vận động thoải mái, túi có khóa rất tiện.",
       "status": "published",
-      "createdAt": "2026-07-16T14:35:32.718Z"
+      "createdAt": "2026-07-16T18:55:22.440Z"
     }
   ],
   "coupons": [
@@ -842,7 +842,7 @@
       "minOrder": 500000,
       "maxDiscount": 150000,
       "active": true,
-      "expiresAt": "2026-10-26T14:35:32.718Z"
+      "expiresAt": "2026-10-26T18:55:22.440Z"
     },
     {
       "code": "FREESHIP",
@@ -851,7 +851,7 @@
       "minOrder": 399000,
       "maxDiscount": 30000,
       "active": true,
-      "expiresAt": "2026-10-26T14:35:32.718Z"
+      "expiresAt": "2026-10-26T18:55:22.440Z"
     }
   ],
   "contacts": [],
