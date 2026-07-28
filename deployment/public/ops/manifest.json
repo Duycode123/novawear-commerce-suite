@@ -1,0 +1,16 @@
+{
+  "short_name": "NOVA OPS",
+  "name": "NOVA OPS — Cổng vận hành NOVAWEAR",
+  "icons": [
+    {
+      "src": "brand-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#141713",
+  "background_color": "#f1efe8"
+}

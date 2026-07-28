@@ -1,0 +1,103 @@
+.container1{
+    padding-left:64px;
+    padding-right: 64px;
+    max-width: 1920px;
+    padding-top: 50px;
+}
+.container{
+    height: 241px;
+    padding-left: 64px;
+    padding-right: 64px;
+}
+.row{
+    display: flex;
+    flex-wrap: wrap;
+    margin-left: -9px;
+    margin-right: -9px;
+}
+.col{
+    padding-left: 9px;
+    padding-right: 9px;
+}
+.p-1,
+.p-2,
+.p-3,
+.p-4,
+.p-5,
+.p-6,
+.p-7,
+.p-8,
+.p-9,
+.p-10,
+.p-11,
+.p-12 {
+     display: block; /*dùng được cả vào element không có block */
+}
+
+.p-0 {
+    display: none;
+}
+
+.p-1 {
+    flex: 0 0 8.33333%;/*xét chiều ngang hoặc là chiều dọc tùy và thẻ chứa nó*/
+    max-width: 8.33333%;/*Limit maximum width*/
+}
+
+.p-2 {
+    flex: 0 0 16.66667%;/*xét chiều ngang hoặc là chiều dọc tùy và thẻ chứa nó*/
+    max-width: 16.66667%;
+}
+.p-2-4{
+    flex: 0 0 20%;
+    max-width:20%;
+}
+
+.p-3 {
+    flex: 0 0 25%;
+    max-width: 25%;
+}
+
+.p-4 {
+    flex: 0 0 33.33333%;
+    max-width: 33.33333%;
+}
+
+.p-5 {
+    flex: 0 0 41.66667%;
+    max-width: 41.66667%;
+}
+
+.p-6 {
+    flex: 0 0 50%;
+    max-width: 50%;
+}
+
+.p-7 {
+    flex: 0 0 58.33333%;
+    max-width: 58.33333%;
+}
+
+.p-8 {
+    flex: 0 0 66.66667%;
+    max-width: 66.66667%;
+}
+
+.p-9 {
+    flex: 0 0 75%;
+    max-width: 75%;
+}
+
+.p-10 {
+    flex: 0 0 83.33333%;
+    max-width: 83.33333%;
+}
+
+.p-11 {
+    flex: 0 0 91.66667%;
+    max-width: 91.66667%;
+}
+
+.p-12 {
+    flex: 0 0 100%;
+    max-width: 100%;
+}

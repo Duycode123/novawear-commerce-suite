@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="NOVAWEAR">
+  <rect width="64" height="64" rx="18" fill="#171a16"/>
+  <path d="M12 39c8-19 22-27 40-22-4 2-7 5-9 9-11-1-20 4-25 15z" fill="#b9f227"/>
+  <path d="M18 45c8-10 19-14 34-11-5 4-8 8-10 13-9-2-16 0-22 4z" fill="#3767f4"/>
+  <circle cx="48" cy="17" r="6" fill="#ef765e"/>
+</svg>
+

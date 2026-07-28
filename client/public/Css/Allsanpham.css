@@ -1,0 +1,162 @@
+.filter{
+    height:94px;
+    border-bottom:1px solid #d9d9d9;
+    display: flex;
+    align-items: center;
+    justify-content:flex-start;
+    padding: 0 64px;
+}
+
+.filter h2{
+    margin:0;
+    font-size: 24px;
+}
+.filter-item{
+    
+    margin-left:16px;
+    position: relative;
+}
+/* inner 3 option */
+.filter-item__inner{
+    display: flex;
+    align-items: center;
+    justify-content:space-between;
+    padding: 0 12px 0 18px;
+    height:40px;
+    border-radius:16px;
+    border:1px solid #d9d9d9;
+    z-index: 3;
+    background-color: #fff;
+    min-width: 160px;
+    position: relative;
+    cursor: pointer;
+}
+
+.filter-item.active .filter-item__inner{
+    background-color: #d9d9d9;
+}
+.filter-item.active .filter-item__inner i{
+    transform:rotate(180deg);
+}
+.filter-item.active .filter-item__option{
+    display:block;
+}
+.filter-item__option li:hover{
+    background-color: #d9d9d9;
+    cursor: pointer;
+}
+
+.filter-item__inner i{
+    display: inline-block;
+    padding-left: 5px;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+/* Seach sản phẩm  */
+.filter-search{
+    border: 1px solid #d9d9d9;
+    border-radius: 16px;
+    padding:0 15px;
+    display: flex;
+    justify-content:space-between;
+    align-items:center;
+    height:40px;
+    margin-left:16px;
+}
+.filter-search input{
+    height:100%;
+    flex: 1;
+    outline: none;
+    border: none;
+}
+.filter-search button{
+    background-color: #fff;
+    border:none;
+}
+/* Lựu chọn  */
+.filter-item__option{
+    position:absolute;
+    top: 0;
+    width: 100%;
+    font-size: 14px;
+    background-color:#fff;
+    border-radius: 16px;
+    z-index: 1;
+    border:1px solid #d9d9d9;
+    display:none;
+}
+.filter-item__option li{
+    padding:8px 10px 8px 16px;
+    
+}
+
+.pagination{
+    list-style: none;
+    display: flex;
+    justify-content: flex-end;
+    align-items:center ;
+    font-size: 1.2rem;
+    gap: 0.5rem;
+    margin-top: 50px;
+}
+
+.pagination .page-num{
+    padding: 8px 15px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-weight: 400;
+}
+
+.pagination .page-num:hover{
+    background-color: #5AB1BB;
+    color: #fff;
+}
+
+.pagination .active{
+    background-color: #5AB1BB;
+}
+
+/* thông số số lượng hot */
+
+.product-grid__reviews {
+    position: absolute;
+    top: .625rem;
+    left: .75rem;
+    z-index: 2;
+}
+
+.reviews-rating {
+    display: flex;
+    align-items: center;
+    margin-left: -3px;
+    margin-right: -3px;
+}
+.product-grid__thumbnail .reviews-rating__star {
+    width: 12px;
+    height: 10px;
+}
+
+.reviews-rating__vote{
+    font-size: 14px;
+}
+
+.reviews-rating__star {
+    display: block;
+    width: 12px;
+    height: 12px;
+    margin: 0 1px 1px;
+    background-image: url(https://www.coolmate.me/images/star-new.svg?08a379c24952a980d5430515abb8be4e);
+    background-repeat: no-repeat;
+    background-position: 50%;
+    background-size: contain;
+}
+
+.reviews-rating__number {
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1em;
+    letter-spacing: .03em;
+    color: #2f5acf;
+}

@@ -1,0 +1,414 @@
+.cartPage-container{
+    padding:46px 84px 44px;
+    display:flex;
+    margin-top:70px;
+}
+/* Thông tin vận chuyển  */
+.info{
+    width: 58%;
+    padding-right:30px;
+    border-right:1px solid #d9d9d9;
+}
+
+.info h2{
+    font-size: 30px;
+    margin: 0;
+    
+}
+.info-header{
+    margin-bottom: 15px;
+}
+.info-header span{
+    color:var(--button-color);
+    cursor: pointer;
+}
+
+
+/* code thông tin intput */
+
+.info-body input,
+.info-body select{
+    font-size: 14px;
+    line-height:38px;
+    width: 100%;
+    padding:0 18px;
+    border-radius:16px;
+    border:1px solid #d9d9d9;
+    outline: none;
+    transition: all 0.1.5s;
+    margin:9px 0;
+}
+.info-body select{
+    height:38px;
+}
+.info-body input:focus,
+.info-body select:focus{
+    border:1px solid #415db1;
+} 
+.adress{
+    position: relative;
+}
+
+/* Thanh toán  */
+.payments{
+    margin-top: 35px;
+}
+.payments-item{
+    padding:15px 20px;
+    display:flex;
+    align-items:center;
+    border-radius:16px;
+    opacity: 0.6;
+    border:1px solid #d9d9d9;
+    transition: all 0.2s;
+    margin:18px 0;
+    cursor: pointer;
+}
+
+.payments-item:hover{
+    border:1px solid #2F5ACF;
+    opacity: 1;
+}
+.payments-item.active{
+    border:1px solid #2F5ACF;
+    opacity: 1;
+}
+.payments-item input{
+    width: 20px;
+    height: 20px;
+}
+.payments-item img{
+    margin:0 24px; 
+}
+.payments-item p{
+    font-size: 13px;
+}
+
+/* Nút thanh toán */
+.btn-pay{
+    width: 100%;
+    line-height:55px;
+    background-color:#000;
+    color:#fff;
+    transition: all 0.2s;
+    border-radius: 16px;
+    font-size: 14px;
+    text-align: center;
+    cursor: pointer;
+    border: none;
+    margin-top: 20px;
+}
+.btn-pay:hover{
+    background-color: #d9d9d9;
+    color: #000;
+}
+
+/* List sản phẩm  */
+.list-product{
+    padding:0 0 30px 30px;
+    width: 42%;
+    
+}
+.list-product__inner {
+    border-bottom: 1px solid #d9d9d9;
+    padding-bottom: 30px;
+    margin-bottom: 20px;
+}
+
+.list-product h2{
+    font-size: 30px;
+    margin:0;
+}
+/* Phần thông tin sản phẩm đk thêm vào giỏ hàng */
+.list-product__item{
+    display:flex;
+    margin-top: 26px;
+}
+.list-product__item-img{
+    width: 126px;
+    height: 142px;
+    
+}
+.list-product__item-img img{
+    width: 100%;
+    height: 100%;
+    object-fit:cover;
+    border-radius: 16px;
+}
+.list-product__item-content{
+    flex: 1;
+    padding-left: 25px;
+    position: relative;
+}
+.list-product__item-name{
+    font-size: 14px;
+    font-weight: 700;
+    line-height:16px;
+    margin-bottom: 4px;
+}
+.list-product__item-type{
+    font-size: 13px;
+}
+
+.single-product-select{
+    height:30px;
+    display:flex;
+    align-items: center;
+    padding: 0 10px;
+    border-radius: 10px;
+    border:1px solid #000;
+    margin-right: 4px;
+
+}
+.single-product-select span{
+    font-size: 12px;
+    padding-right: 5px;
+}
+.single-product-select i{
+    font-size: 12px;
+    color:#8d8d8d;
+}
+.quantity-product{
+    border-radius: 10px;
+    border:1px solid #000;
+    display: flex;
+    align-items: center;
+    justify-content:space-between;
+    padding-top: 1px;
+
+}
+
+.quantity-product button{
+    border:none;
+    background-color:#fff;
+    border-radius: 8px;
+    padding-top: 4px;
+    height: 100%;
+    cursor: pointer;
+    outline: none;
+}
+/* Giá tiền 1 sp */
+.product-new-price{
+    font-size: 13px;
+}
+
+.product-old-price{
+    font-size: 13px;
+    color:#CCCCCC;
+    text-decoration: line-through;
+}
+.product-old-price.hide{
+    display: none;
+}
+
+/* Nút xóa  */
+.list-product__close{
+    position:absolute;
+    top: 0;
+    right: 0;
+    cursor:pointer;
+    transition: all 0.1s;
+}
+.list-product__close i{
+    color:#231F20;
+
+}
+.list-product__close i:hover{
+    transform: scale(1.1);
+}
+
+
+
+/* Thanh toán  */
+.cost-detail{
+    display:flex;
+    justify-content:space-between;
+    margin-bottom: 20px;
+    
+}
+.cost-detail span{
+    font-size: 14px;
+}
+.total{
+    display:flex;
+    padding:20px 0 ;
+    justify-content:space-between;
+    align-items:center;
+    border-top: 1px solid #d9d9d9;
+}
+.total__price{
+    font-size: 20px;
+    
+}
+.total span:first-child{
+    font-size: 14px;
+}
+.discount-block{
+    border-bottom: 1px solid #d9d9d9 ;
+}
+
+.discount-block .coupon-public{
+    margin-top: calc(1.5rem - 10px);
+    
+}
+
+.discount-block .coupon-public .coupons{
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+    padding-bottom: 10px;
+    padding-top: 15px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.discount-block .coupon-public .coupons .coupon{
+    display: flex;
+    border: 1px solid rgba(36, 36, 36, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 284px;
+    height: 60px;
+}
+
+.discount-block .coupon-public .coupons .coupon-left {
+    flex: 1;
+    border-right: 2px dashed rgba(102, 102, 102, 0.7607843137);
+    min-width: 20px;
+    max-width: 20px;
+    position: relative;
+}
+.discount-block .coupon-public .coupons .coupon-right {
+    flex: 2;
+    padding: 0.5rem 1rem 0.5rem 1rem;
+    position: relative;
+}
+
+.discount-block .coupon-public .coupons .coupon-left:before {
+    content: "";
+    display: block;
+    width: 1.3rem;
+    height: 1.3rem;
+    background: white;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    position: absolute;
+    border-top: 1px solid rgba(36, 36, 36, 0.3);
+    border-right: 1px solid rgba(36, 36, 36, 0.3);
+    border-bottom: 1px solid rgba(0, 0, 0, 0);
+    border-left: 1px solid rgba(0, 0, 0, 0);
+    border-radius: 100em;
+}
+
+.discount-block .coupon-public .coupons .coupon-right[data-v-48bbe076] {
+    flex: 2;
+    padding: 0.5rem 1rem 0.5rem 1rem;
+    position: relative;
+}
+
+.discount-block .coupon-public .coupons .coupon-right .coupon-title[data-v-48bbe076] {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.discount-block .coupon-public .coupons .coupon-right .coupon-count[data-v-48bbe076] {
+    font-weight: normal;
+    font-size: 0.8em;
+}
+
+.discount-block .coupon-public .coupons .coupon-right .coupon-description[data-v-48bbe076] {
+    font-size: 13px;
+    color: #4d4d4d;
+    display: block;
+    min-width: 135px;
+    transition: 0.2s all;
+}   
+
+.discount-block .coupon-public .coupons .coupon-right {
+    flex: 2;
+    padding: 0.5rem 1rem 0.5rem 1rem;
+    position: relative;
+
+}
+
+.discount-block .coupon-public .coupons .coupon-right .coupon-count{
+    font-weight: normal;
+    font-size: 0.8em;
+}
+
+.discount-block .coupon-public .coupons .coupon-right .coupon-description{
+    font-size: 13px;
+    color: #4d4d4d;
+    display: block;
+    min-width: 135px;
+    transition: 0.2s all;
+}
+
+.discount-block .discount-box {
+    width: 100%;
+    height: 39px;
+    position: relative;
+    font-size: 0.9rem;
+    display: flex;
+    gap: 0.6rem;
+}
+
+.discount-block .discount-box input[data-v-48bbe076] {
+    padding: 5px 20px;
+    width: 90%;
+    height: 100%;
+    border-radius: 43px;
+    border: none;
+    z-index: 1;
+    background: rgba(212, 212, 212, 0.4);
+}
+
+.discount-block .discount-box button[data-v-48bbe076]:disabled {
+    background-color: #D9D9D9;
+    border: 1px solid #D9D9D9;
+    cursor: not-allowed;
+    font-family: inherit;
+    font-size: 100%;
+    line-height: 1.15;
+}
+
+.discount-block .discount-box button[data-v-48bbe076] {
+    height: 100%;
+    color: white;
+    width: -moz-fit-content;
+    width: fit-content;
+    white-space: nowrap;
+    padding: 0 20px;
+    border-radius: 43px;
+    background-color: black;
+    cursor: pointer;
+    transition: 0.2s all;
+}
+
+.discount-block .discount-heading[data-v-603ece08] {
+    margin-bottom: 0;
+}
+
+.mb-4 {
+    margin-bottom: 1rem !important;
+}
+
+.discount-block .discount-heading span img{
+    height: 22px;
+    margin-top: 20px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.text-gray-light {
+    color: rgba(0, 0, 0, .7);
+}
+.btn-gray {
+    border: none;
+    border-radius: 2rem;
+    padding: .5rem;
+}
