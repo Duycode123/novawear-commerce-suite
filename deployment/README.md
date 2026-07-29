@@ -22,3 +22,9 @@ npm test
 
 Không lưu khóa bí mật trong mã nguồn. Mỗi kho dữ liệu D1 tự tạo bí mật ký phiên đăng nhập ở lần khởi tạo đầu tiên.
 
+## Cấu hình SePay
+
+- Build giao diện khách với `REACT_APP_SEPAY_BANK`, `REACT_APP_SEPAY_ACCOUNT` và `REACT_APP_SEPAY_ACCOUNT_NAME`.
+- Đặt bí mật `SEPAY_WEBHOOK_API_KEY` cho Worker.
+- Trong SePay, khai báo webhook `https://ten-mien-cua-ban/api/payments/sepay/webhook` và dùng cùng API key.
+- Không cấu hình tài khoản thật thì giao diện chỉ hiển thị chế độ thử nghiệm, tránh khách chuyển nhầm tiền.

@@ -18,6 +18,7 @@ export default function ProductPage() {
   const [quantity, setQuantity] = useState(1);
   const [reviewForm, setReviewForm] = useState({ rating: 5, content: "" });
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewEligibility, setReviewEligibility] = useState(null);
   const { addToCart, toggleWishlist, wishlist, user, notify } = useShop();
 
   const loadProduct = useCallback(async () => {
@@ -42,6 +43,16 @@ export default function ProductPage() {
   useEffect(() => {
     loadProduct();
   }, [loadProduct]);
+
+  useEffect(() => {
+    if (!user || !product) {
+      setReviewEligibility(null);
+      return;
+    }
+    api.get(`/products/${product.id}/review-eligibility`)
+      .then((result) => setReviewEligibility(result.data))
+      .catch(() => setReviewEligibility({ eligible: false, delivered: false }));
+  }, [product, user]);
 
   const discountPercent = useMemo(() => {
     if (!product?.comparePrice || product.comparePrice <= product.price) return 0;
@@ -70,6 +81,10 @@ export default function ProductPage() {
     event.preventDefault();
     if (!user) {
       notify("Hãy đăng nhập để gửi đánh giá.", "info");
+      return;
+    }
+    if (!reviewEligibility?.eligible) {
+      notify("Đánh giá chỉ mở sau khi đơn hàng đã giao thành công.", "info");
       return;
     }
     setSubmittingReview(true);
@@ -188,7 +203,7 @@ export default function ProductPage() {
           </div>
           <p className={`stock-note ${product.stock <= 20 ? "stock-note--low" : ""}`}>
             <span>{product.stock > 0 ? "●" : "○"}</span>
-            {product.stock > 20 ? "Còn hàng, sẵn sàng giao" : product.stock > 0 ? `Chỉ còn ${product.stock} sản phẩm` : "Đang chờ bổ sung"}
+            {product.stock > 0 ? `Còn ${product.stock} sản phẩm trong kho` : "Hết hàng"}
           </p>
 
           <div className="product-perks">
@@ -197,33 +212,17 @@ export default function ProductPage() {
             <div><span>✓</span><p><strong>Kiểm tra trước khi nhận</strong>An tâm với mọi đơn hàng.</p></div>
           </div>
 
-          <div className="product-accordions">
-            <details open>
-              <summary>Chất liệu & cảm giác <span>＋</span></summary>
-              <p>{product.materials}</p>
-            </details>
-            <details>
-              <summary>Hướng dẫn bảo quản <span>＋</span></summary>
-              <p>{product.care}</p>
-            </details>
-            <details>
-              <summary>Giao hàng & đổi trả <span>＋</span></summary>
-              <p>Giao dự kiến 2–5 ngày. Đổi size miễn phí trong 30 ngày nếu sản phẩm còn nguyên tem và chưa qua sử dụng.</p>
-            </details>
-          </div>
         </div>
       </section>
 
-      <section className="product-story">
-        <div>
-          <p className="eyebrow">Designed for daily motion</p>
-          <h2>Một món đồ tốt là món bạn không cần nghĩ nhiều khi mặc.</h2>
-        </div>
-        <div className="product-story__facts">
-          <div><strong>01</strong><p>Phom được thử trên nhiều dáng người Việt.</p></div>
-          <div><strong>02</strong><p>Chất liệu ưu tiên bề mặt mềm và độ thoáng.</p></div>
-          <div><strong>03</strong><p>Đường may gia cố tại các vị trí vận động nhiều.</p></div>
-        </div>
+      <section className="product-content-below">
+        <header><p className="eyebrow">MÔ TẢ SẢN PHẨM</p><h2>Thiết kế dành cho cách bạn chuyển động.</h2><p>{product.longDescription || product.description || "Thông tin chi tiết đang được cập nhật cho sản phẩm này."}</p></header>
+        {images[1] && <figure className="product-content-visual"><SmartImage src={images[1]} alt={`${product.name} - hình ảnh chi tiết`} /><figcaption>Chi tiết thiết kế và bề mặt chất liệu của {product.name}.</figcaption></figure>}
+        {product.highlights?.length > 0 && <div className="product-feature-tags">{product.highlights.map((item, index) => <div key={item}><span>0{index + 1}</span><strong>{item}</strong></div>)}</div>}
+        <article><span>01</span><div><h3>Thông số sản phẩm</h3><dl><div><dt>Mã sản phẩm</dt><dd>{product.sku}</dd></div><div><dt>Chất liệu</dt><dd>{product.materials || "Đang cập nhật"}</dd></div><div><dt>Kiểu dáng</dt><dd>{product.fit || "Đang cập nhật"}</dd></div><div><dt>Phù hợp</dt><dd>{product.suitableFor || "Mặc hằng ngày"}</dd></div>{product.modelInfo && <div><dt>Người mẫu</dt><dd>{product.modelInfo}</dd></div>}<div><dt>Xuất xứ</dt><dd>{product.origin || "Đang cập nhật"}</dd></div></dl></div></article>
+        {product.featureDetails?.length > 0 && <article className="product-feature-article"><span>02</span><div><h3>Điểm nổi bật trong thiết kế</h3><div className="product-feature-details">{product.featureDetails.map((item, index) => <section key={`${item.title}-${index}`}><b>{String(index + 1).padStart(2, "0")}</b><h4>{item.title}</h4><p>{item.description}</p></section>)}</div></div></article>}
+        <article><span>{product.featureDetails?.length ? "03" : "02"}</span><div><h3>Hướng dẫn bảo quản</h3><p>{product.care || "Vui lòng làm theo hướng dẫn trên nhãn sản phẩm thực tế."}</p><p>Phân loại sản phẩm theo màu sắc trước khi giặt. Kiểm tra nhiệt độ và phương pháp làm sạch trên nhãn để duy trì bề mặt, màu sắc và phom dáng.</p></div></article>
+        <article><span>{product.featureDetails?.length ? "04" : "03"}</span><div><h3>Giao hàng & đổi trả</h3><p>Thời gian giao hàng dự kiến từ 2–5 ngày tùy khu vực. Toàn bộ hành trình đơn hàng được cập nhật trong trang Tài khoản.</p><p>Hỗ trợ đổi size trong 30 ngày nếu sản phẩm còn nguyên tem, chưa qua sử dụng và đáp ứng điều kiện đổi trả của NOVAWEAR.</p></div></article>
       </section>
 
       <section className="section reviews-section" id="reviews">
@@ -252,7 +251,13 @@ export default function ProductPage() {
           </div>
           <form className="review-form" onSubmit={submitReview}>
             <h3>Viết đánh giá</h3>
-            <p>{user ? `Chia sẻ với tên ${user.name}` : "Bạn cần đăng nhập trước khi gửi."}</p>
+            <p>{!user
+              ? "Bạn cần đăng nhập trước khi gửi."
+              : reviewEligibility?.eligible
+                ? `Chia sẻ với tên ${user.name}`
+                : reviewEligibility?.reviewed
+                  ? "Bạn đã gửi đánh giá cho sản phẩm này."
+                  : "Nút đánh giá sẽ mở khi đơn có sản phẩm này được giao thành công."}</p>
             <label>
               <span>Điểm của bạn</span>
               <select value={reviewForm.rating} onChange={(event) => setReviewForm((current) => ({ ...current, rating: Number(event.target.value) }))}>
@@ -275,7 +280,7 @@ export default function ProductPage() {
                 onChange={(event) => setReviewForm((current) => ({ ...current, content: event.target.value }))}
               />
             </label>
-            <button className="button button--dark" type="submit" disabled={submittingReview || !user}>
+            <button className="button button--dark" type="submit" disabled={submittingReview || !user || !reviewEligibility?.eligible}>
               {submittingReview ? "Đang gửi..." : "Gửi đánh giá"}
             </button>
           </form>

@@ -15,6 +15,7 @@ export interface D1DatabaseBinding {
 export interface Env {
   ASSETS: AssetFetcher;
   DB: D1DatabaseBinding;
+  SEPAY_WEBHOOK_API_KEY?: string;
 }
 
 export interface WorkerContext {

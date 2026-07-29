@@ -11,7 +11,10 @@ let tempDir;
 
 test.before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "novawear-api-"));
-  const app = createApp({ dataFile: path.join(tempDir, "store.json") });
+  const app = createApp({
+    dataFile: path.join(tempDir, "store.json"),
+    sepayWebhookApiKey: "test-sepay-key",
+  });
   await new Promise((resolve) => {
     server = app.listen(0, "127.0.0.1", resolve);
   });
@@ -88,6 +91,74 @@ test("customer can sign in, place an order and read order history", async () => 
   });
   assert.equal(history.response.status, 200);
   assert.ok(history.body.data.some((item) => item.id === order.body.data.id));
+});
+
+test("SePay webhook verifies, deduplicates and confirms a bank transfer", async () => {
+  const created = await request("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      customer: {
+        name: "Payment Test",
+        email: "payment.test@novawear.vn",
+        phone: "0912345678",
+        address: "28 Nguyen Van Trang, District 1, Ho Chi Minh City",
+      },
+      items: [{ productId: "prd-002", quantity: 1, size: "M", color: "Kem" }],
+      paymentMethod: "bank",
+      shippingMethod: "standard",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.data.paymentProvider, "sepay");
+  assert.equal(created.body.data.paymentStatus, "awaiting");
+  assert.equal(created.body.data.paymentCode, created.body.data.trackingCode);
+
+  const before = await request(
+    `/payments/sepay/orders/${created.body.data.id}/status?trackingCode=${created.body.data.trackingCode}`,
+  );
+  assert.equal(before.response.status, 200);
+  assert.equal(before.body.data.paymentStatus, "awaiting");
+
+  const payload = {
+    id: 92704,
+    gateway: "MBBank",
+    transactionDate: "2026-07-29 10:00:00",
+    accountNumber: "0000000000",
+    code: created.body.data.paymentCode,
+    content: `${created.body.data.paymentCode} thanh toan`,
+    transferType: "in",
+    transferAmount: created.body.data.total,
+    referenceCode: "FT26000000001",
+  };
+  const denied = await request("/payments/sepay/webhook", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  assert.equal(denied.response.status, 401);
+
+  const confirmed = await request("/payments/sepay/webhook", {
+    method: "POST",
+    headers: { Authorization: "Apikey test-sepay-key" },
+    body: JSON.stringify(payload),
+  });
+  assert.equal(confirmed.response.status, 200);
+  assert.equal(confirmed.body.success, true);
+  assert.equal(confirmed.body.matched, true);
+  assert.equal(confirmed.body.orderId, created.body.data.id);
+
+  const after = await request(
+    `/payments/sepay/orders/${created.body.data.id}/status?trackingCode=${created.body.data.trackingCode}`,
+  );
+  assert.equal(after.body.data.paymentStatus, "paid");
+  assert.equal(after.body.data.orderStatus, "confirmed");
+
+  const duplicate = await request("/payments/sepay/webhook", {
+    method: "POST",
+    headers: { Authorization: "Apikey test-sepay-key" },
+    body: JSON.stringify(payload),
+  });
+  assert.equal(duplicate.response.status, 200);
+  assert.equal(duplicate.body.duplicate, true);
 });
 
 test("staff portal is protected and supports order workflow", async () => {

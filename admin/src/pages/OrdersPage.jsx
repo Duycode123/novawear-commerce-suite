@@ -19,7 +19,7 @@ export default function OrdersPage() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [status, setStatus] = useState("all");
   const [selected, setSelected] = useState(null);
   const [updating, setUpdating] = useState(false);

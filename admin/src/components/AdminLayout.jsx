@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { BRAND } from "../config";
 import { useAdmin } from "../context/AdminContext";
 import { Toasts } from "./Ui";
@@ -19,6 +19,7 @@ const groups = [
       { to: "/orders", label: "Đơn hàng", icon: "orders" },
       { to: "/customers", label: "Khách hàng", icon: "users" },
       { to: "/support", label: "Hộp thư hỗ trợ", icon: "message" },
+      { to: "/news", label: "Tin tức website", icon: "message", adminOnly: true },
     ],
   },
   {
@@ -44,7 +45,9 @@ export default function AdminLayout() {
   const { user, logout } = useAdmin();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -64,7 +67,7 @@ export default function AdminLayout() {
           {groups.filter((group) => !group.adminOnly || user?.role === "admin").map((group) => (
             <div className="ops-nav-group" key={group.label}>
               <p>{group.label}</p>
-              {group.items.map((item) => (
+              {group.items.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -88,11 +91,13 @@ export default function AdminLayout() {
       <div className="ops-main">
         <header className="ops-topbar">
           <button className="ops-menu-trigger" type="button" aria-label="Mở menu" onClick={() => setSidebarOpen(true)}><OpsIcon name="menu" /></button>
-          <div className="ops-topbar__date">
-            <strong>{new Intl.DateTimeFormat("vi-VN", { weekday: "long" }).format(new Date())}</strong>
-            <span>{new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "long", year: "numeric" }).format(new Date())}</span>
-          </div>
+          <form className="ops-global-search" onSubmit={(event) => { event.preventDefault(); const query = globalSearch.trim(); navigate(query ? `/orders?search=${encodeURIComponent(query)}` : "/orders"); }}>
+            <OpsIcon name="search" size={17} />
+            <input value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} placeholder="Tìm đơn hàng, sản phẩm, khách hàng..." aria-label="Tìm kiếm toàn hệ thống" />
+            <kbd>⌘ K</kbd>
+          </form>
           <div className="ops-topbar__actions">
+            <div className="ops-topbar__date"><strong>Hôm nay</strong><span>{new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date())}</span></div>
             <button type="button" aria-label="Thông báo" className="ops-notification"><OpsIcon name="bell" /><span>3</span></button>
             <button type="button" className="ops-profile-trigger" onClick={() => setProfileOpen((value) => !value)}>
               <span>{user?.name?.charAt(0)}</span>

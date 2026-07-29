@@ -34,9 +34,9 @@ export default function AuthPage({ mode = "login" }) {
   };
 
   return (
-    <div className="auth-page">
+    <div className={`auth-page auth-page--${isLogin ? "login" : "register"}`}>
       <div className="auth-visual">
-        <img src="/Images/about-us-model.webp" alt="" />
+        <img src="/Images/nova-v3/auth-couple.png" alt="Phong cách thành viên NOVAWEAR" />
         <div className="auth-visual__copy">
           <p className="eyebrow">NOVA PEOPLE</p>
           <h2>Mặc điều bạn tin.<br />Sống theo nhịp của bạn.</h2>
@@ -46,6 +46,13 @@ export default function AuthPage({ mode = "login" }) {
       <section className="auth-panel">
         <div className="auth-panel__top"><Link to="/">← Trang chủ</Link><span>NOVAWEAR</span></div>
         <div className="auth-form-wrap">
+          {!isLogin && (
+            <ol className="auth-progress" aria-label="Tiến trình đăng ký">
+              <li className="is-active"><span>1</span>Thông tin</li>
+              <li><span>2</span>Xác thực</li>
+              <li><span>3</span>Hoàn tất</li>
+            </ol>
+          )}
           <p className="eyebrow">{isLogin ? "Welcome back" : "Join the club"}</p>
           <h1>{isLogin ? "Đăng nhập" : "Tạo tài khoản"}</h1>
           <p>{isLogin ? "Tiếp tục hành trình cùng NOVAWEAR." : "Chỉ mất một phút để bắt đầu."}</p>
@@ -66,6 +73,12 @@ export default function AuthPage({ mode = "login" }) {
             {isLogin && <div className="auth-options"><label><input type="checkbox" /> Ghi nhớ đăng nhập</label><button type="button" onClick={() => notify("Vui lòng liên hệ CSKH để đặt lại mật khẩu.", "info")}>Quên mật khẩu?</button></div>}
             <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang xử lý..." : isLogin ? "Đăng nhập →" : "Tạo tài khoản →"}</button>
           </form>
+          {isLogin && (
+            <div className="auth-social">
+              <span>hoặc</span>
+              <button type="button" onClick={() => notify("Đăng nhập Google sẽ được bật khi cấu hình OAuth.", "info")}><b>G</b> Đăng nhập với Google</button>
+            </div>
+          )}
           {isLogin && (
             <div className="demo-account">
               <strong>Tài khoản trải nghiệm</strong>

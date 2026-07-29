@@ -1,6 +1,7 @@
 import React from "react";
 
 const drawings = {
+  search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>,
   home: <><path d="m3 11 9-8 9 8" /><path d="M5.5 9.5V21h13V9.5M9 21v-6h6v6" /></>,
   workspace: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
   orders: <><path d="M5 7h14l-1 14H6L5 7Z" /><path d="M9 8V5a3 3 0 0 1 6 0v3" /></>,

@@ -14,6 +14,7 @@ export default function AccountPage() {
   const [error, setError] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -65,6 +66,14 @@ export default function AccountPage() {
       notify(requestError.message, "error");
     }
   };
+  const changePassword = async (event) => {
+    event.preventDefault();
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) return notify("Mật khẩu xác nhận chưa khớp.", "error");
+    setSaving(true);
+    try { const result = await api.put("/auth/password", passwordForm); notify(result.message); setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" }); }
+    catch (requestError) { notify(requestError.message, "error"); }
+    finally { setSaving(false); }
+  };
 
   const activeOrders = orders.filter((order) => !["delivered", "cancelled"].includes(order.status));
   const totalSpent = orders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
@@ -82,7 +91,7 @@ export default function AccountPage() {
           <button className={tab === "overview" ? "is-active" : ""} onClick={() => setTab("overview")} type="button"><span>⌂</span>Tổng quan</button>
           <button className={tab === "orders" ? "is-active" : ""} onClick={() => setTab("orders")} type="button"><span>▢</span>Đơn hàng <b>{orders.length}</b></button>
           <button className={tab === "profile" ? "is-active" : ""} onClick={() => setTab("profile")} type="button"><span>○</span>Thông tin cá nhân</button>
-          <Link to="/yeu-thich"><span>♡</span>Danh sách yêu thích</Link>
+          <button className={tab === "security" ? "is-active" : ""} onClick={() => setTab("security")} type="button"><span>⌁</span>Bảo mật</button>
           <Link to="/ho-tro"><span>?</span>Trợ giúp</Link>
         </aside>
 
@@ -160,6 +169,11 @@ export default function AccountPage() {
                 </div>
                 <button className="button button--dark" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
               </form>
+            </section>
+          )}
+          {!loading && !error && tab === "security" && (
+            <section className="account-panel profile-panel"><div className="panel-heading"><div><p className="eyebrow">Bảo mật</p><h2>Đổi mật khẩu</h2></div></div>
+              <form onSubmit={changePassword} className="password-form"><label className="field"><span>Mật khẩu hiện tại</span><input type="password" required value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} /></label><label className="field"><span>Mật khẩu mới</span><input type="password" minLength={8} required value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} /><small>Tối thiểu 8 ký tự, gồm chữ và số.</small></label><label className="field"><span>Xác nhận mật khẩu mới</span><input type="password" required value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))} /></label><button className="button button--dark" type="submit" disabled={saving}>{saving ? "Đang cập nhật..." : "Cập nhật mật khẩu"}</button></form>
             </section>
           )}
         </main>

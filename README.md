@@ -60,3 +60,7 @@ npm run check
 ```
 
 Thanh toán trực tuyến, email/SMS, hãng vận chuyển và lưu trữ ảnh đám mây đã có điểm nối trong luồng nghiệp vụ nhưng cần tài khoản/khóa API của nhà cung cấp trước khi bật trên môi trường thật.
+
+### Thanh toán SePay
+
+Luồng chuyển khoản đã có QR động, nội dung thanh toán riêng cho từng đơn, webhook chống ghi nhận trùng và tự cập nhật trạng thái đơn. Sao chép `client/.env.example` và `BackEnd/server/.env.example` sang tệp `.env` tương ứng, sau đó điền tài khoản ngân hàng cùng `SEPAY_WEBHOOK_API_KEY` thật trước khi nhận thanh toán.

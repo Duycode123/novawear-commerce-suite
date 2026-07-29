@@ -10,17 +10,27 @@ const emptyProduct = {
   categoryId: "",
   price: "",
   comparePrice: "",
+  saleEndsAt: "",
   cost: "",
   stock: "",
   status: "draft",
   featured: false,
+  audience: "unisex",
   badge: "",
   image: "/Images/11-0_672x990.jpg",
+  imagesText: "/Images/11-0_672x990.jpg",
   colorsText: "Đen, Trắng",
   sizesText: "S, M, L, XL",
   description: "",
+  longDescription: "",
   materials: "",
   care: "",
+  fit: "",
+  suitableFor: "",
+  modelInfo: "",
+  origin: "",
+  highlightsText: "",
+  featureDetailsText: "",
 };
 
 function formFromProduct(product) {
@@ -29,6 +39,9 @@ function formFromProduct(product) {
     ...product,
     colorsText: (product.colors || []).join(", "),
     sizesText: (product.sizes || []).join(", "),
+    highlightsText: (product.highlights || []).join(", "),
+    featureDetailsText: (product.featureDetails || []).map((item) => `${item.title} | ${item.description}`).join("\n"),
+    imagesText: (product.images?.length ? product.images : [product.image]).filter(Boolean).join("\n"),
   };
 }
 
@@ -98,11 +111,14 @@ export default function ProductsPage() {
       ...form,
       price: Number(form.price),
       comparePrice: Number(form.comparePrice || 0),
+      saleEndsAt: form.saleEndsAt ? new Date(form.saleEndsAt).toISOString() : "",
       cost: Number(form.cost || 0),
       stock: Number(form.stock || 0),
       colors: form.colorsText.split(",").map((item) => item.trim()).filter(Boolean),
       sizes: form.sizesText.split(",").map((item) => item.trim()).filter(Boolean),
-      images: [form.image],
+      highlights: form.highlightsText.split(",").map((item) => item.trim()).filter(Boolean),
+      featureDetails: form.featureDetailsText.split("\n").map((line) => { const [title, ...rest] = line.split("|"); return { title: title?.trim(), description: rest.join("|").trim() }; }).filter((item) => item.title && item.description),
+      images: form.imagesText.split("\n").map((item) => item.trim()).filter(Boolean),
     };
     try {
       const result = editing
@@ -191,16 +207,26 @@ export default function ProductsPage() {
               <label className="ops-field"><span>Danh mục *</span><select name="categoryId" required value={form.categoryId} onChange={change}><option value="">Chọn danh mục</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
               <label className="ops-field"><span>Giá bán *</span><input name="price" type="number" min="0" required value={form.price} onChange={change} /></label>
               <label className="ops-field"><span>Giá so sánh</span><input name="comparePrice" type="number" min="0" value={form.comparePrice} onChange={change} /></label>
+              <label className="ops-field"><span>Kết thúc ưu đãi (giờ Việt Nam)</span><input name="saleEndsAt" type="datetime-local" value={form.saleEndsAt ? form.saleEndsAt.slice(0, 16) : ""} onChange={change} /></label>
               <label className="ops-field"><span>Giá vốn</span><input name="cost" type="number" min="0" value={form.cost} onChange={change} /></label>
               <label className="ops-field"><span>Tồn kho</span><input name="stock" type="number" min="0" value={form.stock} onChange={change} /></label>
               <label className="ops-field"><span>Trạng thái</span><select name="status" value={form.status} onChange={change}><option value="draft">Bản nháp</option><option value="active">Đang bán</option><option value="archived">Lưu trữ</option></select></label>
+              <label className="ops-field"><span>Dành cho</span><select name="audience" value={form.audience} onChange={change}><option value="men">Nam</option><option value="women">Nữ</option><option value="unisex">Unisex</option></select></label>
               <label className="ops-field"><span>Nhãn sản phẩm</span><input name="badge" value={form.badge} onChange={change} placeholder="Mới / Bán chạy" /></label>
               <label className="ops-field ops-field--wide"><span>Đường dẫn ảnh *</span><input name="image" required value={form.image} onChange={change} placeholder="/Images/ten-anh.jpg" /></label>
+              <label className="ops-field ops-field--wide"><span>Thư viện ảnh (mỗi dòng một đường dẫn)</span><textarea name="imagesText" rows={4} value={form.imagesText} onChange={change} placeholder={"/Images/anh-chinh.jpg\n/Images/anh-chi-tiet.jpg"} /></label>
               <label className="ops-field"><span>Màu sắc (cách nhau bằng dấu phẩy)</span><input name="colorsText" value={form.colorsText} onChange={change} /></label>
               <label className="ops-field"><span>Kích thước (cách nhau bằng dấu phẩy)</span><input name="sizesText" value={form.sizesText} onChange={change} /></label>
               <label className="ops-field ops-field--wide"><span>Mô tả</span><textarea name="description" rows={3} value={form.description} onChange={change} /></label>
+              <label className="ops-field ops-field--wide"><span>Mô tả dài bên dưới ảnh</span><textarea name="longDescription" rows={6} value={form.longDescription} onChange={change} placeholder="Giới thiệu chi tiết về thiết kế, trải nghiệm mặc và hoàn cảnh sử dụng..." /></label>
               <label className="ops-field"><span>Chất liệu</span><textarea name="materials" rows={2} value={form.materials} onChange={change} /></label>
               <label className="ops-field"><span>Bảo quản</span><textarea name="care" rows={2} value={form.care} onChange={change} /></label>
+              <label className="ops-field"><span>Phom dáng & cảm giác mặc</span><textarea name="fit" rows={2} value={form.fit} onChange={change} /></label>
+              <label className="ops-field"><span>Phù hợp sử dụng</span><textarea name="suitableFor" rows={2} value={form.suitableFor} onChange={change} placeholder="Đi làm, đi chơi, tập luyện..." /></label>
+              <label className="ops-field"><span>Thông tin người mẫu</span><textarea name="modelInfo" rows={2} value={form.modelInfo} onChange={change} placeholder="Chiều cao, cân nặng, số đo và size đang mặc" /></label>
+              <label className="ops-field"><span>Xuất xứ</span><input name="origin" value={form.origin} onChange={change} /></label>
+              <label className="ops-field ops-field--wide"><span>Điểm nổi bật (cách nhau bằng dấu phẩy)</span><textarea name="highlightsText" rows={3} value={form.highlightsText} onChange={change} /></label>
+              <label className="ops-field ops-field--wide"><span>Nội dung tính năng (mỗi dòng: Tiêu đề | Mô tả)</span><textarea name="featureDetailsText" rows={6} value={form.featureDetailsText} onChange={change} placeholder={"Co giãn linh hoạt | Hỗ trợ chuyển động tự nhiên trong ngày.\nDễ phối đồ | Phù hợp nhiều phong cách và hoàn cảnh."} /></label>
             </div>
             <label className="ops-check"><input type="checkbox" name="featured" checked={Boolean(form.featured)} onChange={change} /><span>Hiển thị ở khu vực sản phẩm nổi bật</span></label>
             <div className="ops-form-actions"><button className="ops-secondary-button" type="button" onClick={closeForm}>Hủy</button><button className="ops-primary-button" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu sản phẩm →"}</button></div>

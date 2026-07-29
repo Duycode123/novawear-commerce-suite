@@ -15,6 +15,9 @@ import OrderSuccessPage from "./pages/OrderSuccessPage";
 import AboutPage from "./pages/AboutPage";
 import SizeGuidePage from "./pages/SizeGuidePage";
 import SupportPage from "./pages/SupportPage";
+import NewsPage from "./pages/NewsPage";
+import NewsDetailPage from "./pages/NewsDetailPage";
+import PromotionsPage from "./pages/PromotionsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
 export default function App() {
@@ -33,6 +36,9 @@ export default function App() {
           <Route path="/ve-chung-toi" element={<AboutPage />} />
           <Route path="/chon-size" element={<SizeGuidePage />} />
           <Route path="/ho-tro" element={<SupportPage />} />
+          <Route path="/tin-tuc" element={<NewsPage />} />
+          <Route path="/tin-tuc/:identifier" element={<NewsDetailPage />} />
+          <Route path="/uu-dai" element={<PromotionsPage />} />
 
           <Route path="/product" element={<Navigate to="/cua-hang" replace />} />
           <Route path="/detail/:identifier" element={<ProductPage />} />

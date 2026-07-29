@@ -47,39 +47,13 @@ for (const filename of storefrontFiles) {
 }
 await cp(path.join(clientBuild, "static"), path.join(publicDir, "static"), { recursive: true });
 
-const activeImages = [
-  "11-0_672x990.jpg",
-  "11-181_672x990.jpg",
-  "22-0_672x990.jpg",
-  "2_91_672x990.jpg",
-  "aBT5A8965_672x990.jpg",
-  "BT5A9235f_46_672x990.jpg",
-  "DSC08342_672x990.jpg",
-  "dgrey2_1_copy_672x990.jpg",
-  "jeanv2garment_16_672x990.jpg",
-  "jeansv2dam_25_672x990.jpg",
-  "denn3-(2)_copy.jpg",
-  "navy56_74-2_copy.jpg",
-  "navyshort_672x990.jpg",
-  "navy-short 2.jpg",
-  "ecol5_672x990.jpg",
-  "eocl6_672x990.jpg",
-  "about-us-model.webp",
-  "homepage-irl1.png",
-  "homepage-irl2.png",
-  "homepage-irl3.png",
-  "homepage-irl4.png",
-  "homepage-irl5.png",
-];
-
 const imageDir = path.join(publicDir, "Images");
 await mkdir(imageDir, { recursive: true });
-for (const filename of activeImages) {
-  await cp(
-    path.join(workspaceRoot, "client", "public", "Images", filename),
-    path.join(imageDir, filename),
-  );
-}
+await cp(
+  path.join(workspaceRoot, "client", "public", "Images", "nova-v3"),
+  path.join(imageDir, "nova-v3"),
+  { recursive: true },
+);
 
 const opsDir = path.join(publicDir, "ops");
 await mkdir(opsDir, { recursive: true });
@@ -93,6 +67,11 @@ for (const filename of ["asset-manifest.json", "brand-icon.svg", "favicon.ico", 
   }
 }
 await cp(path.join(adminBuild, "static"), path.join(opsDir, "static"), { recursive: true });
+await cp(
+  path.join(workspaceRoot, "admin", "public", "images", "nova-v3"),
+  path.join(opsDir, "images", "nova-v3"),
+  { recursive: true },
+);
 
 const require = createRequire(import.meta.url);
 const { createSeedData } = require("../../BackEnd/server/data/seed.js");
@@ -109,4 +88,4 @@ await writeFile(
   "utf8",
 );
 
-console.log(`Đã chuẩn bị ${activeImages.length} ảnh đang sử dụng và hai giao diện.`);
+console.log("Đã chuẩn bị bộ ảnh NOVAWEAR v3 và hai giao diện.");

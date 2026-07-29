@@ -22,6 +22,19 @@ import type { Env, State, User } from "./types";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^[0-9+\s.-]{9,15}$/;
 
+function normalizePaymentCode(value: unknown): string {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function safeTextEqual(actual: string, expected: string): boolean {
+  if (actual.length !== expected.length) return false;
+  let difference = 0;
+  for (let index = 0; index < actual.length; index += 1) {
+    difference |= actual.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
 function couponResult(state: State, codeValue: unknown, subtotalValue: unknown) {
   const code = String(codeValue || "").trim().toUpperCase();
   const subtotal = asMoney(subtotalValue);
@@ -305,6 +318,85 @@ export async function handlePublicApi(
     return result.error || json({ data: result.data });
   }
 
+  if (method === "POST" && pathname === "/api/payments/sepay/webhook") {
+    const webhookApiKey = String(env.SEPAY_WEBHOOK_API_KEY || "").trim();
+    if (!webhookApiKey) return fail(503, "SePay webhook is not configured.");
+    const authorization = String(request.headers.get("authorization") || "").trim();
+    if (!safeTextEqual(authorization, `Apikey ${webhookApiKey}`)) {
+      return fail(401, "Webhook authentication failed.");
+    }
+
+    const body = await readBody(request);
+    const transactionId = String(body.id || "").trim();
+    const transferAmount = asMoney(body.transferAmount);
+    const transferType = String(body.transferType || "").toLowerCase();
+    if (!transactionId || transferType !== "in" || transferAmount <= 0) {
+      return fail(400, "Invalid SePay transaction payload.");
+    }
+
+    state.paymentTransactions = state.paymentTransactions || [];
+    const duplicate = state.paymentTransactions.find((item: any) => String(item.id) === transactionId);
+    if (duplicate) return json({ success: true, duplicate: true, orderId: duplicate.orderId || null });
+
+    const searchableCode = normalizePaymentCode(`${body.code || ""} ${body.content || ""} ${body.description || ""}`);
+    const order = state.orders.find((item: any) => {
+      if (item.paymentProvider !== "sepay" || item.paymentStatus === "paid") return false;
+      if (asMoney(item.total) !== transferAmount) return false;
+      return [item.paymentCode, item.trackingCode, item.id]
+        .map(normalizePaymentCode)
+        .filter(Boolean)
+        .some((candidate: string) => searchableCode.includes(candidate));
+    });
+
+    const receivedAt = new Date().toISOString();
+    const transaction = {
+      id: transactionId,
+      orderId: order?.id || null,
+      gateway: String(body.gateway || ""),
+      accountNumber: String(body.accountNumber || ""),
+      referenceCode: String(body.referenceCode || ""),
+      transferAmount,
+      code: String(body.code || ""),
+      content: String(body.content || "").slice(0, 500),
+      receivedAt,
+    };
+    state.paymentTransactions.unshift(transaction);
+    state.paymentTransactions = state.paymentTransactions.slice(0, 1000);
+
+    if (order) {
+      order.paymentStatus = "paid";
+      order.paidAt = receivedAt;
+      order.updatedAt = receivedAt;
+      order.paymentTransaction = transaction;
+      if (order.status === "pending") {
+        order.status = "confirmed";
+        order.timeline.push({ status: "confirmed", label: ORDER_STATUS_LABELS.confirmed, at: receivedAt });
+      }
+      audit(state, "payment_confirmed", "order", order.id, { name: "SePay" });
+    } else {
+      audit(state, "payment_unmatched", "payment", transactionId, { name: "SePay" });
+    }
+    await saveState(env, state);
+    return json({ success: true, matched: Boolean(order), orderId: order?.id || null });
+  }
+
+  const sepayStatusMatch = pathname.match(/^\/api\/payments\/sepay\/orders\/([^/]+)\/status$/);
+  if (method === "GET" && sepayStatusMatch) {
+    const order = state.orders.find((item: any) => item.id === decodeURIComponent(sepayStatusMatch[1]));
+    const trackingCode = normalizePaymentCode(url.searchParams.get("trackingCode"));
+    if (!order || !trackingCode || trackingCode !== normalizePaymentCode(order.trackingCode)) {
+      return fail(404, "Payment not found.");
+    }
+    return json({
+      data: {
+        orderId: order.id,
+        orderStatus: order.status,
+        paymentStatus: order.paymentStatus,
+        paidAt: order.paidAt || null,
+      },
+    });
+  }
+
   if (method === "POST" && pathname === "/api/orders") {
     const body = await readBody(request);
     const customerInput = body.customer || {};
@@ -351,12 +443,14 @@ export async function handlePublicApi(
       discount = coupon?.discount || 0;
       shippingDiscount = coupon?.shippingDiscount || 0;
     }
-    const shippingFee = subtotal >= 699000 ? 0 : 30000;
+    const shippingMethod = body.shippingMethod === "express" ? "express" : "standard";
+    const shippingFee = shippingMethod === "express" ? 60000 : (subtotal >= 699000 ? 0 : 30000);
     const paymentMethod = ["cod", "bank", "wallet"].includes(body.paymentMethod) ? body.paymentMethod : "cod";
     const createdAt = new Date().toISOString();
+    const trackingCode = `NVA${String(Date.now()).slice(-8)}`;
     const order = {
       id: `ORD-${new Date().getFullYear()}-${String(state.orders.length + 1).padStart(4, "0")}`,
-      trackingCode: `NVA${String(Date.now()).slice(-8)}`,
+      trackingCode,
       userId: user?.id || null,
       customerId: user?.customerId || null,
       customer,
@@ -366,7 +460,10 @@ export async function handlePublicApi(
       discount,
       total: Math.max(0, subtotal + shippingFee - discount - shippingDiscount),
       couponCode: coupon?.code || "",
+      shippingMethod,
       paymentMethod,
+      paymentProvider: paymentMethod === "bank" ? "sepay" : null,
+      paymentCode: paymentMethod === "bank" ? trackingCode : null,
       paymentStatus: paymentMethod === "cod" ? "pending" : "awaiting",
       status: "pending",
       note: String(body.note || "").slice(0, 500),
@@ -494,4 +591,3 @@ export async function handlePublicApi(
 
   return null;
 }
-

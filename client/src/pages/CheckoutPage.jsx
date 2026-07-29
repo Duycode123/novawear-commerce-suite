@@ -14,6 +14,7 @@ export default function CheckoutPage() {
     phone: user?.phone || "",
     address: "",
     note: "",
+    shippingMethod: "standard",
     paymentMethod: "cod",
   });
   const [couponCode, setCouponCode] = useState("");
@@ -21,10 +22,11 @@ export default function CheckoutPage() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const shippingFee = useMemo(() => {
+  const standardShippingFee = useMemo(() => {
     if (cartSubtotal >= SITE.freeShippingThreshold) return 0;
     return Math.max(0, 30000 - Number(coupon?.shippingDiscount || 0));
   }, [cartSubtotal, coupon]);
+  const shippingFee = form.shippingMethod === "express" ? 60000 : standardShippingFee;
   const discount = Number(coupon?.discount || 0);
   const total = cartSubtotal + shippingFee - discount;
 
@@ -69,6 +71,7 @@ export default function CheckoutPage() {
           color: item.color,
         })),
         couponCode: coupon?.code || "",
+        shippingMethod: form.shippingMethod,
         paymentMethod: form.paymentMethod,
         note: form.note,
       });
@@ -118,15 +121,29 @@ export default function CheckoutPage() {
           </section>
 
           <section className="checkout-section">
-            <div className="checkout-section__head"><span>02</span><div><h2>Phương thức thanh toán</h2><p>Chọn cách thuận tiện nhất với bạn.</p></div></div>
+            <div className="checkout-section__head"><span>02</span><div><h2>Phương thức giao hàng</h2><p>Chọn tốc độ phù hợp với lịch trình của bạn.</p></div></div>
+            <div className="shipping-options">
+              <label className={form.shippingMethod === "standard" ? "is-active" : ""}>
+                <input type="radio" name="shippingMethod" value="standard" checked={form.shippingMethod === "standard"} onChange={change} />
+                <span><strong>Giao hàng tiêu chuẩn</strong><small>Nhận hàng trong 2–3 ngày</small></span><b>{standardShippingFee ? formatMoney(standardShippingFee) : "Miễn phí"}</b>
+              </label>
+              <label className={form.shippingMethod === "express" ? "is-active" : ""}>
+                <input type="radio" name="shippingMethod" value="express" checked={form.shippingMethod === "express"} onChange={change} />
+                <span><strong>Giao hàng hỏa tốc</strong><small>Nội thành · nhận trong ngày</small></span><b>60.000 ₫</b>
+              </label>
+            </div>
+          </section>
+
+          <section className="checkout-section">
+            <div className="checkout-section__head"><span>03</span><div><h2>Phương thức thanh toán</h2><p>Chọn cách thuận tiện nhất với bạn.</p></div></div>
             <div className="payment-options">
+              <label className={form.paymentMethod === "bank" ? "is-active" : ""}>
+                <input type="radio" name="paymentMethod" value="bank" checked={form.paymentMethod === "bank"} onChange={change} />
+                <b className="sepay-mark">SePay</b><span><strong>Chuyển khoản qua SePay</strong><small>Quét QR, đối soát thanh toán tự động.</small></span><i>✓</i>
+              </label>
               <label className={form.paymentMethod === "cod" ? "is-active" : ""}>
                 <input type="radio" name="paymentMethod" value="cod" checked={form.paymentMethod === "cod"} onChange={change} />
                 <b>₫</b><span><strong>Thanh toán khi nhận hàng</strong><small>Thanh toán tiền mặt cho đơn vị vận chuyển.</small></span><i>✓</i>
-              </label>
-              <label className={form.paymentMethod === "bank" ? "is-active" : ""}>
-                <input type="radio" name="paymentMethod" value="bank" checked={form.paymentMethod === "bank"} onChange={change} />
-                <b>↗</b><span><strong>Chuyển khoản ngân hàng</strong><small>Thông tin chuyển khoản hiển thị sau khi đặt đơn.</small></span><i>✓</i>
               </label>
               <label className={form.paymentMethod === "wallet" ? "is-active" : ""}>
                 <input type="radio" name="paymentMethod" value="wallet" checked={form.paymentMethod === "wallet"} onChange={change} />

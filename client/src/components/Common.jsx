@@ -34,7 +34,7 @@ export function SmartImage({ src, alt, className = "", ...props }) {
       className={className}
       loading="lazy"
       onError={(event) => {
-        event.currentTarget.src = "/Images/11-0_672x990.jpg";
+        event.currentTarget.src = "/Images/nova-v3/product-tee-black.png";
       }}
       {...props}
     />

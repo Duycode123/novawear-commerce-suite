@@ -2,8 +2,8 @@
   "meta": {
     "version": 1,
     "brand": "NOVAWEAR",
-    "createdAt": "2026-07-28T18:55:22.187Z",
-    "updatedAt": "2026-07-28T18:55:22.187Z",
+    "createdAt": "2026-07-28T21:00:25.291Z",
+    "updatedAt": "2026-07-28T21:00:25.291Z",
     "deployment": "sites"
   },
   "categories": [
@@ -57,10 +57,9 @@
       "status": "active",
       "featured": true,
       "badge": "Bán chạy",
-      "image": "/Images/11-0_672x990.jpg",
+      "image": "/Images/nova-v3/product-tee-black.png",
       "images": [
-        "/Images/11-0_672x990.jpg",
-        "/Images/11-181_672x990.jpg"
+        "/Images/nova-v3/product-tee-black.png"
       ],
       "colors": [
         "Trắng ngà",
@@ -79,7 +78,7 @@
       "rating": 4.9,
       "reviewCount": 128,
       "sold": 842,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-002",
@@ -94,10 +93,9 @@
       "status": "active",
       "featured": true,
       "badge": "Mới",
-      "image": "/Images/22-0_672x990.jpg",
+      "image": "/Images/nova-v3/product-tee-cream.png",
       "images": [
-        "/Images/22-0_672x990.jpg",
-        "/Images/2_91_672x990.jpg"
+        "/Images/nova-v3/product-tee-cream.png"
       ],
       "colors": [
         "Đen",
@@ -116,7 +114,7 @@
       "rating": 4.8,
       "reviewCount": 76,
       "sold": 429,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-003",
@@ -131,10 +129,9 @@
       "status": "active",
       "featured": true,
       "badge": "Ưu đãi",
-      "image": "/Images/aBT5A8965_672x990.jpg",
+      "image": "/Images/nova-v3/product-shirt-blue.png",
       "images": [
-        "/Images/aBT5A8965_672x990.jpg",
-        "/Images/BT5A9235f_46_672x990.jpg"
+        "/Images/nova-v3/product-shirt-blue.png"
       ],
       "colors": [
         "Trắng kem",
@@ -153,7 +150,7 @@
       "rating": 4.7,
       "reviewCount": 45,
       "sold": 206,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-004",
@@ -168,10 +165,9 @@
       "status": "active",
       "featured": true,
       "badge": "Giới hạn",
-      "image": "/Images/DSC08342_672x990.jpg",
+      "image": "/Images/nova-v3/product-jacket-black.png",
       "images": [
-        "/Images/DSC08342_672x990.jpg",
-        "/Images/dgrey2_1_copy_672x990.jpg"
+        "/Images/nova-v3/product-jacket-black.png"
       ],
       "colors": [
         "Xám khói",
@@ -188,7 +184,7 @@
       "rating": 4.9,
       "reviewCount": 91,
       "sold": 318,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-005",
@@ -203,10 +199,9 @@
       "status": "active",
       "featured": true,
       "badge": "",
-      "image": "/Images/jeanv2garment_16_672x990.jpg",
+      "image": "/Images/nova-v3/product-jeans-indigo.png",
       "images": [
-        "/Images/jeanv2garment_16_672x990.jpg",
-        "/Images/jeansv2dam_25_672x990.jpg"
+        "/Images/nova-v3/product-jeans-indigo.png"
       ],
       "colors": [
         "Indigo đậm",
@@ -226,7 +221,7 @@
       "rating": 4.8,
       "reviewCount": 67,
       "sold": 287,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-006",
@@ -241,10 +236,9 @@
       "status": "active",
       "featured": false,
       "badge": "",
-      "image": "/Images/denn3-(2)_copy.jpg",
+      "image": "/Images/nova-v3/product-trouser-beige.png",
       "images": [
-        "/Images/denn3-(2)_copy.jpg",
-        "/Images/navy56_74-2_copy.jpg"
+        "/Images/nova-v3/product-trouser-beige.png"
       ],
       "colors": [
         "Đen",
@@ -265,7 +259,7 @@
       "rating": 4.7,
       "reviewCount": 53,
       "sold": 194,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-007",
@@ -280,10 +274,9 @@
       "status": "active",
       "featured": true,
       "badge": "Bán chạy",
-      "image": "/Images/navyshort_672x990.jpg",
+      "image": "/Images/nova-v3/product-short-navy.png",
       "images": [
-        "/Images/navyshort_672x990.jpg",
-        "/Images/navy-short 2.jpg"
+        "/Images/nova-v3/product-short-navy.png"
       ],
       "colors": [
         "Navy",
@@ -302,7 +295,7 @@
       "rating": 4.9,
       "reviewCount": 114,
       "sold": 593,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "prd-008",
@@ -317,10 +310,9 @@
       "status": "active",
       "featured": false,
       "badge": "Mới",
-      "image": "/Images/ecol5_672x990.jpg",
+      "image": "/Images/nova-v3/product-polo-navy.png",
       "images": [
-        "/Images/ecol5_672x990.jpg",
-        "/Images/eocl6_672x990.jpg"
+        "/Images/nova-v3/product-polo-navy.png"
       ],
       "colors": [
         "Xanh olive",
@@ -339,7 +331,7 @@
       "rating": 4.6,
       "reviewCount": 28,
       "sold": 122,
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "createdAt": "2026-07-28T21:00:25.291Z"
     }
   ],
   "users": [
@@ -352,7 +344,7 @@
       "employeeId": "emp-001",
       "customerId": null,
       "status": "active",
-      "createdAt": "2026-07-28T18:55:22.187Z",
+      "createdAt": "2026-07-28T21:00:25.291Z",
       "passwordHash": ""
     },
     {
@@ -364,7 +356,7 @@
       "employeeId": "emp-002",
       "customerId": null,
       "status": "active",
-      "createdAt": "2026-07-28T18:55:22.187Z",
+      "createdAt": "2026-07-28T21:00:25.291Z",
       "passwordHash": ""
     },
     {
@@ -376,7 +368,7 @@
       "employeeId": null,
       "customerId": "cus-001",
       "status": "active",
-      "createdAt": "2026-07-28T18:55:22.187Z",
+      "createdAt": "2026-07-28T21:00:25.291Z",
       "passwordHash": ""
     }
   ],
@@ -391,7 +383,7 @@
       "totalSpent": 4360000,
       "orderCount": 8,
       "status": "active",
-      "createdAt": "2026-01-29T18:55:22.189Z"
+      "createdAt": "2026-01-29T21:00:25.293Z"
     },
     {
       "id": "cus-002",
@@ -403,7 +395,7 @@
       "totalSpent": 2180000,
       "orderCount": 4,
       "status": "active",
-      "createdAt": "2026-03-30T18:55:22.189Z"
+      "createdAt": "2026-03-30T21:00:25.293Z"
     },
     {
       "id": "cus-003",
@@ -415,7 +407,7 @@
       "totalSpent": 999000,
       "orderCount": 2,
       "status": "active",
-      "createdAt": "2026-05-29T18:55:22.189Z"
+      "createdAt": "2026-05-29T21:00:25.293Z"
     },
     {
       "id": "cus-004",
@@ -427,7 +419,7 @@
       "totalSpent": 629000,
       "orderCount": 1,
       "status": "active",
-      "createdAt": "2026-07-04T18:55:22.189Z"
+      "createdAt": "2026-07-04T21:00:25.293Z"
     }
   ],
   "employees": [
@@ -509,7 +501,7 @@
           "productId": "prd-001",
           "sku": "NVA-TS-001",
           "name": "Áo thun Airy Cotton",
-          "image": "/Images/11-0_672x990.jpg",
+          "image": "/Images/nova-v3/product-tee-black.png",
           "size": "M",
           "color": "Than chì",
           "quantity": 2,
@@ -519,7 +511,7 @@
           "productId": "prd-007",
           "sku": "NVA-ST-001",
           "name": "Short Motion Flex",
-          "image": "/Images/navyshort_672x990.jpg",
+          "image": "/Images/nova-v3/product-short-navy.png",
           "size": "M",
           "color": "Navy",
           "quantity": 1,
@@ -540,26 +532,26 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-25T18:55:22.439Z"
+          "at": "2026-07-25T21:00:25.715Z"
         },
         {
           "status": "confirmed",
           "label": "Đã xác nhận",
-          "at": "2026-07-25T18:55:22.439Z"
+          "at": "2026-07-25T21:00:25.715Z"
         },
         {
           "status": "packing",
           "label": "Đang đóng gói",
-          "at": "2026-07-26T18:55:22.439Z"
+          "at": "2026-07-26T21:00:25.715Z"
         },
         {
           "status": "shipping",
           "label": "Đang giao hàng",
-          "at": "2026-07-27T18:55:22.439Z"
+          "at": "2026-07-27T21:00:25.715Z"
         }
       ],
-      "createdAt": "2026-07-25T18:55:22.440Z",
-      "updatedAt": "2026-07-27T18:55:22.440Z"
+      "createdAt": "2026-07-25T21:00:25.715Z",
+      "updatedAt": "2026-07-27T21:00:25.715Z"
     },
     {
       "id": "ORD-2026-002",
@@ -577,7 +569,7 @@
           "productId": "prd-005",
           "sku": "NVA-JN-001",
           "name": "Jeans Straight Indigo",
-          "image": "/Images/jeanv2garment_16_672x990.jpg",
+          "image": "/Images/nova-v3/product-jeans-indigo.png",
           "size": "31",
           "color": "Indigo đậm",
           "quantity": 1,
@@ -598,16 +590,16 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-27T18:55:22.440Z"
+          "at": "2026-07-27T21:00:25.715Z"
         },
         {
           "status": "confirmed",
           "label": "Đã xác nhận",
-          "at": "2026-07-27T18:55:22.440Z"
+          "at": "2026-07-27T21:00:25.715Z"
         }
       ],
-      "createdAt": "2026-07-27T18:55:22.440Z",
-      "updatedAt": "2026-07-27T18:55:22.440Z"
+      "createdAt": "2026-07-27T21:00:25.715Z",
+      "updatedAt": "2026-07-27T21:00:25.715Z"
     },
     {
       "id": "ORD-2026-003",
@@ -625,7 +617,7 @@
           "productId": "prd-004",
           "sku": "NVA-JK-001",
           "name": "Áo khoác Windflow",
-          "image": "/Images/DSC08342_672x990.jpg",
+          "image": "/Images/nova-v3/product-jacket-black.png",
           "size": "L",
           "color": "Xám khói",
           "quantity": 1,
@@ -646,31 +638,31 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-18T18:55:22.440Z"
+          "at": "2026-07-18T21:00:25.716Z"
         },
         {
           "status": "confirmed",
           "label": "Đã xác nhận",
-          "at": "2026-07-18T18:55:22.440Z"
+          "at": "2026-07-18T21:00:25.716Z"
         },
         {
           "status": "packing",
           "label": "Đang đóng gói",
-          "at": "2026-07-19T18:55:22.440Z"
+          "at": "2026-07-19T21:00:25.716Z"
         },
         {
           "status": "shipping",
           "label": "Đang giao hàng",
-          "at": "2026-07-20T18:55:22.440Z"
+          "at": "2026-07-20T21:00:25.716Z"
         },
         {
           "status": "delivered",
           "label": "Giao thành công",
-          "at": "2026-07-21T18:55:22.440Z"
+          "at": "2026-07-21T21:00:25.716Z"
         }
       ],
-      "createdAt": "2026-07-18T18:55:22.440Z",
-      "updatedAt": "2026-07-21T18:55:22.440Z"
+      "createdAt": "2026-07-18T21:00:25.716Z",
+      "updatedAt": "2026-07-21T21:00:25.716Z"
     },
     {
       "id": "ORD-2026-004",
@@ -688,7 +680,7 @@
           "productId": "prd-003",
           "sku": "NVA-SH-001",
           "name": "Sơ mi Linen Daily",
-          "image": "/Images/aBT5A8965_672x990.jpg",
+          "image": "/Images/nova-v3/product-shirt-blue.png",
           "size": "S",
           "color": "Trắng kem",
           "quantity": 1,
@@ -709,18 +701,18 @@
         {
           "status": "pending",
           "label": "Đã tiếp nhận",
-          "at": "2026-07-27T18:55:22.440Z"
+          "at": "2026-07-27T21:00:25.716Z"
         }
       ],
-      "createdAt": "2026-07-27T18:55:22.440Z",
-      "updatedAt": "2026-07-27T18:55:22.440Z"
+      "createdAt": "2026-07-27T21:00:25.716Z",
+      "updatedAt": "2026-07-27T21:00:25.716Z"
     }
   ],
   "purchaseOrders": [
     {
       "id": "PO-2026-001",
       "supplier": "Dệt Minh Phúc",
-      "expectedDate": "2026-08-01T18:55:22.440Z",
+      "expectedDate": "2026-08-01T21:00:25.716Z",
       "status": "ordered",
       "total": 12480000,
       "items": [
@@ -735,12 +727,12 @@
           "unitCost": 148000
         }
       ],
-      "createdAt": "2026-07-26T18:55:22.440Z"
+      "createdAt": "2026-07-26T21:00:25.716Z"
     },
     {
       "id": "PO-2026-002",
       "supplier": "May An Thịnh",
-      "expectedDate": "2026-07-26T18:55:22.440Z",
+      "expectedDate": "2026-07-26T21:00:25.716Z",
       "status": "received",
       "total": 10620000,
       "items": [
@@ -750,8 +742,8 @@
           "unitCost": 177000
         }
       ],
-      "createdAt": "2026-07-16T18:55:22.440Z",
-      "receivedAt": "2026-07-26T18:55:22.440Z"
+      "createdAt": "2026-07-16T21:00:25.716Z",
+      "receivedAt": "2026-07-26T21:00:25.716Z"
     }
   ],
   "attendance": [
@@ -788,8 +780,8 @@
       "description": "Kiểm tra địa chỉ và ghi chú của các đơn đang chờ.",
       "priority": "high",
       "status": "in_progress",
-      "dueDate": "2026-07-28T18:55:22.440Z",
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "dueDate": "2026-07-28T21:00:25.716Z",
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "task-002",
@@ -798,8 +790,8 @@
       "description": "Đưa thêm size M/L của Airy Cotton ra quầy.",
       "priority": "medium",
       "status": "todo",
-      "dueDate": "2026-07-28T18:55:22.440Z",
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "dueDate": "2026-07-28T21:00:25.716Z",
+      "createdAt": "2026-07-28T21:00:25.291Z"
     },
     {
       "id": "task-003",
@@ -808,8 +800,8 @@
       "description": "Liên hệ khách của đơn ORD-2026-002 để xác nhận khung giờ giao.",
       "priority": "low",
       "status": "done",
-      "dueDate": "2026-07-27T18:55:22.440Z",
-      "createdAt": "2026-07-28T18:55:22.187Z"
+      "dueDate": "2026-07-27T21:00:25.716Z",
+      "createdAt": "2026-07-28T21:00:25.291Z"
     }
   ],
   "reviews": [
@@ -821,7 +813,7 @@
       "rating": 5,
       "content": "Vải mềm, phom lên gọn và màu đúng ảnh.",
       "status": "published",
-      "createdAt": "2026-07-08T18:55:22.440Z"
+      "createdAt": "2026-07-08T21:00:25.716Z"
     },
     {
       "id": "rev-002",
@@ -831,7 +823,7 @@
       "rating": 5,
       "content": "Mặc vận động thoải mái, túi có khóa rất tiện.",
       "status": "published",
-      "createdAt": "2026-07-16T18:55:22.440Z"
+      "createdAt": "2026-07-16T21:00:25.716Z"
     }
   ],
   "coupons": [
@@ -842,7 +834,7 @@
       "minOrder": 500000,
       "maxDiscount": 150000,
       "active": true,
-      "expiresAt": "2026-10-26T18:55:22.440Z"
+      "expiresAt": "2026-10-26T21:00:25.716Z"
     },
     {
       "code": "FREESHIP",
@@ -851,7 +843,7 @@
       "minOrder": 399000,
       "maxDiscount": 30000,
       "active": true,
-      "expiresAt": "2026-10-26T18:55:22.440Z"
+      "expiresAt": "2026-10-26T21:00:25.716Z"
     }
   ],
   "contacts": [],

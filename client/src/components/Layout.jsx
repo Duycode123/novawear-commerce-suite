@@ -6,11 +6,11 @@ import { Logo, ToastViewport } from "./Common";
 import Icon from "./Icon";
 
 const navItems = [
-  { to: "/cua-hang", label: "Cửa hàng" },
-  { to: "/cua-hang?category=ao-thun", label: "Áo" },
-  { to: "/cua-hang?category=quan-dai", label: "Quần" },
-  { to: "/ve-chung-toi", label: "Câu chuyện" },
+  { to: "/", label: "Trang chủ", end: true },
+  { to: "/uu-dai", label: "Ưu đãi", badge: "Mới" },
   { to: "/chon-size", label: "Chọn size" },
+  { to: "/tin-tuc", label: "Blog" },
+  { to: "/ve-chung-toi", label: "Về NOVA" },
 ];
 
 export default function Layout() {
@@ -18,6 +18,8 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [activeMegaMenu, setActiveMegaMenu] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -25,13 +27,30 @@ export default function Layout() {
     window.scrollTo({ top: 0, behavior: "instant" });
     setMobileOpen(false);
     setSearchOpen(false);
+    setActiveMegaMenu("");
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch(`${process.env.REACT_APP_API_URL || "http://localhost:5000/api"}/categories`)
+      .then((response) => response.ok ? response.json() : { data: [] })
+      .then((result) => { if (mounted) setCategories(result.data || []); })
+      .catch(() => { if (mounted) setCategories([]); });
+    return () => { mounted = false; };
+  }, []);
 
   const submitSearch = (event) => {
     event.preventDefault();
     const term = search.trim();
     navigate(term ? `/cua-hang?search=${encodeURIComponent(term)}` : "/cua-hang");
   };
+
+  const menuCategories = (audience) => {
+    const dedicated = categories.filter((item) => item.audience === audience);
+    return dedicated.length ? dedicated : categories.filter((item) => item.audience === "all" || Number(item.audienceCounts?.[audience] || 0) > 0);
+  };
+  const menuTitle = activeMegaMenu === "men" ? "Dành cho Nam" : "Dành cho Nữ";
+  const menuHref = `/cua-hang?audience=${activeMegaMenu}`;
 
   return (
     <div className="site-shell">
@@ -42,7 +61,7 @@ export default function Layout() {
         <Link to="/ho-tro">Cần hỗ trợ?</Link>
       </div>
 
-      <header className="site-header">
+      <header className="site-header" onMouseLeave={() => setActiveMegaMenu("")}>
         <div className="site-header__inner">
           <button
             className="header-icon header-menu-button"
@@ -55,16 +74,34 @@ export default function Layout() {
           </button>
           <Logo />
           <nav className="desktop-nav" aria-label="Điều hướng chính">
-            {navItems.map((item) => (
+            {navItems.slice(0, 1).map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end}
                 className={({ isActive }) => (isActive ? "is-active" : "")}
               >
-                {item.label}
+                <span>{item.label}</span>{item.badge && <em>{item.badge}</em>}
               </NavLink>
             ))}
+            {[{ audience: "men", label: "Nam" }, { audience: "women", label: "Nữ" }].map((item) => (
+              <button className={activeMegaMenu === item.audience ? "is-open" : ""} type="button" key={item.audience} onMouseEnter={() => setActiveMegaMenu(item.audience)} onFocus={() => setActiveMegaMenu(item.audience)} onClick={() => setActiveMegaMenu((current) => current === item.audience ? "" : item.audience)} aria-expanded={activeMegaMenu === item.audience}>{item.label}</button>
+            ))}
+            {navItems.slice(1).map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? "is-active" : "")}> <span>{item.label}</span>{item.badge && <em>{item.badge}</em>} </NavLink>
+            ))}
           </nav>
+          <form className="header-search-inline" onSubmit={submitSearch}>
+            <label className="sr-only" htmlFor="header-search-inline">Tìm kiếm sản phẩm</label>
+            <input
+              id="header-search-inline"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm kiếm sản phẩm..."
+            />
+            <button type="submit" aria-label="Tìm kiếm"><Icon name="search" size={17} /></button>
+          </form>
+          <Link className="header-help-link" to="/ho-tro">Hỗ trợ</Link>
           <div className="header-actions">
             <button
               className="header-action header-action--search"
@@ -88,6 +125,17 @@ export default function Layout() {
           </div>
         </div>
 
+        {activeMegaMenu && (
+          <div className="mega-menu" onMouseEnter={() => setActiveMegaMenu(activeMegaMenu)} onMouseLeave={() => setActiveMegaMenu("")}>
+            <div className="mega-menu__inner">
+              <div className="mega-menu__intro"><p>{menuTitle}</p><h2>Chọn theo cách bạn sống.</h2><Link to={menuHref}>Xem tất cả sản phẩm <span>→</span></Link></div>
+              <div className="mega-menu__links"><h3>Mua sắm</h3><Link to={`${menuHref}&sort=newest`}>Hàng mới về</Link><Link to={`${menuHref}&sort=rating`}>Đánh giá cao</Link><Link to={`${menuHref}&sort=popular`}>Được mua nhiều</Link><Link to={`${menuHref}&inStock=true`}>Sẵn sàng giao ngay</Link></div>
+              <div className="mega-menu__links mega-menu__links--categories"><h3>Danh mục</h3>{menuCategories(activeMegaMenu).map((category) => <Link key={category.id} to={`${menuHref}&category=${category.slug}`}>{category.name}<small>{category.audienceCounts?.[activeMegaMenu]}</small></Link>)}{!menuCategories(activeMegaMenu).length && <span>Danh mục sẽ hiện khi admin thêm sản phẩm.</span>}</div>
+              <Link className="mega-menu__feature" to={`${menuHref}&sort=rating`}><img src="/Images/nova-v3/home-story.png" alt="Khám phá phong cách NOVAWEAR" /><span>KHÁM PHÁ NOVA</span><strong>Những lựa chọn được đánh giá cao nhất →</strong></Link>
+            </div>
+          </div>
+        )}
+
         {searchOpen && (
           <div className="header-search">
             <form onSubmit={submitSearch}>
@@ -108,7 +156,10 @@ export default function Layout() {
 
         <div className={`mobile-menu ${mobileOpen ? "is-open" : ""}`}>
           <nav aria-label="Điều hướng di động">
-            {navItems.map((item) => <Link key={item.to} to={item.to}>{item.label}<span>→</span></Link>)}
+            {navItems.slice(0, 1).map((item) => <Link key={item.to} to={item.to}>{item.label}<span>→</span></Link>)}
+            <Link to="/cua-hang?audience=men">Nam<span>→</span></Link><Link to="/cua-hang?audience=women">Nữ<span>→</span></Link>
+            {navItems.slice(1).map((item) => <Link key={item.to} to={item.to}>{item.label}<span>→</span></Link>)}
+            <Link to="/ho-tro">Hỗ trợ<span>→</span></Link>
             <Link to={user ? "/tai-khoan" : "/dang-nhap"}>{user ? "Tài khoản của tôi" : "Đăng nhập"}<span>→</span></Link>
             {user && <button type="button" onClick={logout}>Đăng xuất<span>→</span></button>}
           </nav>

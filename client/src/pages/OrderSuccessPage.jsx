@@ -1,11 +1,48 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { formatMoney } from "../config/site";
+import { buildSepayQrUrl, formatMoney, SEPAY } from "../config/site";
+import { api } from "../services/api";
 
 export default function OrderSuccessPage() {
   const { state } = useLocation();
   const order = state?.order;
+  const [copied, setCopied] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState(order?.paymentStatus || "pending");
+
+  useEffect(() => {
+    if (!order || order.paymentMethod === "cod" || paymentStatus === "paid") return undefined;
+    const controller = new AbortController();
+    const checkPayment = async () => {
+      try {
+        const result = await api.get(
+          `/payments/sepay/orders/${encodeURIComponent(order.id)}/status?trackingCode=${encodeURIComponent(order.trackingCode)}`,
+          { signal: controller.signal },
+        );
+        if (result.data?.paymentStatus) setPaymentStatus(result.data.paymentStatus);
+      } catch (error) {
+        if (error.name !== "AbortError") return;
+      }
+    };
+    checkPayment();
+    const timer = window.setInterval(checkPayment, 4000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [order, paymentStatus]);
+
   if (!order) return <Navigate to="/" replace />;
+
+  const transferContent = order.paymentCode || order.trackingCode || order.id.replace(/[^a-zA-Z0-9]/g, "");
+  const copy = async (value, key) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
+      window.setTimeout(() => setCopied(""), 1800);
+    } catch (_error) {
+      setCopied("");
+    }
+  };
 
   return (
     <div className="success-page">
@@ -20,10 +57,34 @@ export default function OrderSuccessPage() {
         <div><span>Phương thức</span><strong>{order.paymentMethod === "cod" ? "Thanh toán khi nhận" : order.paymentMethod === "bank" ? "Chuyển khoản" : "Ví điện tử / QR"}</strong></div>
       </div>
       {order.paymentMethod !== "cod" && (
-        <div className="bank-note">
-          <strong>Thông tin thanh toán mẫu</strong>
-          <p>Ngân hàng NOVA · STK 0000 1234 5678 · Nội dung: {order.id}</p>
-        </div>
+        <section className={`sepay-payment-card ${paymentStatus === "paid" ? "sepay-payment-card--paid" : ""}`}>
+          <div className="sepay-payment-state" role="status">
+            <span>{paymentStatus === "paid" ? "✓" : ""}</span>
+            <div>
+              <strong>{paymentStatus === "paid" ? "Thanh toán thành công" : "Đang chờ thanh toán"}</strong>
+              <small>{paymentStatus === "paid" ? "Đơn hàng đã được tự động xác nhận." : "Trang sẽ tự cập nhật ngay khi SePay báo tiền về."}</small>
+            </div>
+          </div>
+          <div className="sepay-payment-card__qr">
+            <span>Thanh toán qua <b>SePay</b></span>
+            <img src={buildSepayQrUrl({ amount: order.total, description: transferContent })} alt={`Mã QR thanh toán cho đơn ${order.id}`} />
+            <small>Quét bằng ứng dụng ngân hàng</small>
+          </div>
+          <div className="sepay-payment-card__info">
+            {!SEPAY.configured && (
+              <p className="sepay-payment-card__demo">
+                Chế độ thử nghiệm — hãy cấu hình tài khoản SePay thật trước khi nhận thanh toán.
+              </p>
+            )}
+            <p className="eyebrow">Chờ thanh toán</p>
+            <h2>{formatMoney(order.total)}</h2>
+            <div><span>Ngân hàng</span><strong>{SEPAY.bank}</strong></div>
+            <div><span>Số tài khoản</span><strong>{SEPAY.accountNumber}</strong><button type="button" onClick={() => copy(SEPAY.accountNumber, "account")}>{copied === "account" ? "Đã chép" : "Sao chép"}</button></div>
+            <div><span>Chủ tài khoản</span><strong>{SEPAY.accountName}</strong></div>
+            <div><span>Nội dung chuyển khoản</span><strong>{transferContent}</strong><button type="button" onClick={() => copy(transferContent, "content")}>{copied === "content" ? "Đã chép" : "Sao chép"}</button></div>
+            <p className="sepay-payment-card__notice">Sau khi chuyển khoản, hệ thống sẽ tự động xác nhận trong khoảng 1–5 phút.</p>
+          </div>
+        </section>
       )}
       <div className="success-actions">
         <Link className="button button--dark" to={`/tra-cuu`}>Theo dõi đơn hàng</Link>

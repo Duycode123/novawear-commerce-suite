@@ -52,6 +52,17 @@ function asPositiveInt(value, fallback = 1) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function normalizePaymentCode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function safeTextEqual(actual, expected) {
+  const actualBuffer = Buffer.from(String(actual || ""));
+  const expectedBuffer = Buffer.from(String(expected || ""));
+  return actualBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 function createToken(user, secret) {
   return jwt.sign(
     { sub: user.id, role: user.role, email: user.email },
@@ -65,8 +76,15 @@ function publicProduct(product, categories) {
   const { cost, ...safeProduct } = product;
   return {
     ...safeProduct,
-    category: category ? { id: category.id, name: category.name, slug: category.slug } : null,
+    category: category ? { id: category.id, name: category.name, slug: category.slug, audience: category.audience || "all" } : null,
   };
+}
+
+function ratingStats(productId, reviews) {
+  const published = reviews.filter((item) => item.productId === productId && item.status === "published");
+  if (!published.length) return { rating: 0, reviewCount: 0 };
+  const average = published.reduce((sum, item) => sum + Number(item.rating || 0), 0) / published.length;
+  return { rating: Math.round(average * 10) / 10, reviewCount: published.length };
 }
 
 function createApp(options = {}) {
@@ -76,6 +94,7 @@ function createApp(options = {}) {
     || path.join(__dirname, "data", "store.json");
   const store = options.store || new JsonStore(dataFile);
   const jwtSecret = process.env.JWT_SECRET || "novawear-local-development-secret-change-me";
+  const sepayWebhookApiKey = String(options.sepayWebhookApiKey || process.env.SEPAY_WEBHOOK_API_KEY || "").trim();
   const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
     .split(",")
     .map((item) => item.trim())
@@ -358,12 +377,19 @@ function createApp(options = {}) {
   app.get("/api/categories", (_req, res) => {
     const categories = store.data.categories
       .filter((item) => item.status !== "archived")
-      .map((item) => ({
-        ...item,
-        productCount: store.data.products.filter(
+      .map((item) => {
+        const activeProducts = store.data.products.filter(
           (product) => product.categoryId === item.id && product.status === "active",
-        ).length,
-      }));
+        );
+        return {
+          ...item,
+          productCount: activeProducts.length,
+          audienceCounts: {
+            men: activeProducts.filter((product) => ["men", "unisex"].includes(normalizeText(product.audience))).length,
+            women: activeProducts.filter((product) => ["women", "unisex"].includes(normalizeText(product.audience))).length,
+          },
+        };
+      });
     res.json({ data: categories });
   });
 
@@ -373,6 +399,11 @@ function createApp(options = {}) {
       category = "",
       minPrice,
       maxPrice,
+      audience = "",
+      color = "",
+      size = "",
+      inStock,
+      sale,
       sort = "featured",
       featured,
       status = "active",
@@ -381,7 +412,10 @@ function createApp(options = {}) {
     const limit = Math.min(asPositiveInt(req.query.limit || req.query.pageSize, 12), 100);
     const searchText = normalizeText(search || req.query.keyword);
     const categoryText = normalizeText(category);
-    let products = [...store.data.products];
+    const audienceText = normalizeText(audience);
+    const colorText = normalizeText(color);
+    const sizeText = normalizeText(size);
+    let products = store.data.products.map((item) => ({ ...item, ...ratingStats(item.id, store.data.reviews) }));
 
     if (status !== "all") products = products.filter((item) => item.status === status);
     if (featured === "true") products = products.filter((item) => item.featured);
@@ -398,13 +432,20 @@ function createApp(options = {}) {
     }
     if (minPrice !== undefined) products = products.filter((item) => item.price >= asMoney(minPrice));
     if (maxPrice !== undefined) products = products.filter((item) => item.price <= asMoney(maxPrice));
+    if (audienceText && audienceText !== "all") {
+      products = products.filter((item) => [audienceText, "unisex"].includes(normalizeText(item.audience)));
+    }
+    if (colorText) products = products.filter((item) => (item.colors || []).some((value) => normalizeText(value) === colorText));
+    if (sizeText) products = products.filter((item) => (item.sizes || []).some((value) => normalizeText(value) === sizeText));
+    if (inStock === "true") products = products.filter((item) => Number(item.stock) > 0);
+    if (sale === "true") products = products.filter((item) => Number(item.comparePrice) > Number(item.price) && (!item.saleEndsAt || new Date(item.saleEndsAt) > new Date()));
 
     const sorters = {
       newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
       "price-asc": (a, b) => a.price - b.price,
       "price-desc": (a, b) => b.price - a.price,
       popular: (a, b) => b.sold - a.sold,
-      rating: (a, b) => b.rating - a.rating,
+      rating: (a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount || b.sold - a.sold,
       featured: (a, b) => Number(b.featured) - Number(a.featured) || b.sold - a.sold,
     };
     products.sort(sorters[sort] || sorters.featured);
@@ -428,15 +469,16 @@ function createApp(options = {}) {
       (item) => item.id === req.params.identifier || item.slug === req.params.identifier,
     );
     if (!product || product.status === "archived") return notFound(res, "Sản phẩm");
+    const productWithRating = { ...product, ...ratingStats(product.id, store.data.reviews) };
     const related = store.data.products
       .filter((item) => item.id !== product.id && item.categoryId === product.categoryId && item.status === "active")
       .slice(0, 4)
-      .map((item) => publicProduct(item, store.data.categories));
+      .map((item) => publicProduct({ ...item, ...ratingStats(item.id, store.data.reviews) }, store.data.categories));
     const reviews = store.data.reviews
       .filter((item) => item.productId === product.id && item.status === "published")
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return res.json({
-      data: publicProduct(product, store.data.categories),
+      data: publicProduct(productWithRating, store.data.categories),
       related,
       reviews,
     });
@@ -455,6 +497,14 @@ function createApp(options = {}) {
     }
     if (store.data.reviews.some((item) => item.productId === product.id && item.userId === req.user.id)) {
       return res.status(409).json({ message: "Bạn đã đánh giá sản phẩm này." });
+    }
+    const canReview = store.data.orders.some((order) => (
+      order.customerId === req.user.customerId
+      && order.status === "delivered"
+      && order.items.some((item) => item.productId === product.id)
+    ));
+    if (!canReview) {
+      return res.status(403).json({ message: "Bạn chỉ có thể đánh giá sau khi đơn chứa sản phẩm này đã giao thành công." });
     }
     const review = {
       id: store.nextId("reviews", "rev-"),
@@ -475,6 +525,37 @@ function createApp(options = {}) {
     return res.status(201).json({ message: "Cảm ơn bạn đã đánh giá.", data: review });
   });
 
+  app.get("/api/products/:productId/review-eligibility", requireAuth, (req, res) => {
+    const product = store.data.products.find((item) => item.id === req.params.productId);
+    if (!product) return notFound(res, "Sản phẩm");
+    const reviewed = store.data.reviews.some((item) => item.productId === product.id && item.userId === req.user.id);
+    const delivered = store.data.orders.some((order) => (
+      order.customerId === req.user.customerId
+      && order.status === "delivered"
+      && order.items.some((item) => item.productId === product.id)
+    ));
+    return res.json({ data: { eligible: delivered && !reviewed, delivered, reviewed } });
+  });
+
+  app.get("/api/promotions", (_req, res) => {
+    const now = new Date();
+    const data = (store.data.coupons || [])
+      .filter((item) => item.active && new Date(item.expiresAt) >= now)
+      .map(({ code, type, value, minOrder, maxDiscount, expiresAt }) => ({ code, type, value, minOrder, maxDiscount, expiresAt }));
+    return res.json({ data });
+  });
+
+  app.get("/api/news", (_req, res) => {
+    const data = (store.data.news || []).filter((item) => item.status === "published").sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+    return res.json({ data });
+  });
+  app.get("/api/news/:id", (req, res) => {
+    const article = (store.data.news || []).find((item) => item.id === req.params.id && item.status === "published");
+    if (!article) return notFound(res, "Bài viết");
+    const published = (store.data.news || []).filter((item) => item.status === "published").sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+    return res.json({ data: article, related: published.filter((item) => item.id !== article.id).slice(0, 3) });
+  });
+
   app.post("/api/coupons/validate", (req, res) => {
     const code = String(req.body.code || "").trim().toUpperCase();
     const subtotal = asMoney(req.body.subtotal);
@@ -489,6 +570,88 @@ function createApp(options = {}) {
     if (coupon.type === "percent") discount = Math.min(Math.round(subtotal * coupon.value / 100), coupon.maxDiscount);
     if (coupon.type === "fixed") discount = Math.min(coupon.value, coupon.maxDiscount || coupon.value);
     return res.json({ data: { code: coupon.code, type: coupon.type, discount, shippingDiscount: coupon.type === "shipping" ? coupon.value : 0 } });
+  });
+
+  app.post("/api/payments/sepay/webhook", (req, res) => {
+    if (!sepayWebhookApiKey) {
+      return res.status(503).json({ success: false, message: "SePay webhook is not configured." });
+    }
+
+    const authorization = String(req.get("authorization") || "").trim();
+    if (!safeTextEqual(authorization, `Apikey ${sepayWebhookApiKey}`)) {
+      return res.status(401).json({ success: false, message: "Webhook authentication failed." });
+    }
+
+    const transactionId = String(req.body.id || "").trim();
+    const transferAmount = asMoney(req.body.transferAmount);
+    const transferType = String(req.body.transferType || "").toLowerCase();
+    if (!transactionId || transferType !== "in" || transferAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid SePay transaction payload." });
+    }
+
+    store.data.paymentTransactions = store.data.paymentTransactions || [];
+    const duplicate = store.data.paymentTransactions.find((item) => String(item.id) === transactionId);
+    if (duplicate) {
+      return res.status(200).json({ success: true, duplicate: true, orderId: duplicate.orderId || null });
+    }
+
+    const searchableCode = normalizePaymentCode(`${req.body.code || ""} ${req.body.content || ""} ${req.body.description || ""}`);
+    const order = store.data.orders.find((item) => {
+      if (item.paymentProvider !== "sepay" || item.paymentStatus === "paid") return false;
+      if (asMoney(item.total) !== transferAmount) return false;
+      const candidates = [item.paymentCode, item.trackingCode, item.id]
+        .map(normalizePaymentCode)
+        .filter(Boolean);
+      return candidates.some((candidate) => searchableCode.includes(candidate));
+    });
+
+    const receivedAt = new Date().toISOString();
+    const transaction = {
+      id: transactionId,
+      orderId: order?.id || null,
+      gateway: String(req.body.gateway || ""),
+      accountNumber: String(req.body.accountNumber || ""),
+      referenceCode: String(req.body.referenceCode || ""),
+      transferAmount,
+      code: String(req.body.code || ""),
+      content: String(req.body.content || "").slice(0, 500),
+      receivedAt,
+    };
+    store.data.paymentTransactions.unshift(transaction);
+    store.data.paymentTransactions = store.data.paymentTransactions.slice(0, 1000);
+
+    if (order) {
+      order.paymentStatus = "paid";
+      order.paidAt = receivedAt;
+      order.updatedAt = receivedAt;
+      order.paymentTransaction = transaction;
+      if (order.status === "pending") {
+        order.status = "confirmed";
+        order.timeline.push({ status: "confirmed", label: ORDER_STATUS_LABELS.confirmed, at: receivedAt });
+      }
+      store.audit("payment_confirmed", "order", order.id, { name: "SePay" });
+    } else {
+      store.audit("payment_unmatched", "payment", transactionId, { name: "SePay" });
+    }
+    store.save();
+
+    return res.status(200).json({ success: true, matched: Boolean(order), orderId: order?.id || null });
+  });
+
+  app.get("/api/payments/sepay/orders/:id/status", (req, res) => {
+    const order = store.data.orders.find((item) => item.id === req.params.id);
+    const trackingCode = normalizePaymentCode(req.query.trackingCode);
+    if (!order || !trackingCode || trackingCode !== normalizePaymentCode(order.trackingCode)) {
+      return notFound(res, "Payment");
+    }
+    return res.json({
+      data: {
+        orderId: order.id,
+        orderStatus: order.status,
+        paymentStatus: order.paymentStatus,
+        paidAt: order.paidAt || null,
+      },
+    });
   });
 
   app.post("/api/orders", optionalAuth, (req, res) => {
@@ -533,7 +696,8 @@ function createApp(options = {}) {
     }
 
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    let shippingFee = subtotal >= 699000 ? 0 : 30000;
+    const shippingMethod = req.body.shippingMethod === "express" ? "express" : "standard";
+    let shippingFee = shippingMethod === "express" ? 60000 : (subtotal >= 699000 ? 0 : 30000);
     let discount = 0;
     let couponCode = "";
     if (req.body.couponCode) {
@@ -596,7 +760,10 @@ function createApp(options = {}) {
       discount,
       total: subtotal + shippingFee - discount,
       couponCode,
+      shippingMethod,
       paymentMethod,
+      paymentProvider: paymentMethod === "bank" ? "sepay" : null,
+      paymentCode: paymentMethod === "bank" ? trackingCode : null,
       paymentStatus: paymentMethod === "cod" ? "pending" : "awaiting",
       status: "pending",
       note: String(req.body.note || "").trim().slice(0, 500),
@@ -797,18 +964,27 @@ function createApp(options = {}) {
       categoryId,
       price: asMoney(req.body.price),
       comparePrice: asMoney(req.body.comparePrice),
+      saleEndsAt: req.body.saleEndsAt ? new Date(req.body.saleEndsAt).toISOString() : "",
       cost: asMoney(req.body.cost),
       stock: asMoney(req.body.stock),
       status: ["active", "draft", "archived"].includes(req.body.status) ? req.body.status : "draft",
       featured: Boolean(req.body.featured),
       badge: String(req.body.badge || ""),
+      audience: ["men", "women", "unisex"].includes(req.body.audience) ? req.body.audience : "unisex",
       image: String(req.body.image || "/Images/11-0_672x990.jpg"),
       images: Array.isArray(req.body.images) && req.body.images.length ? req.body.images : [String(req.body.image || "/Images/11-0_672x990.jpg")],
       colors: Array.isArray(req.body.colors) ? req.body.colors : String(req.body.colors || "").split(",").map((item) => item.trim()).filter(Boolean),
       sizes: Array.isArray(req.body.sizes) ? req.body.sizes : String(req.body.sizes || "").split(",").map((item) => item.trim()).filter(Boolean),
       description: String(req.body.description || ""),
+      longDescription: String(req.body.longDescription || ""),
       materials: String(req.body.materials || ""),
       care: String(req.body.care || ""),
+      fit: String(req.body.fit || ""),
+      suitableFor: String(req.body.suitableFor || ""),
+      modelInfo: String(req.body.modelInfo || ""),
+      origin: String(req.body.origin || ""),
+      highlights: Array.isArray(req.body.highlights) ? req.body.highlights.slice(0, 8) : [],
+      featureDetails: Array.isArray(req.body.featureDetails) ? req.body.featureDetails.slice(0, 8) : [],
       rating: 0,
       reviewCount: 0,
       sold: 0,
@@ -823,7 +999,7 @@ function createApp(options = {}) {
   admin.put("/products/:id", (req, res) => {
     const product = store.data.products.find((item) => item.id === req.params.id);
     if (!product) return notFound(res, "Sản phẩm");
-    const allowed = ["name", "sku", "categoryId", "price", "comparePrice", "cost", "stock", "status", "featured", "badge", "image", "images", "colors", "sizes", "description", "materials", "care"];
+    const allowed = ["name", "sku", "categoryId", "price", "comparePrice", "saleEndsAt", "cost", "stock", "status", "featured", "badge", "audience", "image", "images", "colors", "sizes", "description", "longDescription", "materials", "care", "fit", "suitableFor", "modelInfo", "origin", "highlights", "featureDetails"];
     for (const field of allowed) {
       if (req.body[field] !== undefined) product[field] = req.body[field];
     }
@@ -852,6 +1028,34 @@ function createApp(options = {}) {
     return res.json({ message: "Đã xóa sản phẩm." });
   });
 
+  admin.get("/news", (_req, res) => res.json({ data: store.data.news || [] }));
+  admin.post("/news", allowRoles("admin"), (req, res) => {
+    const title = String(req.body.title || "").trim();
+    if (title.length < 5) return res.status(400).json({ message: "Tiêu đề bài viết cần ít nhất 5 ký tự." });
+    const article = { id: store.nextId("news", "news-"), title, excerpt: String(req.body.excerpt || ""), content: String(req.body.content || ""), category: String(req.body.category || "NOVA Journal"), image: String(req.body.image || "/Images/nova-v3/home-story.png"), status: req.body.status === "draft" ? "draft" : "published", publishedAt: req.body.publishedAt || new Date().toISOString() };
+    store.data.news = store.data.news || [];
+    store.data.news.push(article);
+    store.audit("create", "news", article.id, req.user);
+    store.save();
+    return res.status(201).json({ message: "Đã tạo bài viết.", data: article });
+  });
+  admin.put("/news/:id", allowRoles("admin"), (req, res) => {
+    const article = (store.data.news || []).find((item) => item.id === req.params.id);
+    if (!article) return notFound(res, "Bài viết");
+    ["title", "excerpt", "content", "category", "image", "status", "publishedAt"].forEach((field) => { if (req.body[field] !== undefined) article[field] = String(req.body[field]); });
+    store.audit("update", "news", article.id, req.user);
+    store.save();
+    return res.json({ message: "Đã cập nhật bài viết.", data: article });
+  });
+  admin.delete("/news/:id", allowRoles("admin"), (req, res) => {
+    const initial = (store.data.news || []).length;
+    store.data.news = (store.data.news || []).filter((item) => item.id !== req.params.id);
+    if (store.data.news.length === initial) return notFound(res, "Bài viết");
+    store.audit("delete", "news", req.params.id, req.user);
+    store.save();
+    return res.json({ message: "Đã xóa bài viết." });
+  });
+
   admin.get("/categories", (_req, res) => {
     res.json({
       data: store.data.categories.map((item) => ({
@@ -860,6 +1064,17 @@ function createApp(options = {}) {
       })),
     });
   });
+
+  admin.get("/coupons", (_req, res) => res.json({ data: store.data.coupons || [] }));
+  admin.post("/coupons", allowRoles("admin"), (req, res) => {
+    const code = String(req.body.code || "").trim().toUpperCase();
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) return res.status(400).json({ message: "Mã ưu đãi chưa hợp lệ." });
+    if ((store.data.coupons || []).some((item) => item.code === code)) return res.status(409).json({ message: "Mã ưu đãi đã tồn tại." });
+    const coupon = { code, type: ["percent", "fixed", "shipping"].includes(req.body.type) ? req.body.type : "percent", value: asMoney(req.body.value), minOrder: asMoney(req.body.minOrder), maxDiscount: asMoney(req.body.maxDiscount), active: req.body.active !== false, expiresAt: req.body.expiresAt || new Date(Date.now() + 30 * 86400000).toISOString() };
+    store.data.coupons = store.data.coupons || []; store.data.coupons.push(coupon); store.audit("create", "coupon", code, req.user); store.save(); return res.status(201).json({ message: "Đã thêm mã ưu đãi.", data: coupon });
+  });
+  admin.put("/coupons/:code", allowRoles("admin"), (req, res) => { const coupon = (store.data.coupons || []).find((item) => item.code === req.params.code); if (!coupon) return notFound(res, "Mã ưu đãi"); ["type", "value", "minOrder", "maxDiscount", "active", "expiresAt"].forEach((field) => { if (req.body[field] !== undefined) coupon[field] = ["value", "minOrder", "maxDiscount"].includes(field) ? asMoney(req.body[field]) : req.body[field]; }); store.audit("update", "coupon", coupon.code, req.user); store.save(); return res.json({ message: "Đã cập nhật mã ưu đãi.", data: coupon }); });
+  admin.delete("/coupons/:code", allowRoles("admin"), (req, res) => { const before = (store.data.coupons || []).length; store.data.coupons = (store.data.coupons || []).filter((item) => item.code !== req.params.code); if (store.data.coupons.length === before) return notFound(res, "Mã ưu đãi"); store.audit("delete", "coupon", req.params.code, req.user); store.save(); return res.json({ message: "Đã xóa mã ưu đãi." }); });
 
   admin.post("/categories", allowRoles("admin"), (req, res) => {
     const name = String(req.body.name || "").trim();
@@ -873,6 +1088,7 @@ function createApp(options = {}) {
       name,
       slug,
       description: String(req.body.description || ""),
+      audience: ["men", "women", "all"].includes(String(req.body.audience)) ? String(req.body.audience) : "all",
       status: "active",
     };
     store.data.categories.push(category);
@@ -886,6 +1102,7 @@ function createApp(options = {}) {
     if (!category) return notFound(res, "Danh mục");
     if (req.body.name !== undefined) category.name = String(req.body.name).trim();
     if (req.body.description !== undefined) category.description = String(req.body.description);
+    if (req.body.audience !== undefined && ["men", "women", "all"].includes(String(req.body.audience))) category.audience = String(req.body.audience);
     if (req.body.status !== undefined) category.status = String(req.body.status);
     category.slug = slugify(req.body.slug || category.name);
     store.audit("update", "category", category.id, req.user);

@@ -18,6 +18,10 @@ export default function CatalogPage() {
     sort: searchParams.get("sort") || "featured",
     minPrice: searchParams.get("minPrice") || "",
     maxPrice: searchParams.get("maxPrice") || "",
+    audience: searchParams.get("audience") || "",
+    color: searchParams.get("color") || "",
+    size: searchParams.get("size") || "",
+    inStock: searchParams.get("inStock") || "",
     page: searchParams.get("page") || "1",
   }), [searchParams]);
 
@@ -58,6 +62,18 @@ export default function CatalogPage() {
 
   const clearFilters = () => setSearchParams({});
   const selectedCategory = categories.find((item) => item.slug === filters.category);
+  const dedicatedCategories = useMemo(() => categories.filter((item) => item.audience === "men" || item.audience === "women"), [categories]);
+  const categoryGroups = useMemo(() => {
+    const source = dedicatedCategories.length ? dedicatedCategories : categories;
+    return [
+      { key: "men", label: "Nam", items: source.filter((item) => item.audience === "men") },
+      { key: "women", label: "Nữ", items: source.filter((item) => item.audience === "women") },
+      { key: "all", label: "Dùng chung", items: source.filter((item) => item.audience === "all") },
+    ].filter((group) => group.items.length);
+  }, [categories, dedicatedCategories]);
+  const allProductCount = useMemo(() => categories.reduce((sum, category) => sum + Number(category.productCount || 0), 0), [categories]);
+  const availableColors = useMemo(() => [...new Set(products.flatMap((item) => item.colors || []))].slice(0, 10), [products]);
+  const availableSizes = useMemo(() => [...new Set(products.flatMap((item) => item.sizes || []))].slice(0, 12), [products]);
 
   return (
     <div className="catalog-page">
@@ -77,21 +93,19 @@ export default function CatalogPage() {
 
           <div className="filter-group">
             <h3>Danh mục</h3>
-            <label className="radio-row">
+            <label className="radio-row radio-row--all">
               <input type="radio" name="category" checked={!filters.category} onChange={() => setFilter("category", "")} />
-              <span>Tất cả</span><small>{pagination.total}</small>
+              <span>Tất cả</span><small>{allProductCount}</small>
             </label>
-            {categories.map((category) => (
-              <label className="radio-row" key={category.id}>
-                <input
-                  type="radio"
-                  name="category"
-                  checked={filters.category === category.slug}
-                  onChange={() => setFilter("category", category.slug)}
-                />
-                <span>{category.name}</span><small>{category.productCount}</small>
-              </label>
-            ))}
+            <div className="catalog-category-groups">
+              {categoryGroups.map((group) => <div className="catalog-category-group" key={group.key}>
+                <p>{group.label}</p>
+                {group.items.map((category) => <label className="radio-row" key={category.id}>
+                  <input type="radio" name="category" checked={filters.category === category.slug} onChange={() => setFilter("category", category.slug)} />
+                  <span>{category.name}</span><small>{category.productCount}</small>
+                </label>)}
+              </div>)}
+            </div>
           </div>
 
           <div className="filter-group">
@@ -119,6 +133,16 @@ export default function CatalogPage() {
             ))}
           </div>
 
+          <div className="filter-group">
+            <h3>Dành cho</h3>
+            {[{ value: "", label: "Tất cả" }, { value: "men", label: "Nam" }, { value: "women", label: "Nữ" }, { value: "unisex", label: "Unisex" }].map((option) => (
+              <label className="radio-row" key={option.label}><input type="radio" name="audience" checked={filters.audience === option.value} onChange={() => setFilter("audience", option.value)} /><span>{option.label}</span></label>
+            ))}
+          </div>
+          {availableColors.length > 0 && <div className="filter-group"><h3>Màu sắc</h3><div className="filter-chips">{availableColors.map((value) => <button type="button" className={filters.color === value ? "is-active" : ""} key={value} onClick={() => setFilter("color", filters.color === value ? "" : value)}>{value}</button>)}</div></div>}
+          {availableSizes.length > 0 && <div className="filter-group"><h3>Kích thước</h3><div className="filter-chips">{availableSizes.map((value) => <button type="button" className={filters.size === value ? "is-active" : ""} key={value} onClick={() => setFilter("size", filters.size === value ? "" : value)}>{value}</button>)}</div></div>}
+          <label className="filter-stock"><input type="checkbox" checked={filters.inStock === "true"} onChange={(event) => setFilter("inStock", event.target.checked ? "true" : "")} /> Chỉ hiển thị sản phẩm còn hàng</label>
+
           <div className="filter-note">
             <span>↺</span>
             <p><strong>Đổi size miễn phí</strong>Trong 30 ngày từ khi nhận hàng.</p>
@@ -144,7 +168,7 @@ export default function CatalogPage() {
             </div>
           </div>
 
-          {(filters.search || filters.category || filters.minPrice || filters.maxPrice) && (
+          {(filters.search || filters.category || filters.minPrice || filters.maxPrice || filters.audience || filters.color || filters.size || filters.inStock) && (
             <div className="active-filters">
               {filters.search && <button type="button" onClick={() => setFilter("search", "")}>“{filters.search}” ×</button>}
               {filters.category && <button type="button" onClick={() => setFilter("category", "")}>{selectedCategory?.name || filters.category} ×</button>}

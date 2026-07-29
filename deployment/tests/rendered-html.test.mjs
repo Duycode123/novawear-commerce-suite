@@ -27,6 +27,8 @@ test("deployment contains the Worker, D1 declaration and migration", async () =>
   assert.ok(JSON.parse(hosting).project_id);
   assert.match(migration, /CREATE TABLE `app_state`/);
   await access(new URL("../dist/client/og-novawear.png", import.meta.url));
-  await access(new URL("../dist/client/Images/about-us-model.webp", import.meta.url));
+  await access(new URL("../dist/client/Images/nova-v3/home-hero.png", import.meta.url));
+  await access(new URL("../dist/client/Images/nova-v3/product-tee-black.png", import.meta.url));
+  await access(new URL("../dist/client/ops/images/nova-v3/admin-login.png", import.meta.url));
   await access(root);
 });

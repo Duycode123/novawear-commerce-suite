@@ -14,6 +14,7 @@ import CustomersPage from "./pages/CustomersPage";
 import EmployeesPage from "./pages/EmployeesPage";
 import AccountsPage from "./pages/AccountsPage";
 import SupportInboxPage from "./pages/SupportInboxPage";
+import NewsPage from "./pages/NewsPage";
 
 function ProtectedLayout() {
   const { user } = useAdmin();
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/support" element={<SupportInboxPage />} />
+            <Route path="/news" element={<AdminOnly><NewsPage /></AdminOnly>} />
             <Route path="/employees" element={<AdminOnly><EmployeesPage /></AdminOnly>} />
             <Route path="/accounts" element={<AdminOnly><AccountsPage /></AdminOnly>} />
             <Route path="/Indexhd" element={<Navigate to="/orders" replace />} />
