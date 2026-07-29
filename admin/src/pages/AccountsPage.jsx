@@ -46,7 +46,7 @@ export default function AccountsPage() {
         {!loading && !error && users.length > 0 && (
           <div className="ops-table-wrap">
             <table className="ops-table">
-              <thead><tr><th>Người dùng</th><th>Email</th><th>Vai trò</th><th>Liên kết</th><th>Ngày tạo</th><th>Trạng thái</th></tr></thead>
+              <thead><tr><th>Người dùng</th><th>Email</th><th>Vai trò</th><th>Liên kết</th><th>Ngày tạo</th><th>Xác minh</th><th>Trạng thái</th></tr></thead>
               <tbody>
                 {users.map((user) => (
                   <tr key={user.id}>
@@ -55,6 +55,16 @@ export default function AccountsPage() {
                     <td><select className="ops-inline-select" value={user.role} disabled={user.id === currentUser.id} onChange={(event) => update(user, { role: event.target.value })}><option value="customer">Khách hàng</option><option value="staff">Nhân viên</option><option value="admin">Quản trị viên</option></select></td>
                     <td>{user.employeeId || user.customerId || "—"}</td>
                     <td>{formatDate(user.createdAt)}</td>
+                    <td>
+                      <button
+                        className={`ops-status-button ${user.verified ? "is-verified" : "is-pending"}`}
+                        type="button"
+                        disabled={user.id === currentUser.id}
+                        onClick={() => update(user, { verified: !user.verified })}
+                      >
+                        {user.verified ? "Đã xác minh" : "Chờ xác minh"}
+                      </button>
+                    </td>
                     <td><button className="ops-status-button" type="button" disabled={user.id === currentUser.id} onClick={() => update(user, { status: user.status === "active" ? "inactive" : "active" })}><Status value={user.status} type="account" /></button></td>
                   </tr>
                 ))}

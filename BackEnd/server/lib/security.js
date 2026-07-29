@@ -20,8 +20,18 @@ function verifyPassword(password, storedHash) {
 
 function sanitizeUser(user) {
   if (!user) return null;
-  const { passwordHash, ...safeUser } = user;
-  return safeUser;
+  const {
+    passwordHash,
+    verificationCodeHash,
+    verificationExpiresAt,
+    verificationAttempts,
+    verificationSentAt,
+    ...safeUser
+  } = user;
+  return {
+    ...safeUser,
+    verified: Boolean(user.emailVerifiedAt),
+  };
 }
 
 module.exports = {

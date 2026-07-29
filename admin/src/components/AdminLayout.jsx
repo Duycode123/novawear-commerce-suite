@@ -19,6 +19,8 @@ const groups = [
       { to: "/orders", label: "Đơn hàng", icon: "orders" },
       { to: "/customers", label: "Khách hàng", icon: "users" },
       { to: "/support", label: "Hộp thư hỗ trợ", icon: "message" },
+      { to: "/returns", label: "Đổi trả & hoàn tiền", icon: "orders" },
+      { to: "/coupons", label: "Mã ưu đãi", icon: "product", adminOnly: true },
       { to: "/news", label: "Tin tức website", icon: "message", adminOnly: true },
     ],
   },
@@ -29,6 +31,7 @@ const groups = [
       { to: "/categories", label: "Danh mục", icon: "categories" },
       { to: "/inventory", label: "Tồn kho", icon: "inventory" },
       { to: "/purchases", label: "Nhập hàng", icon: "purchase" },
+      { to: "/suppliers", label: "Nhà cung cấp", icon: "users", adminOnly: true },
     ],
   },
   {
@@ -36,7 +39,9 @@ const groups = [
     adminOnly: true,
     items: [
       { to: "/employees", label: "Nhân viên", icon: "employees" },
+      { to: "/tasks", label: "Phân công công việc", icon: "workspace" },
       { to: "/accounts", label: "Tài khoản", icon: "accounts" },
+      { to: "/audit", label: "Nhật ký hệ thống", icon: "inventory" },
     ],
   },
 ];

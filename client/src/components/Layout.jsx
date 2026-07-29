@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
-import { Logo, ToastViewport } from "./Common";
+import { Logo } from "./Common";
 import Icon from "./Icon";
 
 const navItems = [
@@ -39,6 +39,56 @@ export default function Layout() {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    const root = document.getElementById("main-content");
+    if (!root) return undefined;
+    if (!("IntersectionObserver" in window)) return undefined;
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-revealed");
+        revealObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+
+    const registerRevealElements = () => {
+      const groups = [
+        { selector: "h1, h2", className: "nova-reveal-heading" },
+        { selector: "h3, .eyebrow", className: "nova-reveal-subtitle" },
+        { selector: "img:not(.brand-logo img)", className: "nova-reveal-image" },
+      ];
+
+      groups.forEach(({ selector, className }) => {
+        root.querySelectorAll(selector).forEach((element) => {
+          if (element.dataset.novaReveal) return;
+          const siblings = element.parentElement ? Array.from(element.parentElement.children) : [];
+          const siblingIndex = Math.max(0, siblings.indexOf(element));
+          element.dataset.novaReveal = "true";
+          element.classList.add(className);
+          element.style.setProperty("--nova-reveal-delay", `${Math.min(siblingIndex, 5) * 55}ms`);
+          const bounds = element.getBoundingClientRect();
+          const isAlreadyVisible = bounds.top < window.innerHeight * 0.96 && bounds.bottom > 0;
+          if (isAlreadyVisible) {
+            element.classList.add("is-revealed");
+          } else {
+            revealObserver.observe(element);
+          }
+        });
+      });
+    };
+
+    const frame = window.requestAnimationFrame(registerRevealElements);
+    const mutationObserver = new MutationObserver(registerRevealElements);
+    mutationObserver.observe(root, { childList: true, subtree: true });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      mutationObserver.disconnect();
+      revealObserver.disconnect();
+    };
+  }, [location.pathname, location.search]);
+
   const submitSearch = (event) => {
     event.preventDefault();
     const term = search.trim();
@@ -51,6 +101,17 @@ export default function Layout() {
   };
   const menuTitle = activeMegaMenu === "men" ? "Dành cho Nam" : "Dành cho Nữ";
   const menuHref = `/cua-hang?audience=${activeMegaMenu}`;
+  const menuEditorial = activeMegaMenu === "men"
+    ? {
+      image: "/Images/nova-v3/menu-men-editorial.png",
+      eyebrow: "MEN'S EDIT",
+      title: "Những lớp mặc tinh giản cho mọi lịch trình.",
+    }
+    : {
+      image: "/Images/nova-v3/menu-women-editorial.png",
+      eyebrow: "WOMEN'S EDIT",
+      title: "Thanh lịch tự nhiên, hiện đại theo cách riêng.",
+    };
 
   return (
     <div className="site-shell">
@@ -85,7 +146,7 @@ export default function Layout() {
               </NavLink>
             ))}
             {[{ audience: "men", label: "Nam" }, { audience: "women", label: "Nữ" }].map((item) => (
-              <button className={activeMegaMenu === item.audience ? "is-open" : ""} type="button" key={item.audience} onMouseEnter={() => setActiveMegaMenu(item.audience)} onFocus={() => setActiveMegaMenu(item.audience)} onClick={() => setActiveMegaMenu((current) => current === item.audience ? "" : item.audience)} aria-expanded={activeMegaMenu === item.audience}>{item.label}</button>
+              <button className={activeMegaMenu === item.audience ? "is-open" : ""} type="button" key={item.audience} onMouseEnter={() => setActiveMegaMenu(item.audience)} onFocus={() => setActiveMegaMenu(item.audience)} onClick={() => setActiveMegaMenu(item.audience)} aria-expanded={activeMegaMenu === item.audience}>{item.label}</button>
             ))}
             {navItems.slice(1).map((item) => (
               <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? "is-active" : "")}> <span>{item.label}</span>{item.badge && <em>{item.badge}</em>} </NavLink>
@@ -128,10 +189,10 @@ export default function Layout() {
         {activeMegaMenu && (
           <div className="mega-menu" onMouseEnter={() => setActiveMegaMenu(activeMegaMenu)} onMouseLeave={() => setActiveMegaMenu("")}>
             <div className="mega-menu__inner">
-              <div className="mega-menu__intro"><p>{menuTitle}</p><h2>Chọn theo cách bạn sống.</h2><Link to={menuHref}>Xem tất cả sản phẩm <span>→</span></Link></div>
+              <div className="mega-menu__intro"><p>{menuTitle}</p><h2>Trang phục được chọn lọc cho nhịp sống hiện đại.</h2><span>Thiết kế dễ mặc, phom dáng chỉn chu và chất liệu phù hợp khí hậu Việt Nam.</span><Link to={menuHref}>Khám phá bộ sưu tập <b>↗</b></Link></div>
               <div className="mega-menu__links"><h3>Mua sắm</h3><Link to={`${menuHref}&sort=newest`}>Hàng mới về</Link><Link to={`${menuHref}&sort=rating`}>Đánh giá cao</Link><Link to={`${menuHref}&sort=popular`}>Được mua nhiều</Link><Link to={`${menuHref}&inStock=true`}>Sẵn sàng giao ngay</Link></div>
               <div className="mega-menu__links mega-menu__links--categories"><h3>Danh mục</h3>{menuCategories(activeMegaMenu).map((category) => <Link key={category.id} to={`${menuHref}&category=${category.slug}`}>{category.name}<small>{category.audienceCounts?.[activeMegaMenu]}</small></Link>)}{!menuCategories(activeMegaMenu).length && <span>Danh mục sẽ hiện khi admin thêm sản phẩm.</span>}</div>
-              <Link className="mega-menu__feature" to={`${menuHref}&sort=rating`}><img src="/Images/nova-v3/home-story.png" alt="Khám phá phong cách NOVAWEAR" /><span>KHÁM PHÁ NOVA</span><strong>Những lựa chọn được đánh giá cao nhất →</strong></Link>
+              <Link className="mega-menu__feature" to={`${menuHref}&sort=rating`}><img src={menuEditorial.image} alt={`Biên tập thời trang ${menuTitle}`} /><span>{menuEditorial.eyebrow}</span><strong>{menuEditorial.title}</strong><em>Khám phá ngay ↗</em></Link>
             </div>
           </div>
         )}
@@ -212,7 +273,6 @@ export default function Layout() {
           <div><Link to="/ho-tro">Chính sách bảo mật</Link><Link to="/ho-tro">Điều khoản</Link></div>
         </div>
       </footer>
-      <ToastViewport />
     </div>
   );
 }

@@ -18,7 +18,10 @@ import SupportPage from "./pages/SupportPage";
 import NewsPage from "./pages/NewsPage";
 import NewsDetailPage from "./pages/NewsDetailPage";
 import PromotionsPage from "./pages/PromotionsPage";
+import ReturnsPage from "./pages/ReturnsPage";
+import LifestylePage from "./pages/LifestylePage";
 import NotFoundPage from "./pages/NotFoundPage";
+import { ToastViewport } from "./components/Common";
 
 export default function App() {
   return (
@@ -39,6 +42,8 @@ export default function App() {
           <Route path="/tin-tuc" element={<NewsPage />} />
           <Route path="/tin-tuc/:identifier" element={<NewsDetailPage />} />
           <Route path="/uu-dai" element={<PromotionsPage />} />
+          <Route path="/doi-tra" element={<ReturnsPage />} />
+          <Route path="/phong-cach/:style" element={<LifestylePage />} />
 
           <Route path="/product" element={<Navigate to="/cua-hang" replace />} />
           <Route path="/detail/:identifier" element={<ProductPage />} />
@@ -54,6 +59,7 @@ export default function App() {
         <Route path="/DangNhap" element={<Navigate to="/dang-nhap" replace />} />
         <Route path="/DangKy" element={<Navigate to="/dang-ky" replace />} />
       </Routes>
+      <ToastViewport />
     </ShopProvider>
   );
 }

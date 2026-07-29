@@ -58,6 +58,12 @@ export default function ProductPage() {
     if (!product?.comparePrice || product.comparePrice <= product.price) return 0;
     return Math.round((1 - product.price / product.comparePrice) * 100);
   }, [product]);
+  const availableStock = useMemo(() => {
+    if (!product) return 0;
+    if (!product.variants?.length) return Number(product.stock || 0);
+    const variant = product.variants.find((item) => item.size === size && item.color === color);
+    return Number(variant?.stock || 0);
+  }, [product, size, color]);
 
   if (loading) {
     return (
@@ -190,20 +196,20 @@ export default function ProductPage() {
             <div className="quantity-picker" aria-label="Số lượng">
               <button type="button" aria-label="Giảm số lượng" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
               <span>{quantity}</span>
-              <button type="button" aria-label="Tăng số lượng" onClick={() => setQuantity((value) => Math.min(product.stock, value + 1))}>＋</button>
+              <button type="button" aria-label="Tăng số lượng" onClick={() => setQuantity((value) => Math.min(availableStock, value + 1))}>＋</button>
             </div>
             <button
               className="button button--dark button--grow"
               type="button"
-              disabled={!product.stock || !size || !color}
-              onClick={() => addToCart(product, { size, color, quantity })}
+              disabled={!availableStock || !size || !color}
+              onClick={() => addToCart({ ...product, stock: availableStock }, { size, color, quantity })}
             >
-              {product.stock ? "Thêm vào giỏ" : "Tạm hết hàng"} <span>→</span>
+              {availableStock ? "Thêm vào giỏ" : "Tạm hết hàng"} <span>→</span>
             </button>
           </div>
-          <p className={`stock-note ${product.stock <= 20 ? "stock-note--low" : ""}`}>
-            <span>{product.stock > 0 ? "●" : "○"}</span>
-            {product.stock > 0 ? `Còn ${product.stock} sản phẩm trong kho` : "Hết hàng"}
+          <p className={`stock-note ${availableStock <= 20 ? "stock-note--low" : ""}`}>
+            <span>{availableStock > 0 ? "●" : "○"}</span>
+            {availableStock > 0 ? `Còn ${availableStock} sản phẩm cho lựa chọn này` : "Hết hàng với size/màu đã chọn"}
           </p>
 
           <div className="product-perks">

@@ -15,15 +15,26 @@ import EmployeesPage from "./pages/EmployeesPage";
 import AccountsPage from "./pages/AccountsPage";
 import SupportInboxPage from "./pages/SupportInboxPage";
 import NewsPage from "./pages/NewsPage";
+import CouponsPage from "./pages/CouponsPage";
+import TasksPage from "./pages/TasksPage";
+import ReturnsPage from "./pages/ReturnsPage";
+import AuditPage from "./pages/AuditPage";
+import SuppliersPage from "./pages/SuppliersPage";
 
 function ProtectedLayout() {
-  const { user } = useAdmin();
+  const { user, bootstrapping } = useAdmin();
+  if (bootstrapping) return <main className="ops-login-redirect">Đang xác nhận phiên đăng nhập…</main>;
   return user ? <AdminLayout /> : <Navigate to="/login" replace />;
 }
 
 function AdminOnly({ children }) {
   const { user } = useAdmin();
   return user?.role === "admin" ? children : <Navigate to="/workspace" replace />;
+}
+
+function RoleHome() {
+  const { user } = useAdmin();
+  return user?.role === "admin" ? <DashboardPage /> : <Navigate to="/workspace" replace />;
 }
 
 export default function App() {
@@ -33,7 +44,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedLayout />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<RoleHome />} />
             <Route path="/workspace" element={<WorkspacePage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/products" element={<ProductsPage />} />
@@ -42,7 +53,12 @@ export default function App() {
             <Route path="/purchases" element={<PurchasesPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/support" element={<SupportInboxPage />} />
+            <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/news" element={<AdminOnly><NewsPage /></AdminOnly>} />
+            <Route path="/coupons" element={<AdminOnly><CouponsPage /></AdminOnly>} />
+            <Route path="/tasks" element={<AdminOnly><TasksPage /></AdminOnly>} />
+            <Route path="/audit" element={<AdminOnly><AuditPage /></AdminOnly>} />
+            <Route path="/suppliers" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
             <Route path="/employees" element={<AdminOnly><EmployeesPage /></AdminOnly>} />
             <Route path="/accounts" element={<AdminOnly><AccountsPage /></AdminOnly>} />
             <Route path="/Indexhd" element={<Navigate to="/orders" replace />} />

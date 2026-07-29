@@ -270,9 +270,9 @@ function createSeedData() {
   ];
 
   const users = [
-    { id: "usr-admin", name: "Đỗ Hải Yến", email: "admin@novawear.vn", phone: "0908000001", role: "admin", employeeId: "emp-001", customerId: null, status: "active", passwordHash: hashPassword("Admin@123"), createdAt },
-    { id: "usr-staff", name: "Vũ Quốc Bảo", email: "staff@novawear.vn", phone: "0908000002", role: "staff", employeeId: "emp-002", customerId: null, status: "active", passwordHash: hashPassword("Staff@123"), createdAt },
-    { id: "usr-demo", name: "Nguyễn Minh Anh", email: "demo@novawear.vn", phone: "0901234567", role: "customer", employeeId: null, customerId: "cus-001", status: "active", passwordHash: hashPassword("Demo@123"), createdAt },
+    { id: "usr-admin", name: "Đỗ Hải Yến", email: "admin@novawear.vn", phone: "0908000001", role: "admin", employeeId: "emp-001", customerId: null, status: "active", emailVerifiedAt: createdAt, tokenVersion: 0, passwordHash: hashPassword("Admin@123"), createdAt },
+    { id: "usr-staff", name: "Vũ Quốc Bảo", email: "staff@novawear.vn", phone: "0908000002", role: "staff", employeeId: "emp-002", customerId: null, status: "active", emailVerifiedAt: createdAt, tokenVersion: 0, passwordHash: hashPassword("Staff@123"), createdAt },
+    { id: "usr-demo", name: "Nguyễn Minh Anh", email: "demo@novawear.vn", phone: "0901234567", role: "customer", employeeId: null, customerId: "cus-001", status: "active", emailVerifiedAt: createdAt, tokenVersion: 0, passwordHash: hashPassword("Demo@123"), createdAt },
   ];
 
   const orders = [

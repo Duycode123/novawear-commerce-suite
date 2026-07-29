@@ -42,6 +42,50 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.ops-login-redirect {
+  display: flex;
+  min-height: 100vh;
+  padding: 32px;
+  color: #f7f7f4;
+  background: #0d151c;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.ops-login-redirect__mark {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 28px;
+  color: #0d151c;
+  background: #f7f7f4;
+  place-items: center;
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.ops-login-redirect p {
+  margin: 0 0 13px;
+  color: #aab3b4;
+  font-size: .58rem;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.ops-login-redirect h1 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: clamp(2rem, 5vw, 4.6rem);
+  letter-spacing: -.055em;
+}
+
+.ops-login-redirect span {
+  color: #aab3b4;
+  font-size: .7rem;
+}
+
 body:has(.ops-modal-backdrop),
 body:has(.ops-sidebar.is-open) {
   overflow: hidden;
@@ -2937,6 +2981,17 @@ p {
   border: 0;
   background: transparent;
 }
+
+.ops-status-button.is-verified,
+.ops-status-button.is-pending {
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  font-weight: 700;
+}
+
+.ops-status-button.is-verified { color: #18603f; background: #e8f5ee; }
+.ops-status-button.is-pending { color: #8a6418; background: #fff5d8; }
 
 .ops-security-note {
   display: flex;

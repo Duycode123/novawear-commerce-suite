@@ -15,7 +15,13 @@ function readStorage(key, fallback) {
 export function ShopProvider({ children }) {
   const [cart, setCart] = useState(() => readStorage("novawear_cart", []));
   const [wishlist, setWishlist] = useState(() => readStorage("novawear_wishlist", []));
-  const [user, setUser] = useState(() => readStorage("novawear_user", null));
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem("novawear_user")) || null;
+    } catch (_error) {
+      return null;
+    }
+  });
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
@@ -117,23 +123,43 @@ export function ShopProvider({ children }) {
 
   const login = useCallback(async (credentials) => {
     const result = await api.post("/auth/login", credentials);
-    localStorage.setItem("novawear_token", result.token);
-    localStorage.setItem("novawear_user", JSON.stringify(result.user));
-    setUser(result.user);
-    return result.user;
+    if (result.user.role === "customer") {
+      sessionStorage.setItem("novawear_token", result.token);
+      sessionStorage.setItem("novawear_user", JSON.stringify(result.user));
+      setUser(result.user);
+    } else {
+      sessionStorage.removeItem("novawear_token");
+      sessionStorage.removeItem("novawear_user");
+      setUser(null);
+    }
+    return result;
   }, []);
 
   const register = useCallback(async (details) => {
     const result = await api.post("/auth/register", details);
-    localStorage.setItem("novawear_token", result.token);
-    localStorage.setItem("novawear_user", JSON.stringify(result.user));
+    if (result.token && result.user) {
+      sessionStorage.setItem("novawear_token", result.token);
+      sessionStorage.setItem("novawear_user", JSON.stringify(result.user));
+      setUser(result.user);
+    }
+    return result;
+  }, []);
+
+  const verifyAccount = useCallback(async (details) => {
+    const result = await api.post("/auth/verify", details);
+    sessionStorage.setItem("novawear_token", result.token);
+    sessionStorage.setItem("novawear_user", JSON.stringify(result.user));
     setUser(result.user);
-    return result.user;
+    return result;
+  }, []);
+
+  const resendVerification = useCallback(async (email) => {
+    return api.post("/auth/resend-verification", { email });
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("novawear_token");
-    localStorage.removeItem("novawear_user");
+    sessionStorage.removeItem("novawear_token");
+    sessionStorage.removeItem("novawear_user");
     setUser(null);
     notify("Bạn đã đăng xuất.", "info");
   }, [notify]);
@@ -141,7 +167,7 @@ export function ShopProvider({ children }) {
   const updateLocalUser = useCallback((updates) => {
     setUser((current) => {
       const next = { ...current, ...updates };
-      localStorage.setItem("novawear_user", JSON.stringify(next));
+      sessionStorage.setItem("novawear_user", JSON.stringify(next));
       return next;
     });
   }, []);
@@ -165,6 +191,8 @@ export function ShopProvider({ children }) {
     toggleWishlist,
     login,
     register,
+    verifyAccount,
+    resendVerification,
     logout,
     updateLocalUser,
   }), [
@@ -183,6 +211,8 @@ export function ShopProvider({ children }) {
     toggleWishlist,
     login,
     register,
+    verifyAccount,
+    resendVerification,
     logout,
     updateLocalUser,
   ]);

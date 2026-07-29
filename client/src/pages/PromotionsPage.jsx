@@ -59,10 +59,13 @@ export default function PromotionsPage() {
         <p>Mỗi mã đều được cập nhật trực tiếp từ hệ thống. Chọn ưu đãi phù hợp, sao chép mã và dùng ở bước thanh toán.</p>
         <div className="offers-hero__actions"><Link className="button button--dark" to="/cua-hang">Khám phá sản phẩm <span>→</span></Link><a href="#uu-dai-hien-co">Xem mã đang có</a></div>
       </div>
-      <aside className="offers-feature" aria-label="Ưu đãi nổi bật">
-        <span>ƯU ĐÃI NỔI BẬT</span>
-        {featured ? <><strong>{featured.code}</strong><h2>{describeOffer(featured)}</h2><p>Cho đơn từ {formatMoney(featured.minOrder)}</p><button type="button" onClick={() => copyCode(featured.code)}>{copiedCode === featured.code ? "Đã sao chép" : "Sao chép mã"}</button></> : <><strong>NOVA</strong><h2>Quà tặng sẽ sớm trở lại.</h2><p>Hãy ghé lại sau để nhận ưu đãi mới nhất.</p></>}
-      </aside>
+      <div className="offers-hero__visual">
+        <img src="/Images/nova-v3/promotions-women-color.png" alt="Người mẫu nữ NOVAWEAR trong bộ suit đỏ burgundy" />
+        <aside className="offers-feature" aria-label="Ưu đãi nổi bật">
+          <span>ƯU ĐÃI NỔI BẬT</span>
+          {featured ? <><strong>{featured.code}</strong><h2>{describeOffer(featured)}</h2><p>Cho đơn từ {formatMoney(featured.minOrder)}</p><button type="button" onClick={() => copyCode(featured.code)}>{copiedCode === featured.code ? "Đã sao chép" : "Sao chép mã"}</button></> : <><strong>NOVA</strong><h2>Quà tặng sẽ sớm trở lại.</h2><p>Hãy ghé lại sau để nhận ưu đãi mới nhất.</p></>}
+        </aside>
+      </div>
     </header>
 
     <main className="offers-content" id="uu-dai-hien-co">

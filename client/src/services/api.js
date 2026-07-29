@@ -14,7 +14,7 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(path, options = {}) {
-  const token = localStorage.getItem("novawear_token");
+  const token = sessionStorage.getItem("novawear_token");
   const headers = {
     Accept: "application/json",
     ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -41,8 +41,8 @@ export async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401 && token) {
-      localStorage.removeItem("novawear_token");
-      localStorage.removeItem("novawear_user");
+      sessionStorage.removeItem("novawear_token");
+      sessionStorage.removeItem("novawear_user");
       window.dispatchEvent(new Event("novawear:session-expired"));
     }
     throw new ApiError(payload.message || "Yêu cầu chưa thể hoàn tất.", response.status, payload);

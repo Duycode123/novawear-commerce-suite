@@ -21,6 +21,7 @@ const emptyProduct = {
   imagesText: "/Images/11-0_672x990.jpg",
   colorsText: "Đen, Trắng",
   sizesText: "S, M, L, XL",
+  variantsText: "",
   description: "",
   longDescription: "",
   materials: "",
@@ -39,6 +40,7 @@ function formFromProduct(product) {
     ...product,
     colorsText: (product.colors || []).join(", "),
     sizesText: (product.sizes || []).join(", "),
+    variantsText: (product.variants || []).map((item) => `${item.size} | ${item.color} | ${item.stock}`).join("\n"),
     highlightsText: (product.highlights || []).join(", "),
     featureDetailsText: (product.featureDetails || []).map((item) => `${item.title} | ${item.description}`).join("\n"),
     imagesText: (product.images?.length ? product.images : [product.image]).filter(Boolean).join("\n"),
@@ -116,6 +118,10 @@ export default function ProductsPage() {
       stock: Number(form.stock || 0),
       colors: form.colorsText.split(",").map((item) => item.trim()).filter(Boolean),
       sizes: form.sizesText.split(",").map((item) => item.trim()).filter(Boolean),
+      variants: form.variantsText.split("\n").map((line) => {
+        const [size, color, stock] = line.split("|").map((item) => item.trim());
+        return { size, color, stock: Number(stock || 0) };
+      }).filter((item) => item.size || item.color),
       highlights: form.highlightsText.split(",").map((item) => item.trim()).filter(Boolean),
       featureDetails: form.featureDetailsText.split("\n").map((line) => { const [title, ...rest] = line.split("|"); return { title: title?.trim(), description: rest.join("|").trim() }; }).filter((item) => item.title && item.description),
       images: form.imagesText.split("\n").map((item) => item.trim()).filter(Boolean),
@@ -217,6 +223,7 @@ export default function ProductsPage() {
               <label className="ops-field ops-field--wide"><span>Thư viện ảnh (mỗi dòng một đường dẫn)</span><textarea name="imagesText" rows={4} value={form.imagesText} onChange={change} placeholder={"/Images/anh-chinh.jpg\n/Images/anh-chi-tiet.jpg"} /></label>
               <label className="ops-field"><span>Màu sắc (cách nhau bằng dấu phẩy)</span><input name="colorsText" value={form.colorsText} onChange={change} /></label>
               <label className="ops-field"><span>Kích thước (cách nhau bằng dấu phẩy)</span><input name="sizesText" value={form.sizesText} onChange={change} /></label>
+              <label className="ops-field ops-field--wide"><span>Tồn kho theo biến thể (mỗi dòng: Size | Màu | Số lượng)</span><textarea name="variantsText" rows={6} value={form.variantsText} onChange={change} placeholder={"S | Đen | 10\nM | Đen | 14\nL | Trắng | 8"} /><small>Khi có dữ liệu biến thể, tổng tồn kho được tính tự động từ các dòng này.</small></label>
               <label className="ops-field ops-field--wide"><span>Mô tả</span><textarea name="description" rows={3} value={form.description} onChange={change} /></label>
               <label className="ops-field ops-field--wide"><span>Mô tả dài bên dưới ảnh</span><textarea name="longDescription" rows={6} value={form.longDescription} onChange={change} placeholder="Giới thiệu chi tiết về thiết kế, trải nghiệm mặc và hoàn cảnh sử dụng..." /></label>
               <label className="ops-field"><span>Chất liệu</span><textarea name="materials" rows={2} value={form.materials} onChange={change} /></label>

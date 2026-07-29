@@ -12,7 +12,7 @@ export class ApiError extends Error {
 }
 
 export async function request(path, options = {}) {
-  const token = localStorage.getItem("nova_ops_token");
+  const token = sessionStorage.getItem("nova_ops_token");
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
@@ -31,8 +31,8 @@ export async function request(path, options = {}) {
   const payload = await response.json().catch(() => ({ message: "Phản hồi không hợp lệ." }));
   if (!response.ok) {
     if (response.status === 401 && token) {
-      localStorage.removeItem("nova_ops_token");
-      localStorage.removeItem("nova_ops_user");
+      sessionStorage.removeItem("nova_ops_token");
+      sessionStorage.removeItem("nova_ops_user");
       window.dispatchEvent(new Event("nova:ops-session-expired"));
     }
     throw new ApiError(payload.message || "Yêu cầu chưa thể hoàn tất.", response.status);

@@ -9,6 +9,12 @@ let store;
 async function start() {
   store = await createStoreFromEnv();
   const app = createApp({ store });
+  if (app.locals.mailer.configured) {
+    await app.locals.mailer.verifyConnection();
+    console.log("NOVAWEAR email service connected.");
+  } else {
+    console.warn("NOVAWEAR email service is not configured; registration and guest checkout verification are disabled.");
+  }
   server = app.listen(port, () => {
     console.log(`NOVAWEAR API running at http://localhost:${port} using ${String(process.env.DB_TYPE || "json").toUpperCase()}.`);
   });
@@ -27,6 +33,6 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 start().catch((error) => {
-  console.error("Database connection failed:", error.message);
+  console.error("NOVAWEAR API startup failed:", error.message);
   process.exit(1);
 });

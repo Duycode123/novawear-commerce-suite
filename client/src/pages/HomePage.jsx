@@ -19,9 +19,9 @@ const benefits = [
   { mark: "◉", title: "Hỗ trợ mỗi ngày", copy: "Từ 08:00 đến 21:00" },
 ];
 
-function HomeProductSection({ eyebrow, title, copy, href, products, loading }) {
+function HomeProductSection({ id, eyebrow, title, copy, href, products, loading }) {
   return (
-    <section className="home-v4-products">
+    <section className="home-v4-products" id={id}>
       <header className="home-v4-heading">
         <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2>{copy && <p>{copy}</p>}</div>
         <Link to={href}>Xem tất cả <span>→</span></Link>
@@ -29,6 +29,86 @@ function HomeProductSection({ eyebrow, title, copy, href, products, loading }) {
       {loading
         ? <ProductGridSkeleton count={4} />
         : <div className="product-grid">{products.slice(0, 4).map((product) => <ProductCard product={product} key={product.id} />)}</div>}
+    </section>
+  );
+}
+
+function HomeDiscovery({ content, loading }) {
+  const newest = content.newest[0];
+  const topRated = content.topRated[0];
+  const sale = content.sale[0];
+  const productHref = (product, fallback) => (
+    product ? `/san-pham/${product.slug || product.id}` : fallback
+  );
+
+  return (
+    <section className="home-v4-discovery" id="home-discovery">
+      <header className="home-v4-heading">
+        <div>
+          <p className="eyebrow">NOVA CURATED</p>
+          <h2>Bắt đầu từ điều bạn đang tìm.</h2>
+          <p>Mỗi lối đi đều dẫn tới đúng bộ lọc, sản phẩm và dữ liệu đang có trên cửa hàng.</p>
+        </div>
+        <Link to="/cua-hang">Khám phá cửa hàng <span>→</span></Link>
+      </header>
+
+      <div className={`home-v4-discovery__grid ${loading ? "is-loading" : ""}`}>
+        <Link className="home-v4-discovery__feature" to={productHref(newest, "/cua-hang?sort=newest")}>
+          <SmartImage
+            src={newest?.image || "/Images/nova-v3/home-story.png"}
+            alt={newest?.name || "Bộ sưu tập mới của NOVAWEAR"}
+          />
+          <span className="home-v4-discovery__index">01 / NEW ARRIVAL</span>
+          <div>
+            <small>Cập nhật trực tiếp từ cửa hàng</small>
+            <h3>{newest?.name || "Những thiết kế vừa lên kệ"}</h3>
+            <b>Xem hàng mới →</b>
+          </div>
+        </Link>
+
+        <div className="home-v4-discovery__rail">
+          <Link to={productHref(topRated, "/cua-hang?sort=rating")}>
+            <div>
+              <span>02 / ĐƯỢC TIN CHỌN</span>
+              <h3>{topRated?.name || "Sản phẩm được đánh giá cao"}</h3>
+              <p>
+                {topRated
+                  ? `${topRated.rating} sao từ ${topRated.reviewCount} đánh giá đã xuất bản`
+                  : "Khám phá lựa chọn từ đánh giá của khách đã nhận hàng"}
+              </p>
+            </div>
+            <SmartImage
+              src={topRated?.image || "/Images/nova-v3/product-tee-black.png"}
+              alt={topRated?.name || "Sản phẩm được đánh giá cao"}
+            />
+          </Link>
+
+          <Link to={productHref(sale, "/uu-dai")}>
+            <div>
+              <span>03 / NOVA OFFERS</span>
+              <h3>{sale?.name || "Ưu đãi đang diễn ra"}</h3>
+              <p>
+                {sale?.comparePrice > sale?.price
+                  ? `Tiết kiệm ${Math.round((1 - sale.price / sale.comparePrice) * 100)}% trên giá niêm yết`
+                  : "Sản phẩm đang được Admin thiết lập ưu đãi"}
+              </p>
+            </div>
+            <SmartImage
+              src={sale?.image || "/Images/nova-v3/product-shirt-blue.png"}
+              alt={sale?.name || "Sản phẩm ưu đãi"}
+            />
+          </Link>
+
+          <Link className="home-v4-discovery__size" to="/chon-size">
+            <div>
+              <span>04 / SIZE CONCIERGE</span>
+              <h3>Chọn đúng size ngay lần đầu.</h3>
+              <p>Đối chiếu chiều cao, cân nặng và số đo trước khi đặt hàng.</p>
+            </div>
+            <strong>XS—3XL</strong>
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }
@@ -82,6 +162,15 @@ export default function HomePage() {
 
   useEffect(() => { loadContent(); }, [loadContent]);
 
+  useEffect(() => {
+    const targetId = window.location.hash.slice(1);
+    if (!targetId || loading) return undefined;
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [loading, content.news.length]);
+
   const subscribe = async (event) => {
     event.preventDefault();
     setSubmitting(true);
@@ -106,7 +195,7 @@ export default function HomePage() {
 
   return (
     <main className="home-v4">
-      <section className="home-v4-hero">
+      <section className="home-v4-hero" id="home-top">
         <div className="home-v4-hero__media">
           <SmartImage src="/Images/nova-v3/home-hero.png" alt="Bộ sưu tập NOVAWEAR dành cho nhịp sống hiện đại" loading="eager" />
           <div className="home-v4-hero__stamp"><span>NEW SEASON</span><strong>26</strong></div>
@@ -128,7 +217,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <nav className="home-v4-categories" aria-label="Danh mục nổi bật">
+      <nav className="home-v4-categories" id="home-categories" aria-label="Danh mục nổi bật">
         <div><span>SHOP BY CATEGORY</span><p>Đi thẳng đến món bạn cần.</p></div>
         {categoryVisuals.map((category) => (
           <Link to={`/cua-hang?category=${category.slug}`} key={category.slug}>
@@ -141,20 +230,22 @@ export default function HomePage() {
 
       {error && <div className="home-v4-error"><ErrorState message={error} onRetry={loadContent} /></div>}
 
-      <section className="home-v4-occasions">
+      <HomeDiscovery content={content} loading={loading} />
+
+      <section className="home-v4-occasions" id="home-occasions">
         <header className="home-v4-heading">
           <div><p className="eyebrow">CHỌN THEO NHỊP SỐNG</p><h2>Hôm nay bạn mặc gì?</h2><p>Ba gợi ý bắt đầu nhanh cho những lịch trình quen thuộc.</p></div>
         </header>
         <div className="home-v4-occasion-grid">
-          <Link to="/cua-hang?sort=rating">
+          <Link to="/phong-cach/thuong-ngay">
             <SmartImage src="/Images/nova-v3/home-story.png" alt="Trang phục mặc hằng ngày" />
             <span>01 / EVERYDAY</span><div><h3>Nhẹ nhàng mỗi ngày</h3><p>Phom thoải mái, màu dễ phối và chất liệu dễ chăm sóc.</p><b>Khám phá →</b></div>
           </Link>
-          <Link to="/cua-hang?category=do-the-thao-nam">
-            <SmartImage src="/Images/dothethao.png" alt="Trang phục vận động" />
+          <Link to="/phong-cach/van-dong">
+            <SmartImage src="/Images/nova-v3/lifestyle-motion-hero.png" alt="Trang phục vận động" />
             <span>02 / MOTION</span><div><h3>Sẵn sàng chuyển động</h3><p>Nhẹ, co giãn và thoát ẩm cho lịch tập lẫn ngày bận rộn.</p><b>Khám phá →</b></div>
           </Link>
-          <Link to="/cua-hang?sort=newest">
+          <Link to="/phong-cach/cuoi-tuan">
             <SmartImage src="/Images/nova-v3/about-team.png" alt="Trang phục cho cuối tuần" />
             <span>03 / WEEKEND</span><div><h3>Chậm lại cuối tuần</h3><p>Những lớp đồ mềm, tự nhiên và đủ đẹp để bước ra phố.</p><b>Khám phá →</b></div>
           </Link>
@@ -163,6 +254,7 @@ export default function HomePage() {
 
       {(loading || content.topRated.length > 0) && (
         <HomeProductSection
+          id="home-top-rated"
           eyebrow="ĐÁNH GIÁ TỪ KHÁCH ĐÃ NHẬN HÀNG"
           title="Được đánh giá cao"
           copy="Chỉ hiển thị sản phẩm có đánh giá đã xuất bản từ khách hàng đủ điều kiện."
@@ -172,19 +264,19 @@ export default function HomePage() {
         />
       )}
 
-      <section className="home-v4-gender">
+      <section className="home-v4-gender" id="home-gender">
         <Link to="/cua-hang?audience=men">
-          <SmartImage src="/Images/nova-v3/home-hero.png" alt="Thời trang nam NOVAWEAR" />
+          <SmartImage src="/Images/nova-v3/home-category-men-color.png" alt="Thời trang nam NOVAWEAR" />
           <div><span>MEN / 2026</span><h2>Đồ nam</h2><p>Từ áo thun, sơ mi đến denim và đồ vận động.</p><b>Xem tất cả sản phẩm nam →</b></div>
         </Link>
         <Link to="/cua-hang?audience=women">
-          <SmartImage src="/Images/nova-v3/auth-couple.png" alt="Thời trang nữ NOVAWEAR" />
+          <SmartImage src="/Images/nova-v3/home-category-women-color.png" alt="Thời trang nữ NOVAWEAR" />
           <div><span>WOMEN / 2026</span><h2>Đồ nữ</h2><p>Phom mềm, lớp đồ linh hoạt và những thiết kế cho chuyển động.</p><b>Xem tất cả sản phẩm nữ →</b></div>
         </Link>
       </section>
 
       {(content.men.length > 0 || content.unisex.length > 0 || content.women.length > 0) && (
-        <section className="home-v4-dual-products">
+        <section className="home-v4-dual-products" id="home-popular">
           {content.men.length > 0 && (
             <div>
               <header><span>NAM / MUA NHIỀU NHẤT</span><Link to="/cua-hang?audience=men&sort=popular">Xem đồ nam ↗</Link></header>
@@ -206,7 +298,7 @@ export default function HomePage() {
         </section>
       )}
 
-      <section className="home-v4-story">
+      <section className="home-v4-story" id="home-story">
         <div className="home-v4-story__media">
           <SmartImage src="/Images/nova-v3/about-studio.png" alt="Quá trình phát triển sản phẩm tại NOVA Studio" />
           <span>INSIDE NOVA STUDIO</span>
@@ -225,6 +317,7 @@ export default function HomePage() {
       </section>
 
       <HomeProductSection
+        id="home-newest"
         eyebrow="FRESH DROP"
         title="Vừa lên kệ"
         copy="Những sản phẩm mới nhất do Admin cập nhật."
@@ -233,7 +326,7 @@ export default function HomePage() {
         loading={loading}
       />
 
-      <section className="home-v4-promotion">
+      <section className="home-v4-promotion" id="home-offers">
         <div className="home-v4-promotion__copy">
           <p className="eyebrow">NOVA OFFERS</p>
           <h2>Giá tốt cho những món bạn sẽ mặc nhiều.</h2>
@@ -251,7 +344,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="home-v4-lookbook">
+      <section className="home-v4-lookbook" id="home-lookbook">
         <header className="home-v4-heading">
           <div><p className="eyebrow">NOVA IN REAL LIFE</p><h2>Mặc theo cách của bạn.</h2><p>Không có một công thức duy nhất cho phong cách tốt.</p></div>
           <Link to="/cua-hang">Tạo bộ đồ của bạn <span>→</span></Link>
@@ -264,7 +357,7 @@ export default function HomePage() {
       </section>
 
       {content.news.length > 0 && (
-        <section className="home-v4-journal">
+        <section className="home-v4-journal" id="home-journal">
           <header className="home-v4-heading">
             <div><p className="eyebrow">NOVA JOURNAL</p><h2>Đọc để mặc tốt hơn.</h2><p>Góc nhìn về phom dáng, chất liệu và cách chăm sóc tủ đồ.</p></div>
             <Link to="/tin-tuc">Tất cả bài viết <span>→</span></Link>
@@ -286,7 +379,7 @@ export default function HomePage() {
         {benefits.map((item) => <article key={item.title}><span>{item.mark}</span><div><strong>{item.title}</strong><small>{item.copy}</small></div></article>)}
       </section>
 
-      <section className="home-v4-newsletter">
+      <section className="home-v4-newsletter" id="home-newsletter">
         <div><p className="eyebrow">NOVA LETTER</p><h2>Chuyện mới, sản phẩm mới và ưu đãi đáng chờ.</h2><p>Một email ngắn khi NOVA có điều thực sự hữu ích để chia sẻ.</p></div>
         <form onSubmit={subscribe}>
           <label htmlFor="home-newsletter-email">Email của bạn</label>

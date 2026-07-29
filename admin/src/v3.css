@@ -114,3 +114,58 @@ body { background: var(--ops-bg); font-size: 13px; }
   .ops-login__brand { position: static; margin-bottom: 45px; }
   .ops-login__intro { margin: 0 0 18px; }
 }
+
+/* Extended operations workspace */
+.ops-code-chip { display:inline-flex; padding:6px 9px; border:1px solid var(--ops-line); border-radius:5px; background:#fafaf8; font-weight:800; letter-spacing:.08em; }
+.ops-simple-form { display:grid; gap:14px; }
+.ops-simple-form .ops-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.ops-task-board { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:14px; }
+.ops-work-card { min-height:210px; padding:18px; border:1px solid var(--ops-line); border-top:3px solid var(--ops-blue); border-radius:7px; background:#fff; }
+.ops-work-card.priority--high { border-top-color:var(--ops-coral); }
+.ops-work-card.priority--low { border-top-color:var(--ops-lime); }
+.ops-work-card>header,.ops-work-card>footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ops-work-card>header span,.ops-work-card>header b { font-size:.54rem; text-transform:uppercase; letter-spacing:.08em; }
+.ops-work-card>header b { color:var(--ops-muted); }
+.ops-work-card h3 { margin:24px 0 8px; font-size:.9rem; }
+.ops-work-card>p { min-height:52px; color:var(--ops-muted); line-height:1.65; }
+.ops-work-card>footer { margin-top:18px; padding-top:14px; border-top:1px solid var(--ops-line); }
+.ops-work-card>footer div:first-child { display:grid; gap:3px; }
+.ops-work-card>footer small { color:var(--ops-muted); font-size:.53rem; }
+.ops-return-layout { display:grid; grid-template-columns:330px minmax(0,1fr); align-items:start; gap:12px; }
+.ops-return-list { overflow:hidden; }
+.ops-return-list>button { display:grid; width:100%; padding:15px; border:0; border-bottom:1px solid var(--ops-line); text-align:left; background:#fff; grid-template-columns:1fr auto; gap:6px 12px; }
+.ops-return-list>button:hover,.ops-return-list>button.is-active { background:#fff5f2; }
+.ops-return-list>button.is-active { box-shadow:inset 3px 0 var(--ops-coral); }
+.ops-return-list span { display:grid; gap:4px; }
+.ops-return-list small { color:var(--ops-muted); font-size:.52rem; }
+.ops-return-list b { color:var(--ops-coral); font-size:.54rem; }
+.ops-return-list em { color:var(--ops-ink); font-size:.58rem; font-style:normal; }
+.ops-return-detail { overflow:hidden; }
+.ops-return-detail>header,.ops-return-detail>footer { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:20px; }
+.ops-return-detail>header { border-bottom:1px solid var(--ops-line); }
+.ops-return-detail>header p { margin:0 0 4px; color:var(--ops-coral); font-size:.5rem; font-weight:800; letter-spacing:.12em; }
+.ops-return-detail>header h2 { margin:0; font-size:1.25rem; }
+.ops-return-detail>header span { color:var(--ops-muted); }
+.ops-return-detail>header>b { padding:7px 10px; border-radius:99px; background:#eef6e1; font-size:.56rem; }
+.ops-return-items { padding:4px 20px; }
+.ops-return-items>div { display:grid; grid-template-columns:48px 1fr auto; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid var(--ops-line); }
+.ops-return-items img { width:48px; height:58px; object-fit:cover; border-radius:4px; background:#f1f1ed; }
+.ops-return-items span { display:grid; gap:4px; }
+.ops-return-items small { color:var(--ops-muted); }
+.ops-return-detail>section { margin:4px 20px 20px; padding:16px; background:#fafaf7; }
+.ops-return-detail>section>span { color:var(--ops-muted); font-size:.54rem; text-transform:uppercase; letter-spacing:.08em; }
+.ops-return-detail>section p { margin:7px 0 0; font-weight:650; }
+.ops-return-detail>footer { border-top:1px solid var(--ops-line); }
+.ops-return-detail>footer>div:first-child { display:grid; gap:4px; }
+.ops-return-detail>footer>div:first-child span { color:var(--ops-muted); font-size:.55rem; }
+.ops-return-detail>footer>div:first-child strong { font-size:1rem; }
+.ops-return-detail>footer>div:last-child { display:flex; gap:8px; }
+@media (max-width:980px) {
+  .ops-task-board { grid-template-columns:1fr 1fr; }
+  .ops-return-layout { grid-template-columns:1fr; }
+  .ops-return-list { max-height:330px; overflow:auto; }
+}
+@media (max-width:640px) {
+  .ops-simple-form .ops-form-grid,.ops-task-board { grid-template-columns:1fr; }
+  .ops-return-detail>header,.ops-return-detail>footer { align-items:flex-start; flex-direction:column; }
+}

@@ -2558,6 +2558,70 @@ h4 {
   font-size: 0.72rem;
 }
 
+.checkout-email-verification {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 18px 20px;
+  border: 1px solid #d9d7d1;
+  background: #f7f6f2;
+}
+
+.checkout-email-verification.is-verified {
+  border-color: #7f9560;
+  background: #f3f6ee;
+}
+
+.checkout-email-verification p {
+  margin: 5px 0 0;
+  color: #667075;
+  font-size: 13px;
+}
+
+.checkout-email-verification button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid #101820;
+  background: #101820;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.checkout-email-verification__code {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.checkout-email-verification__code input {
+  width: 150px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #bfc3c2;
+  background: #fff;
+  letter-spacing: 3px;
+}
+
+.checkout-email-verification button.is-link {
+  border: 0;
+  background: transparent;
+  color: #101820;
+  text-decoration: underline;
+}
+
+@media (max-width: 760px) {
+  .checkout-email-verification {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-email-verification__code {
+    flex-wrap: wrap;
+  }
+}
+
 .payment-options {
   display: flex;
   flex-direction: column;

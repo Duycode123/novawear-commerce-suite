@@ -21,6 +21,13 @@ export default function CheckoutPage() {
   const [coupon, setCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [emailVerification, setEmailVerification] = useState({
+    requested: false,
+    code: "",
+    checkoutToken: "",
+    verifiedEmail: "",
+  });
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
   const standardShippingFee = useMemo(() => {
     if (cartSubtotal >= SITE.freeShippingThreshold) return 0;
@@ -35,6 +42,54 @@ export default function CheckoutPage() {
   const change = (event) => {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+    if (name === "email" && !user) {
+      setEmailVerification({ requested: false, code: "", checkoutToken: "", verifiedEmail: "" });
+    }
+  };
+
+  const requestEmailCode = async () => {
+    if (!form.email || !form.name) {
+      notify("Vui lòng nhập họ tên và email trước.", "error");
+      return;
+    }
+    setVerificationLoading(true);
+    try {
+      const result = await api.post("/checkout/verification/request", {
+        email: form.email,
+        name: form.name,
+      });
+      setEmailVerification((current) => ({
+        ...current,
+        requested: true,
+        code: result.verificationCode || "",
+        checkoutToken: "",
+      }));
+      notify(result.message, "info");
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const verifyGuestEmail = async () => {
+    setVerificationLoading(true);
+    try {
+      const result = await api.post("/checkout/verification/verify", {
+        email: form.email,
+        code: emailVerification.code,
+      });
+      setEmailVerification((current) => ({
+        ...current,
+        checkoutToken: result.checkoutToken,
+        verifiedEmail: form.email.trim().toLowerCase(),
+      }));
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setVerificationLoading(false);
+    }
   };
 
   const applyCoupon = async () => {
@@ -55,6 +110,11 @@ export default function CheckoutPage() {
 
   const submit = async (event) => {
     event.preventDefault();
+    if (!user && (!emailVerification.checkoutToken
+      || emailVerification.verifiedEmail !== form.email.trim().toLowerCase())) {
+      notify("Vui lòng xác minh email trước khi đặt hàng.", "error");
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await api.post("/orders", {
@@ -74,7 +134,9 @@ export default function CheckoutPage() {
         shippingMethod: form.shippingMethod,
         paymentMethod: form.paymentMethod,
         note: form.note,
+        checkoutToken: emailVerification.checkoutToken,
       });
+      notify(result.message, result.warning ? "info" : "success");
       clearCart();
       navigate("/dat-hang-thanh-cong", { replace: true, state: { order: result.data } });
     } catch (requestError) {
@@ -106,8 +168,8 @@ export default function CheckoutPage() {
                 <input name="phone" required pattern="[0-9+\s.-]{9,15}" value={form.phone} onChange={change} placeholder="090 123 4567" />
               </label>
               <label className="field">
-                <span>Email</span>
-                <input name="email" type="email" value={form.email} onChange={change} placeholder="ban@email.com" />
+                <span>Email nhận xác nhận *</span>
+                <input name="email" type="email" required readOnly={Boolean(user)} value={form.email} onChange={change} placeholder="ban@email.com" />
               </label>
               <label className="field field--wide">
                 <span>Địa chỉ nhận hàng *</span>
@@ -118,6 +180,38 @@ export default function CheckoutPage() {
                 <textarea name="note" rows={3} value={form.note} onChange={change} maxLength={500} placeholder="Ví dụ: gọi trước khi giao..." />
               </label>
             </div>
+            {!user && (
+              <div className={`checkout-email-verification ${emailVerification.checkoutToken ? "is-verified" : ""}`}>
+                <div>
+                  <strong>{emailVerification.checkoutToken ? "✓ Email đã được xác minh" : "Xác minh email đặt hàng"}</strong>
+                  <p>Chúng tôi gửi mã 6 số để bảo đảm đúng người đặt và gửi xác nhận đơn hàng.</p>
+                </div>
+                {!emailVerification.requested && (
+                  <button type="button" onClick={requestEmailCode} disabled={verificationLoading}>
+                    {verificationLoading ? "Đang gửi…" : "Gửi mã xác minh"}
+                  </button>
+                )}
+                {emailVerification.requested && !emailVerification.checkoutToken && (
+                  <div className="checkout-email-verification__code">
+                    <input
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={emailVerification.code}
+                      onChange={(event) => setEmailVerification((current) => ({
+                        ...current,
+                        code: event.target.value.replace(/\D/g, ""),
+                      }))}
+                      placeholder="Nhập mã 6 số"
+                      aria-label="Mã xác minh email"
+                    />
+                    <button type="button" onClick={verifyGuestEmail} disabled={verificationLoading || emailVerification.code.length !== 6}>
+                      {verificationLoading ? "Đang kiểm tra…" : "Xác nhận"}
+                    </button>
+                    <button type="button" className="is-link" onClick={requestEmailCode} disabled={verificationLoading}>Gửi lại</button>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="checkout-section">

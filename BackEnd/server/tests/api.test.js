@@ -8,12 +8,23 @@ const { createApp } = require("../app");
 let server;
 let baseUrl;
 let tempDir;
+const sentEmails = [];
 
 test.before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "novawear-api-"));
   const app = createApp({
     dataFile: path.join(tempDir, "store.json"),
     sepayWebhookApiKey: "test-sepay-key",
+    exposeVerificationCode: true,
+    mailer: {
+      configured: true,
+      async sendVerification(payload) {
+        sentEmails.push({ type: "verification", ...payload });
+      },
+      async sendOrderConfirmation(payload) {
+        sentEmails.push({ type: "order", ...payload });
+      },
+    },
   });
   await new Promise((resolve) => {
     server = app.listen(0, "127.0.0.1", resolve);
@@ -44,8 +55,15 @@ async function loginAs(email, password, portal) {
     body: JSON.stringify({ email, password, ...(portal ? { portal } : {}) }),
   });
   assert.equal(result.response.status, 200);
-  assert.ok(result.body.token);
-  return result.body.token;
+  if (result.body.token) return result.body.token;
+  assert.ok(result.body.operationsHandoffCode);
+  const exchanged = await request("/auth/operations-exchange", {
+    method: "POST",
+    body: JSON.stringify({ code: result.body.operationsHandoffCode }),
+  });
+  assert.equal(exchanged.response.status, 200);
+  assert.ok(exchanged.body.token);
+  return exchanged.body.token;
 }
 
 test("health check and catalog are available", async () => {
@@ -57,6 +75,94 @@ test("health check and catalog are available", async () => {
   assert.equal(products.response.status, 200);
   assert.equal(products.body.data.length, 4);
   assert.ok(products.body.data.every((item) => item.featured));
+});
+
+test("guest checkout requires a verified email and sends an order confirmation", async () => {
+  const customer = {
+    name: "Guest Verified",
+    email: "verified.guest@example.com",
+    phone: "0987654321",
+    address: "01 Le Loi, District 1, Ho Chi Minh City",
+  };
+  const blocked = await request("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      customer,
+      items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
+      paymentMethod: "cod",
+    }),
+  });
+  assert.equal(blocked.response.status, 403);
+  assert.equal(blocked.body.code, "GUEST_EMAIL_VERIFICATION_REQUIRED");
+
+  const requested = await request("/checkout/verification/request", {
+    method: "POST",
+    body: JSON.stringify({ email: customer.email, name: customer.name }),
+  });
+  assert.equal(requested.response.status, 200);
+  assert.match(requested.body.verificationCode, /^\d{6}$/);
+
+  const verified = await request("/checkout/verification/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      email: customer.email,
+      code: requested.body.verificationCode,
+    }),
+  });
+  assert.equal(verified.response.status, 200);
+  assert.ok(verified.body.checkoutToken);
+
+  const created = await request("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      customer,
+      checkoutToken: verified.body.checkoutToken,
+      items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
+      paymentMethod: "cod",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.data.emailNotification.status, "sent");
+  assert.ok(sentEmails.some((item) => (
+    item.type === "order" && item.to === customer.email && item.order.id === created.body.data.id
+  )));
+
+  const replayed = await request("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      customer,
+      checkoutToken: verified.body.checkoutToken,
+      items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
+      paymentMethod: "cod",
+    }),
+  });
+  assert.equal(replayed.response.status, 403);
+});
+
+test("operations handoff is short lived and can only be exchanged once", async () => {
+  const login = await request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "admin@novawear.vn",
+      password: "Admin@123",
+    }),
+  });
+  assert.equal(login.response.status, 200);
+  assert.equal(login.body.token, undefined);
+  assert.ok(login.body.operationsHandoffCode);
+
+  const first = await request("/auth/operations-exchange", {
+    method: "POST",
+    body: JSON.stringify({ code: login.body.operationsHandoffCode }),
+  });
+  assert.equal(first.response.status, 200);
+  assert.ok(first.body.token);
+
+  const replay = await request("/auth/operations-exchange", {
+    method: "POST",
+    body: JSON.stringify({ code: login.body.operationsHandoffCode }),
+  });
+  assert.equal(replay.response.status, 401);
 });
 
 test("customer can sign in, place an order and read order history", async () => {
@@ -86,6 +192,9 @@ test("customer can sign in, place an order and read order history", async () => 
   assert.equal(order.body.data.status, "pending");
   assert.equal(order.body.data.items[0].price, 289000);
 
+  const unsafeTracking = await request(`/orders/track/${order.body.data.trackingCode}`);
+  assert.equal(unsafeTracking.response.status, 400);
+
   const history = await request("/orders/my", {
     headers: { Authorization: `Bearer ${login.body.token}` },
   });
@@ -94,8 +203,10 @@ test("customer can sign in, place an order and read order history", async () => 
 });
 
 test("SePay webhook verifies, deduplicates and confirms a bank transfer", async () => {
+  const token = await loginAs("demo@novawear.vn", "Demo@123");
   const created = await request("/orders", {
     method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       customer: {
         name: "Payment Test",
@@ -170,23 +281,29 @@ test("staff portal is protected and supports order workflow", async () => {
     body: JSON.stringify({ email: "staff@novawear.vn", password: "Staff@123", portal: "admin" }),
   });
   assert.equal(login.response.status, 200);
+  const exchange = await request("/auth/operations-exchange", {
+    method: "POST",
+    body: JSON.stringify({ code: login.body.operationsHandoffCode }),
+  });
+  assert.equal(exchange.response.status, 200);
+  const staffToken = exchange.body.token;
 
   const overview = await request("/admin/overview", {
-    headers: { Authorization: `Bearer ${login.body.token}` },
+    headers: { Authorization: `Bearer ${staffToken}` },
   });
   assert.equal(overview.response.status, 200);
   assert.ok(overview.body.data.orderCount >= 4);
 
   const update = await request("/admin/orders/ORD-2026-004", {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${login.body.token}` },
+    headers: { Authorization: `Bearer ${staffToken}` },
     body: JSON.stringify({ status: "confirmed", assigneeId: "emp-002" }),
   });
   assert.equal(update.response.status, 200);
   assert.equal(update.body.data.status, "confirmed");
 
   const workspace = await request("/staff/workspace", {
-    headers: { Authorization: `Bearer ${login.body.token}` },
+    headers: { Authorization: `Bearer ${staffToken}` },
   });
   assert.equal(workspace.response.status, 200);
   assert.equal(workspace.body.data.employee.id, "emp-002");
@@ -203,10 +320,45 @@ test("customer self-service, coupon and support flows work end to end", async ()
     }),
   });
   assert.equal(register.response.status, 201);
+  assert.equal(register.body.requiresVerification, true);
+  assert.match(register.body.verificationCode, /^\d{6}$/);
+  assert.ok(sentEmails.some((item) => (
+    item.type === "verification" && item.to === "customer.test@novawear.vn"
+  )));
+
+  const blockedLogin = await request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "customer.test@novawear.vn",
+      password: "Customer@123",
+    }),
+  });
+  assert.equal(blockedLogin.response.status, 403);
+  assert.equal(blockedLogin.body.code, "ACCOUNT_NOT_VERIFIED");
+
+  const invalidVerification = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "customer.test@novawear.vn",
+      code: "000000",
+    }),
+  });
+  assert.equal(invalidVerification.response.status, 400);
+
+  const verified = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "customer.test@novawear.vn",
+      code: register.body.verificationCode,
+    }),
+  });
+  assert.equal(verified.response.status, 200);
+  assert.ok(verified.body.token);
+  assert.equal(verified.body.user.verified, true);
 
   const profile = await request("/auth/me", {
     method: "PUT",
-    headers: { Authorization: `Bearer ${register.body.token}` },
+    headers: { Authorization: `Bearer ${verified.body.token}` },
     body: JSON.stringify({ name: "Updated Customer", address: "District 1, Ho Chi Minh City" }),
   });
   assert.equal(profile.response.status, 200);
@@ -236,6 +388,62 @@ test("customer self-service, coupon and support flows work end to end", async ()
     body: JSON.stringify({ email: "customer.test@novawear.vn" }),
   });
   assert.equal(newsletter.response.status, 200);
+});
+
+test("JWT protects private APIs and rotates after a password change", async () => {
+  const register = await request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "JWT Test Customer",
+      email: "jwt.test@novawear.vn",
+      phone: "0909000001",
+      password: "JwtTest@123",
+    }),
+  });
+  assert.equal(register.response.status, 201);
+
+  const verified = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "jwt.test@novawear.vn",
+      code: register.body.verificationCode,
+    }),
+  });
+  assert.equal(verified.response.status, 200);
+  const firstToken = verified.body.token;
+
+  const authorized = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${firstToken}` },
+  });
+  assert.equal(authorized.response.status, 200);
+  assert.equal(authorized.body.user.email, "jwt.test@novawear.vn");
+
+  const tampered = `${firstToken.slice(0, -1)}${firstToken.endsWith("a") ? "b" : "a"}`;
+  const rejected = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${tampered}` },
+  });
+  assert.equal(rejected.response.status, 401);
+
+  const changed = await request("/auth/password", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${firstToken}` },
+    body: JSON.stringify({
+      currentPassword: "JwtTest@123",
+      newPassword: "JwtNext@456",
+    }),
+  });
+  assert.equal(changed.response.status, 200);
+  assert.ok(changed.body.token);
+
+  const oldTokenRejected = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${firstToken}` },
+  });
+  assert.equal(oldTokenRejected.response.status, 401);
+
+  const rotatedTokenAccepted = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${changed.body.token}` },
+  });
+  assert.equal(rotatedTokenAccepted.response.status, 200);
 });
 
 test("admin can manage catalog, inventory and purchase receiving", async () => {
@@ -315,4 +523,65 @@ test("employee can close a shift and complete assigned work", async () => {
   });
   assert.equal(task.response.status, 200);
   assert.equal(task.body.data.status, "done");
+});
+
+test("admin can assign work and customer return is processed end to end", async () => {
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const adminAuth = { Authorization: `Bearer ${adminToken}` };
+  const customerAuth = { Authorization: `Bearer ${customerToken}` };
+
+  const task = await request("/admin/tasks", {
+    method: "POST",
+    headers: adminAuth,
+    body: JSON.stringify({
+      employeeId: "emp-002",
+      title: "Kiểm tra yêu cầu đổi trả",
+      description: "Đối chiếu sản phẩm và tình trạng hàng gửi về.",
+      priority: "high",
+      dueDate: new Date(Date.now() + 86400000).toISOString(),
+    }),
+  });
+  assert.equal(task.response.status, 201);
+  assert.equal(task.body.data.status, "todo");
+
+  const delivered = await request("/admin/orders/ORD-2026-001", {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ status: "delivered" }),
+  });
+  assert.equal(delivered.response.status, 200);
+  assert.equal(delivered.body.data.paymentStatus, "paid");
+
+  const created = await request("/returns", {
+    method: "POST",
+    headers: customerAuth,
+    body: JSON.stringify({
+      orderId: "ORD-2026-001",
+      type: "return",
+      reason: "Sản phẩm không còn phù hợp nhu cầu sử dụng.",
+      items: [{
+        productId: delivered.body.data.items[0].productId,
+        size: delivered.body.data.items[0].size,
+        color: delivered.body.data.items[0].color,
+        quantity: 1,
+      }],
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.data.status, "requested");
+
+  for (const status of ["approved", "receiving", "completed"]) {
+    const update = await request(`/admin/returns/${created.body.data.id}`, {
+      method: "PATCH",
+      headers: adminAuth,
+      body: JSON.stringify({ status }),
+    });
+    assert.equal(update.response.status, 200);
+    assert.equal(update.body.data.status, status);
+  }
+
+  const history = await request("/returns/my", { headers: customerAuth });
+  assert.equal(history.response.status, 200);
+  assert.equal(history.body.data[0].status, "completed");
 });

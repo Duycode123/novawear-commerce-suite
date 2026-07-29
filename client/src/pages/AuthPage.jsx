@@ -4,12 +4,15 @@ import { useShop } from "../context/ShopContext";
 
 export default function AuthPage({ mode = "login" }) {
   const isLogin = mode === "login";
-  const { user, login, register, notify } = useShop();
+  const { user, login, register, verifyAccount, resendVerification, notify } = useShop();
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" });
+  const [verification, setVerification] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const operationsUrl = process.env.REACT_APP_OPS_URL
+    || (window.location.hostname === "localhost" ? "http://localhost:3001" : "/ops");
 
   if (user) return <Navigate to="/tai-khoan" replace />;
 
@@ -22,10 +25,71 @@ export default function AuthPage({ mode = "login" }) {
     }
     setSubmitting(true);
     try {
-      if (isLogin) await login({ email: form.email, password: form.password });
-      else await register({ name: form.name, email: form.email, phone: form.phone, password: form.password });
-      notify(isLogin ? "Chào mừng bạn quay lại." : "Tài khoản đã được tạo.");
+      if (isLogin) {
+        const result = await login({ email: form.email, password: form.password });
+        if (["admin", "staff"].includes(result.user.role)) {
+          const handoff = new URLSearchParams({
+            code: result.operationsHandoffCode,
+          });
+          window.location.replace(`${operationsUrl}/login#${handoff.toString()}`);
+          return;
+        }
+        notify("Chào mừng bạn quay lại.");
+      } else {
+        const result = await register({ name: form.name, email: form.email, phone: form.phone, password: form.password });
+        if (result.requiresVerification) {
+          setVerification({
+            email: result.email,
+            code: "",
+            demoCode: result.verificationCode || "",
+          });
+          notify(result.message, "info");
+          return;
+        }
+        notify("Tài khoản đã được tạo.");
+      }
       navigate(location.state?.from || "/tai-khoan", { replace: true });
+    } catch (requestError) {
+      if (requestError.details?.code === "ACCOUNT_NOT_VERIFIED") {
+        setVerification({
+          email: requestError.details.email || form.email,
+          code: "",
+          demoCode: "",
+        });
+      }
+      notify(requestError.message, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitVerification = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const result = await verifyAccount({
+        email: verification.email,
+        code: verification.code,
+      });
+      notify(result.message);
+      navigate(location.state?.from || "/tai-khoan", { replace: true });
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setSubmitting(true);
+    try {
+      const result = await resendVerification(verification.email);
+      setVerification((current) => ({
+        ...current,
+        code: "",
+        demoCode: result.verificationCode || "",
+      }));
+      notify(result.message, "info");
     } catch (requestError) {
       notify(requestError.message, "error");
     } finally {
@@ -46,50 +110,100 @@ export default function AuthPage({ mode = "login" }) {
       <section className="auth-panel">
         <div className="auth-panel__top"><Link to="/">← Trang chủ</Link><span>NOVAWEAR</span></div>
         <div className="auth-form-wrap">
-          {!isLogin && (
+          {(!isLogin || verification) && (
             <ol className="auth-progress" aria-label="Tiến trình đăng ký">
-              <li className="is-active"><span>1</span>Thông tin</li>
-              <li><span>2</span>Xác thực</li>
+              <li className={!verification ? "is-active" : "is-done"}><span>1</span>Thông tin</li>
+              <li className={verification ? "is-active" : ""}><span>2</span>Xác thực</li>
               <li><span>3</span>Hoàn tất</li>
             </ol>
           )}
-          <p className="eyebrow">{isLogin ? "Welcome back" : "Join the club"}</p>
-          <h1>{isLogin ? "Đăng nhập" : "Tạo tài khoản"}</h1>
-          <p>{isLogin ? "Tiếp tục hành trình cùng NOVAWEAR." : "Chỉ mất một phút để bắt đầu."}</p>
-          <form className="auth-form" onSubmit={submit}>
-            {!isLogin && (
-              <>
-                <label className="field"><span>Họ và tên</span><input name="name" required minLength={2} value={form.name} onChange={change} placeholder="Tên của bạn" /></label>
-                <label className="field"><span>Số điện thoại</span><input name="phone" required pattern="[0-9+\s.-]{9,15}" value={form.phone} onChange={change} placeholder="090 123 4567" /></label>
-              </>
-            )}
-            <label className="field"><span>Email</span><input name="email" type="email" required value={form.email} onChange={change} placeholder="ban@email.com" /></label>
-            <label className="field password-field">
-              <span>Mật khẩu</span>
-              <input name="password" type={showPassword ? "text" : "password"} required minLength={8} value={form.password} onChange={change} placeholder="Ít nhất 8 ký tự, gồm chữ và số" />
-              <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Ẩn" : "Hiện"}</button>
-            </label>
-            {!isLogin && <label className="field"><span>Xác nhận mật khẩu</span><input name="confirmPassword" type="password" required minLength={8} value={form.confirmPassword} onChange={change} placeholder="Nhập lại mật khẩu" /></label>}
-            {isLogin && <div className="auth-options"><label><input type="checkbox" /> Ghi nhớ đăng nhập</label><button type="button" onClick={() => notify("Vui lòng liên hệ CSKH để đặt lại mật khẩu.", "info")}>Quên mật khẩu?</button></div>}
-            <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang xử lý..." : isLogin ? "Đăng nhập →" : "Tạo tài khoản →"}</button>
-          </form>
-          {isLogin && (
+          <p className="eyebrow">{verification ? "Verify your account" : isLogin ? "Welcome back" : "Join the club"}</p>
+          <h1>{verification ? "Xác minh tài khoản" : isLogin ? "Đăng nhập" : "Tạo tài khoản"}</h1>
+          <p>
+            {verification
+              ? <>Nhập mã 6 số dành cho <strong>{verification.email}</strong>. Mã có hiệu lực trong 10 phút.</>
+              : isLogin
+                ? "Một cổng đăng nhập cho khách hàng, nhân viên và quản trị viên. Hệ thống sẽ tự chuyển bạn đến đúng khu vực."
+                : "Chỉ mất một phút để bắt đầu."}
+          </p>
+          {verification ? (
+            <form className="auth-form auth-verification" onSubmit={submitVerification}>
+              <label className="field">
+                <span>Mã xác minh</span>
+                <input
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  required
+                  value={verification.code}
+                  onChange={(event) => setVerification((current) => ({
+                    ...current,
+                    code: event.target.value.replace(/\D/g, "").slice(0, 6),
+                  }))}
+                  placeholder="000000"
+                />
+              </label>
+              {verification.demoCode && (
+                <p className="auth-verification__demo">
+                  Mã xác minh dùng khi chạy local: <strong>{verification.demoCode}</strong>
+                </p>
+              )}
+              <button className="button button--dark button--wide" type="submit" disabled={submitting || verification.code.length !== 6}>
+                {submitting ? "Đang xác minh..." : "Xác minh & đăng nhập →"}
+              </button>
+              <div className="auth-verification__actions">
+                <button type="button" onClick={resendCode} disabled={submitting}>Gửi lại mã</button>
+                <button type="button" onClick={() => setVerification(null)}>Đổi email</button>
+              </div>
+            </form>
+          ) : (
+            <form className="auth-form" onSubmit={submit}>
+              {!isLogin && (
+                <>
+                  <label className="field"><span>Họ và tên</span><input name="name" required minLength={2} value={form.name} onChange={change} placeholder="Tên của bạn" /></label>
+                  <label className="field"><span>Số điện thoại</span><input name="phone" required pattern="[0-9+\s.-]{9,15}" value={form.phone} onChange={change} placeholder="090 123 4567" /></label>
+                </>
+              )}
+              <label className="field"><span>Email</span><input name="email" type="email" required value={form.email} onChange={change} placeholder="ban@email.com" /></label>
+              <label className="field password-field">
+                <span>Mật khẩu</span>
+                <input
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={isLogin ? 1 : 10}
+                  maxLength={128}
+                  pattern={isLogin ? undefined : "(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{10,128}"}
+                  value={form.password}
+                  onChange={change}
+                  placeholder={isLogin ? "Nhập mật khẩu" : "Tối thiểu 10 ký tự, có chữ hoa, chữ thường và số"}
+                />
+                <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Ẩn" : "Hiện"}</button>
+              </label>
+              {!isLogin && <label className="field"><span>Xác nhận mật khẩu</span><input name="confirmPassword" type="password" required minLength={10} maxLength={128} value={form.confirmPassword} onChange={change} placeholder="Nhập lại mật khẩu" /></label>}
+              {isLogin && <div className="auth-options"><span>Phiên đăng nhập kết thúc khi đóng tab.</span><button type="button" onClick={() => notify("Vui lòng liên hệ CSKH để đặt lại mật khẩu.", "info")}>Quên mật khẩu?</button></div>}
+              <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang xử lý..." : isLogin ? "Đăng nhập →" : "Tạo tài khoản →"}</button>
+            </form>
+          )}
+          {isLogin && !verification && (
             <div className="auth-social">
               <span>hoặc</span>
               <button type="button" onClick={() => notify("Đăng nhập Google sẽ được bật khi cấu hình OAuth.", "info")}><b>G</b> Đăng nhập với Google</button>
             </div>
           )}
-          {isLogin && (
+          {isLogin && !verification && (
             <div className="demo-account">
               <strong>Tài khoản trải nghiệm</strong>
-              <span>demo@novawear.vn</span>
-              <span>Demo@123</span>
+              <span>Khách: demo@novawear.vn / Demo@123</span>
+              <span>Nhân viên: staff@novawear.vn / Staff@123</span>
+              <span>Quản trị: admin@novawear.vn / Admin@123</span>
             </div>
           )}
-          <p className="auth-switch">
+          {!verification && <p className="auth-switch">
             {isLogin ? "Chưa có tài khoản?" : "Đã có tài khoản?"}{" "}
             <Link to={isLogin ? "/dang-ky" : "/dang-nhap"}>{isLogin ? "Đăng ký ngay" : "Đăng nhập"}</Link>
-          </p>
+          </p>}
         </div>
       </section>
     </div>

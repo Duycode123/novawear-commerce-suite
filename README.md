@@ -30,6 +30,24 @@ Sau khi khởi động:
 
 Nhấn `Ctrl+C` để dừng cả ba phần.
 
+## Đăng nhập chung và phân quyền
+
+Tất cả vai trò đăng nhập tại một địa chỉ:
+
+```text
+http://localhost:3000/dang-nhap
+```
+
+Sau khi API xác minh JWT, hệ thống tự chuyển theo `role`:
+
+- `customer` → tài khoản mua sắm tại `http://localhost:3000/tai-khoan`
+- `staff` → không gian nhân viên tại `http://localhost:3001/workspace`
+- `admin` → bảng điều khiển quản trị tại `http://localhost:3001`
+
+Nếu mở thẳng `http://localhost:3001/login`, hệ thống cũng chuyển về cổng đăng nhập chung. API chỉ bàn giao một mã ngẫu nhiên có hiệu lực 60 giây và dùng đúng một lần; JWT không còn xuất hiện trên URL. Phiên đăng nhập được giữ trong tab hiện tại và tự mất khi đóng tab.
+
+JWT truy cập có thời hạn mặc định 30 phút, bị vô hiệu hóa khi đổi mật khẩu và luôn được kiểm tra `issuer`, `audience`, thuật toán cùng phiên bản token.
+
 ## Tài khoản dùng thử
 
 | Vai trò | Email | Mật khẩu |
@@ -49,9 +67,60 @@ Các thông tin cần đổi đã được gom vào:
 
 Đổi các giá trị `NOVAWEAR`, email, số điện thoại và địa chỉ ở những tệp trên, sau đó thay `client/public/og.png`.
 
-## Dữ liệu và cấu hình
+## PostgreSQL và cách xem bảng trong VS Code
 
-API dùng kho dữ liệu JSON có lưu bền vững để dự án chạy ngay mà không cần cài MySQL. Lần chạy đầu sẽ tạo `BackEnd/server/data/store.json` từ dữ liệu mẫu. Để chạy thật, sao chép `BackEnd/server/.env.example` thành `.env`, đặt `JWT_SECRET` dài và riêng tư, rồi cấu hình `CORS_ORIGINS` theo tên miền thực tế.
+Khi `DB_TYPE=postgres`, API kết nối PostgreSQL và tự tạo các bảng trong schema `public`:
+
+- `novawear_users`
+- `novawear_products`
+- `novawear_categories`
+- `novawear_orders`
+- `novawear_customers`
+- `novawear_employees`
+- `novawear_reviews`
+- `novawear_coupons`
+- `novawear_news`
+- `novawear_returns`
+- `novawear_app_state` (snapshot giao dịch của ứng dụng)
+
+Các bảng nghiệp vụ có cột rõ ràng và được đồng bộ lại sau mỗi lần Admin thêm, sửa hoặc xóa dữ liệu. Cột `data` giữ bản ghi JSON đầy đủ cho những thuộc tính mở rộng như biến thể, ảnh và danh sách sản phẩm trong đơn.
+
+Trong tiện ích Database của VS Code, mở:
+
+```text
+postgres (database) → Schemas → public → Tables
+```
+
+Sau khi backend khởi động, bấm **Refresh** tại database hoặc mục **Tables**. Cần chắc chắn kết nối đúng database có tên trùng với `DB_NAME` trong `BackEnd/server/.env`.
+
+Nếu dùng chế độ dự phòng `DB_TYPE=json`, dữ liệu sẽ được lưu tại `BackEnd/server/data/store.json` và PostgreSQL không được cập nhật.
+
+Để chạy thật, đặt `JWT_SECRET` ngẫu nhiên tối thiểu 32 ký tự và cấu hình `CORS_ORIGINS` theo tên miền thực tế.
+
+## Email xác minh và xác nhận đơn hàng
+
+Đăng ký tài khoản phải nhập mã 6 số nhận qua email. Khách không đăng nhập cũng phải xác minh email trước khi tạo đơn; mã có hiệu lực 10 phút, tối đa 5 lần thử và chỉ dùng một lần. Sau khi tạo đơn, hệ thống gửi mã đơn, mã tra cứu và tổng thanh toán về đúng email đã xác minh.
+
+Điền cấu hình SMTP trong `BackEnd/server/.env`:
+
+```text
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-account@gmail.com
+SMTP_PASSWORD=your-app-password
+MAIL_FROM="NOVAWEAR <your-account@gmail.com>"
+MAIL_REPLY_TO=your-support-email@gmail.com
+EXPOSE_VERIFICATION_CODE=false
+```
+
+Với Gmail, dùng App Password thay cho mật khẩu tài khoản. Khi SMTP chưa được cấu hình hoặc gửi thất bại, API không tạo tài khoản mới và không cho khách vãng lai vượt qua bước xác minh.
+
+## Tư vấn size
+
+Công cụ tại `/chon-size` tách bảng nam/nữ và áo/quần. Thuật toán ưu tiên số đo cơ thể (ngực cho áo, eo/mông cho quần), sau đó mới đối chiếu chiều cao, cân nặng và sở thích phom. Kết quả có mức tin cậy, cảnh báo khi gần ranh giới hai size và không lưu số đo người dùng.
+
+Bảng chung chỉ là điểm khởi đầu. Với sản phẩm có phom đặc biệt, người dùng vẫn phải đối chiếu mục kiểu dáng và bảng thông số riêng trên trang chi tiết sản phẩm.
 
 Chạy toàn bộ kiểm tra:
 
@@ -59,7 +128,7 @@ Chạy toàn bộ kiểm tra:
 npm run check
 ```
 
-Thanh toán trực tuyến, email/SMS, hãng vận chuyển và lưu trữ ảnh đám mây đã có điểm nối trong luồng nghiệp vụ nhưng cần tài khoản/khóa API của nhà cung cấp trước khi bật trên môi trường thật.
+SMS, hãng vận chuyển và lưu trữ ảnh đám mây đã có điểm nối trong luồng nghiệp vụ nhưng cần tài khoản/khóa API của nhà cung cấp trước khi bật trên môi trường thật.
 
 ### Thanh toán SePay
 
