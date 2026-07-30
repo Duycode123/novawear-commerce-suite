@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { api } from "../services/api";
-import { ErrorState, ProductCard, ProductGridSkeleton, SmartImage } from "../components/Common";
+import { EmptyState, ErrorState, ProductCard, ProductGridSkeleton, SmartImage } from "../components/Common";
 import { formatMoney } from "../config/site";
 
 const lifestyleConfig = {
@@ -14,8 +14,11 @@ const lifestyleConfig = {
     intro: "Những thiết kế có phom thoải mái, màu sắc dễ kết hợp và chất liệu dễ chăm sóc cho lịch trình hằng ngày.",
     quote: "Một tủ đồ tốt bắt đầu từ những món bạn thực sự muốn mặc lại.",
     criteria: ["Phom linh hoạt", "Màu dễ phối", "Chất liệu dễ chăm sóc"],
-    keywords: ["ao-thun", "ao-so-mi", "quan-dai", "ao-khoac", "jeans", "kaki", "polo"],
-    catalogHref: "/cua-hang?sort=rating&inStock=true",
+    categorySlugs: [
+      "ao-thun-nam", "ao-thun-nu", "ao-so-mi-nam", "ao-so-mi-nu", "ao-kieu-blouse",
+      "quan-jeans-nam", "quan-jeans-nu", "quan-kaki-nam", "vay-dam",
+    ],
+    catalogHref: "/cua-hang?category=ao-thun-nam&inStock=true",
     catalogLabel: "Mua trang phục hằng ngày",
   },
   "van-dong": {
@@ -27,8 +30,11 @@ const lifestyleConfig = {
     intro: "Trang phục nhẹ, co giãn và thoát ẩm để theo bạn từ buổi tập đến những ngày cần di chuyển liên tục.",
     quote: "Chuyển động tự nhiên bắt đầu từ một thiết kế không cản trở cơ thể.",
     criteria: ["Co giãn linh hoạt", "Thoát ẩm nhanh", "Nhẹ và thoáng"],
-    keywords: ["the-thao", "legging", "jogger", "quan-short", "do-boi"],
-    catalogHref: "/cua-hang?search=thể thao&inStock=true",
+    categorySlugs: [
+      "do-the-thao-nam", "do-the-thao-nu", "quan-jogger-nam", "quan-legging-nu",
+      "quan-short-nam", "quan-short-nu", "do-boi-nam", "do-boi-nu",
+    ],
+    catalogHref: "/cua-hang?category=quan-short-nam&inStock=true",
     catalogLabel: "Mua trang phục vận động",
   },
   "cuoi-tuan": {
@@ -40,20 +46,18 @@ const lifestyleConfig = {
     intro: "Những lớp đồ mềm, chỉn chu vừa đủ và dễ kết hợp cho buổi cà phê, cuộc hẹn hoặc một ngày thong thả trong phố.",
     quote: "Cuối tuần là lúc mặc đẹp theo cách không cần cố gắng.",
     criteria: ["Mềm và tự nhiên", "Chỉn chu vừa đủ", "Dễ mặc nhiều lớp"],
-    keywords: ["ao-so-mi", "ao-khoac", "jeans", "kaki", "vay", "dam", "chan-vay", "polo"],
-    catalogHref: "/cua-hang?sort=newest&inStock=true",
+    categorySlugs: [
+      "ao-polo-nam", "ao-khoac-nam", "ao-khoac-nu", "ao-so-mi-nam", "ao-so-mi-nu",
+      "quan-jeans-nam", "quan-jeans-nu", "quan-kaki-nam", "chan-vay", "vay-dam",
+    ],
+    catalogHref: "/cua-hang?category=ao-so-mi-nam&inStock=true",
     catalogLabel: "Mua lựa chọn cuối tuần",
   },
 };
 
-function productMatches(product, keywords) {
-  const searchable = [
-    product.category?.slug,
-    product.category?.name,
-    product.name,
-    product.description,
-  ].filter(Boolean).join(" ").toLowerCase();
-  return keywords.some((keyword) => searchable.includes(keyword));
+function productMatches(product, config) {
+  const categorySlug = product.category?.slug || product.categorySlug;
+  return Boolean(categorySlug && config.categorySlugs.includes(categorySlug));
 }
 
 export default function LifestylePage() {
@@ -70,8 +74,8 @@ export default function LifestylePage() {
     try {
       const result = await api.get("/products?sort=rating&limit=100&inStock=true");
       const source = result.data || [];
-      const matched = source.filter((product) => productMatches(product, config.keywords));
-      setProducts((matched.length >= 4 ? matched : source).slice(0, 8));
+      const matched = source.filter((product) => productMatches(product, config));
+      setProducts(matched.slice(0, 8));
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -132,7 +136,16 @@ export default function LifestylePage() {
         {error && <ErrorState message={error} onRetry={loadProducts} />}
         {loading
           ? <ProductGridSkeleton count={8} />
-          : <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div>}
+          : products.length > 0
+            ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div>
+            : !error && (
+              <EmptyState
+                symbol="N"
+                title="Chưa có sản phẩm phù hợp đang còn hàng"
+                copy="NOVAWEAR chỉ hiển thị sản phẩm thuộc đúng nhóm phong cách này. Danh sách sẽ tự cập nhật khi quản trị viên bổ sung hàng vào các danh mục liên quan."
+                action={<Link className="button button--dark" to={config.catalogHref}>Xem danh mục gần nhất</Link>}
+              />
+            )}
 
         <div className="lifestyle-products__cta">
           <div><p className="eyebrow">TIẾP TỤC MUA SẮM</p><h2>Xem toàn bộ lựa chọn trong cửa hàng.</h2></div>

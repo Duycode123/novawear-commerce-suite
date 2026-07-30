@@ -62,3 +62,25 @@ test("catalog migration is idempotent and never fabricates ratings or sales", ()
   });
   assert.equal(data.products.length, count);
 });
+
+test("catalog v4 merges duplicate category slugs and repairs stale product category links", () => {
+  const data = createSeedData();
+  applyCatalogMigration(data);
+  data.meta.catalogVersion = 3;
+
+  const tee = data.categories.find((category) => category.slug === "ao-thun-nam");
+  data.categories.push({ ...tee, id: "cat-legacy-tee" });
+  const trousers = data.products.find((product) => product.slug === "quan-daily-tapered");
+  trousers.categoryId = "cat-legacy-tee";
+  trousers.longDescription = "T-shirt không đúng loại sản phẩm.";
+
+  const result = applyCatalogMigration(data);
+
+  assert.equal(result.changed, true);
+  assert.equal(data.meta.catalogVersion, 4);
+  assert.equal(data.categories.filter((category) => category.slug === "ao-thun-nam").length, 1);
+  assert.equal(data.categories.find((category) => category.slug === "ao-thun-nam").id, "cat-tee");
+  assert.equal(trousers.categoryId, "cat-khaki");
+  assert.doesNotMatch(trousers.longDescription, /T-shirt không đúng loại/i);
+  assert.match(trousers.modelInfo, /size 31/i);
+});

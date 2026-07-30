@@ -4,13 +4,25 @@ import { api } from "../services/api";
 import { ErrorState, ProductCard, ProductGridSkeleton, SmartImage } from "../components/Common";
 import { useShop } from "../context/ShopContext";
 
-const categoryVisuals = [
-  { slug: "ao-thun", label: "Áo thun", image: "/Images/nova-v3/product-tee-black.png" },
-  { slug: "ao-so-mi", label: "Áo sơ mi", image: "/Images/nova-v3/product-shirt-blue.png" },
-  { slug: "quan-dai", label: "Quần dài", image: "/Images/nova-v3/product-trouser-beige.png" },
-  { slug: "ao-khoac", label: "Áo khoác", image: "/Images/nova-v3/product-jacket-black.png" },
-  { slug: "quan-short", label: "Quần short", image: "/Images/nova-v3/product-short-navy.png" },
+const categoryPriority = [
+  "ao-thun-nam",
+  "ao-kieu-blouse",
+  "ao-so-mi-nam",
+  "vay-dam",
+  "quan-short-nam",
+  "ao-khoac-nu",
 ];
+
+const categoryFallbackImages = {
+  "ao-thun-nam": "/Images/nova-v3/product-tee-black.png",
+  "ao-so-mi-nam": "/Images/nova-v3/product-shirt-blue.png",
+  "ao-khoac-nam": "/Images/nova-v3/product-jacket-black.png",
+  "quan-short-nam": "/Images/nova-v3/product-short-navy.png",
+  "ao-thun-nu": "/Images/nova-v3/home-category-women-color.png",
+  "ao-kieu-blouse": "/Images/nova-v3/home-category-women-color.png",
+  "ao-khoac-nu": "/Images/nova-v3/product-jacket-black.png",
+  "vay-dam": "/Images/nova-v3/home-category-women-color.png",
+};
 
 const benefits = [
   { mark: "↗", title: "Miễn phí vận chuyển", copy: "Áp dụng cho đơn từ 699.000đ" },
@@ -121,6 +133,7 @@ export default function HomePage() {
     unisex: [],
     women: [],
     sale: [],
+    catalog: [],
     categories: [],
     news: [],
   });
@@ -150,6 +163,7 @@ export default function HomePage() {
         unisex: popularProducts.filter((product) => product.audience === "unisex"),
         women: popularProducts.filter((product) => product.audience === "women"),
         sale: sale.data || [],
+        catalog: popular.data || [],
         categories: categories.data || [],
         news: news.data || [],
       });
@@ -185,13 +199,43 @@ export default function HomePage() {
     }
   };
 
-  const categoryCount = (slug) => content.categories.find((category) => category.slug === slug)?.productCount || 0;
+  const categoryIndex = useMemo(() => {
+    const bySlug = new Map();
+    content.categories.forEach((category) => {
+      if (!category?.slug) return;
+      const current = bySlug.get(category.slug);
+      if (!current || Number(category.productCount || 0) > Number(current.productCount || 0)) {
+        bySlug.set(category.slug, category);
+      }
+    });
+    return bySlug;
+  }, [content.categories]);
+
+  const featuredCategories = useMemo(() => {
+    const available = [...categoryIndex.values()].filter((category) => Number(category.productCount || 0) > 0);
+    const priority = categoryPriority.map((slug) => categoryIndex.get(slug)).filter((category) => Number(category?.productCount || 0) > 0);
+    const remaining = available
+      .filter((category) => !categoryPriority.includes(category.slug))
+      .sort((left, right) => Number(right.productCount || 0) - Number(left.productCount || 0));
+    return [...priority, ...remaining].slice(0, 5).map((category) => {
+      const matchingProduct = content.catalog.find((product) => product.category?.slug === category.slug && product.image);
+      return {
+        ...category,
+        image: matchingProduct?.image
+          || categoryFallbackImages[category.slug]
+          || (category.audience === "women"
+            ? "/Images/nova-v3/home-category-women-color.png"
+            : "/Images/nova-v3/home-category-men-color.png"),
+      };
+    });
+  }, [categoryIndex, content.catalog]);
+
   const totalProducts = useMemo(
-    () => content.categories.reduce((sum, category) => sum + Number(category.productCount || 0), 0),
-    [content.categories],
+    () => [...categoryIndex.values()].reduce((sum, category) => sum + Number(category.productCount || 0), 0),
+    [categoryIndex],
   );
-  const menCategories = content.categories.filter((category) => category.audience === "men").length;
-  const womenCategories = content.categories.filter((category) => category.audience === "women").length;
+  const menCategories = [...categoryIndex.values()].filter((category) => category.audience === "men").length;
+  const womenCategories = [...categoryIndex.values()].filter((category) => category.audience === "women").length;
 
   return (
     <main className="home-v4">
@@ -217,12 +261,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      <nav className="home-v4-categories" id="home-categories" aria-label="Danh mục nổi bật">
+      <nav
+        className="home-v4-categories"
+        id="home-categories"
+        aria-label="Danh mục đang có sản phẩm"
+        style={{ "--home-category-count": featuredCategories.length + 1 }}
+      >
         <div><span>SHOP BY CATEGORY</span><p>Đi thẳng đến món bạn cần.</p></div>
-        {categoryVisuals.map((category) => (
+        {featuredCategories.map((category) => (
           <Link to={`/cua-hang?category=${category.slug}`} key={category.slug}>
-            <SmartImage src={category.image} alt="" />
-            <span><strong>{category.label}</strong><small>{categoryCount(category.slug) || "Xem sản phẩm"}</small></span>
+            <SmartImage src={category.image} alt={category.name} />
+            <span><strong>{category.name}</strong><small>{category.productCount} sản phẩm</small></span>
           </Link>
         ))}
         <Link className="home-v4-categories__all" to="/cua-hang"><i>＋</i><span><strong>Tất cả</strong><small>Khám phá</small></span></Link>

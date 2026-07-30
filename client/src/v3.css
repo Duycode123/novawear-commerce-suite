@@ -1909,28 +1909,66 @@ h4 {
   gap: 18px;
 }
 
-.site-header .brand-logo {
-  gap: 11px;
+.brand-logo {
+  display: inline-flex;
+  color: #111;
+  align-items: center;
+  gap: 10px;
 }
 
-.site-header .brand-logo__mark {
+.site-header .brand-logo__mark,
+.site-footer .brand-logo__mark {
   display: grid;
-  width: 34px;
-  height: 34px;
-  border: 1px solid #111;
-  border-radius: 2px;
-  color: #fff;
-  background: #111;
-  font-size: .76rem;
-  font-style: normal;
-  font-weight: 800;
-  letter-spacing: 0;
+  width: 39px;
+  height: 32px;
+  border: 0;
+  border-radius: 0;
+  color: currentColor;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0;
+  flex: 0 0 39px;
+  place-items: center;
 }
 
-.site-header .brand-logo__name {
+.brand-logo__mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: currentColor;
+}
+
+.brand-logo__mark .brand-logo__cut {
+  opacity: .28;
+}
+
+.brand-logo__name {
+  display: inline-flex;
+  line-height: 1;
+  align-items: baseline;
   font-size: 1rem;
-  font-weight: 800;
-  letter-spacing: .14em;
+  letter-spacing: .105em;
+}
+
+.brand-logo__name strong {
+  font-weight: 820;
+}
+
+.brand-logo__name span {
+  margin-left: .13em;
+  font-weight: 470;
+}
+
+.brand-logo--inverted,
+.site-footer .brand-logo {
+  color: #fff;
+}
+
+.site-footer .brand-logo__mark {
+  width: 43px;
+  height: 35px;
+  flex-basis: 43px;
 }
 
 .desktop-nav {
@@ -2125,6 +2163,7 @@ h4 {
   border-bottom: 1px solid #e2e0da;
   border-left: 1px solid #e2e0da;
   background: #fff;
+  grid-template-columns: minmax(210px,1.3fr) repeat(var(--home-category-count,6),minmax(145px,1fr));
 }
 
 .home-v4-categories > a {
@@ -2421,6 +2460,11 @@ h4 {
     display: none;
   }
 
+  .home-v4-categories {
+    overflow-x: auto;
+    grid-template-columns: 210px repeat(var(--home-category-count,6),155px);
+  }
+
   .home-v4-hero {
     min-height: 0;
     margin: 8px 12px 0;
@@ -2512,11 +2556,23 @@ h4 {
 
 @media (max-width: 720px) {
   .site-header .brand-logo__mark {
-    display: none;
+    display: grid;
+    width: 29px;
+    height: 24px;
+    flex-basis: 29px;
   }
 
   .site-header .brand-logo__name {
-    font-size: .88rem;
+    font-size: .78rem;
+    letter-spacing: .075em;
+  }
+
+  .site-header .brand-logo {
+    gap: 7px;
+  }
+
+  .home-v4-categories {
+    grid-template-columns: 170px repeat(var(--home-category-count,6),145px);
   }
 
   .header-actions {

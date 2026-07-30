@@ -7,8 +7,13 @@ import Icon from "./Icon";
 export function Logo({ inverted = false }) {
   return (
     <Link className={`brand-logo ${inverted ? "brand-logo--inverted" : ""}`} to="/" aria-label="NOVAWEAR - Trang chủ">
-      <span className="brand-logo__mark">N</span>
-      <span className="brand-logo__name">NOVAWEAR</span>
+      <span className="brand-logo__mark" aria-hidden="true">
+        <svg viewBox="0 0 44 34" role="presentation">
+          <path d="M3 30V4h7.5l20 17V4H38v26h-7.5l-20-17v17H3Z" />
+          <path className="brand-logo__cut" d="M38 4h3v26h-3z" />
+        </svg>
+      </span>
+      <span className="brand-logo__name"><strong>NOVA</strong><span>WEAR</span></span>
     </Link>
   );
 }

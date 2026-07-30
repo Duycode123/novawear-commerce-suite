@@ -1,4 +1,4 @@
-const CATALOG_VERSION = 3;
+const CATALOG_VERSION = 4;
 const PRODUCTS_PER_CATEGORY = 4;
 
 // Four distinct, realistic products for each garment profile. Images remain
@@ -444,6 +444,7 @@ function categoryForExistingProduct(product) {
   if (/legging/.test(text)) return "cat-women-legging";
   if (/polo/.test(text)) return isWomen ? "cat-women-tee" : "cat-polo";
   if (/jeans|denim/.test(text)) return isWomen ? "cat-women-jeans" : "cat-jeans";
+  if (/kaki|khaki|chino|trouser|pants|quan dai|tapered/.test(text)) return isWomen ? "cat-women-jeans" : "cat-khaki";
   if (/short/.test(text)) return isWomen ? "cat-women-shorts" : "cat-shorts";
   if (/khoac|jacket|blazer/.test(text)) return isWomen ? "cat-women-jacket" : "cat-jacket";
   if (/so mi|shirt/.test(text)) return isWomen ? "cat-women-shirt" : "cat-shirt";
@@ -452,8 +453,9 @@ function categoryForExistingProduct(product) {
   return known?.id || (isWomen ? "cat-women-tee" : "cat-tee");
 }
 
-function enrichProduct(product, category) {
+function enrichProduct(product, category, options = {}) {
   const profile = PROFILES[category.profile];
+  const categoryChanged = Boolean(options.categoryChanged);
   const colors = Array.isArray(product.colors) && product.colors.length ? product.colors : profile.colors;
   const sizes = Array.isArray(product.sizes) && product.sizes.length ? product.sizes : profile.sizes;
   product.categoryId = category.id;
@@ -464,20 +466,25 @@ function enrichProduct(product, category) {
   if (!Array.isArray(product.images) || product.images.length < 2) {
     product.images = [...new Set([product.image, ...(product.images || []), ...profile.images])].slice(0, 2);
   }
-  product.longDescription ||= `${category.description} Sản phẩm được hoàn thiện theo tinh thần tối giản của NOVAWEAR, chú trọng cảm giác mặc, độ bền đường may và khả năng phối trong nhiều lịch trình.`;
+  if (categoryChanged || !product.longDescription) {
+    product.longDescription = `${product.description || category.description} ${product.materials || profile.material} ${product.fit || profile.fit} Sản phẩm được hoàn thiện theo tinh thần tối giản của NOVAWEAR, chú trọng cảm giác mặc, độ bền đường may và khả năng phối trong nhiều lịch trình.`;
+  }
   product.materials ||= profile.material;
   product.care ||= profile.care;
   product.fit ||= profile.fit;
   product.suitableFor ||= profile.suitableFor;
-  product.modelInfo ||= category.audience === "women"
-    ? "Người mẫu cao 168 cm, mặc size S. Hãy đối chiếu bảng số đo riêng của sản phẩm trước khi chọn."
-    : "Người mẫu cao 180 cm, mặc size M. Hãy đối chiếu bảng số đo riêng của sản phẩm trước khi chọn.";
+  if (categoryChanged || !product.modelInfo) {
+    const menSize = ["jeans", "khaki"].includes(category.profile) ? "31" : "M";
+    product.modelInfo = category.audience === "women"
+      ? "Người mẫu cao 168 cm, mặc size S. Hãy đối chiếu bảng số đo riêng của sản phẩm trước khi chọn."
+      : `Người mẫu cao 180 cm, mặc size ${menSize}. Hãy đối chiếu bảng số đo riêng của sản phẩm trước khi chọn.`;
+  }
   product.origin ||= "Thiết kế và hoàn thiện tại Việt Nam";
   if (!Array.isArray(product.highlights) || !product.highlights.length) product.highlights = [...profile.highlights];
-  if (!Array.isArray(product.featureDetails) || !product.featureDetails.length) {
+  if (categoryChanged || !Array.isArray(product.featureDetails) || !product.featureDetails.length) {
     product.featureDetails = [
-      { title: "Chất liệu đúng công năng", description: profile.material },
-      { title: "Phom dáng dễ ứng dụng", description: profile.fit },
+      { title: "Chất liệu đúng công năng", description: product.materials || profile.material },
+      { title: "Phom dáng dễ ứng dụng", description: product.fit || profile.fit },
       { title: "Hoàn thiện để mặc lâu", description: "Các vị trí chịu lực được gia cố, đường may được kiểm tra trước khi nhập kho." },
     ];
   }
@@ -582,13 +589,21 @@ function applyCatalogMigration(data, options = {}) {
   const createdAt = new Date().toISOString();
 
   for (const definition of CATALOG_CATEGORIES) {
-    let category = data.categories.find((item) => item.id === definition.id)
-      || data.categories.find((item) => item.slug === definition.slug)
-      || data.categories.find((item) => normalize(item.name) === normalize(definition.name));
+    const matches = data.categories.filter((item) => (
+      item.id === definition.id
+      || item.slug === definition.slug
+      || normalize(item.name) === normalize(definition.name)
+    ));
+    let category = matches.find((item) => item.id === definition.id) || matches[0];
     if (!category) {
       category = { id: definition.id };
       data.categories.push(category);
     }
+    const replacedIds = new Set(matches.map((item) => item.id).filter(Boolean));
+    for (const product of data.products) {
+      if (replacedIds.has(product.categoryId)) product.categoryId = definition.id;
+    }
+    category.id = definition.id;
     Object.assign(category, {
       name: definition.name,
       slug: definition.slug,
@@ -596,12 +611,14 @@ function applyCatalogMigration(data, options = {}) {
       audience: definition.audience,
       status: "active",
     });
+    data.categories = data.categories.filter((item) => item === category || !matches.includes(item));
   }
 
   for (const product of data.products) {
+    const previousCategoryId = product.categoryId;
     const categoryId = categoryForExistingProduct(product);
     const category = CATALOG_CATEGORIES.find((item) => item.id === categoryId);
-    if (category) enrichProduct(product, category);
+    if (category) enrichProduct(product, category, { categoryChanged: previousCategoryId !== category.id });
   }
 
   const obsoleteIds = new Set(["cat-pants", "cat-sport", "cat-swim"]);
