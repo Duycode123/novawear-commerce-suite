@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.js",
     "setup": "npm --prefix BackEnd/server ci && npm --prefix client ci && npm --prefix admin ci",
+    "build:vercel": "node scripts/build-vercel.js",
     "check": "npm --prefix BackEnd/server test && npm --prefix client run build && npm --prefix admin run build"
   }
 }

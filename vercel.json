@@ -1,0 +1,18 @@
+{
+  "installCommand": "npm run setup",
+  "buildCommand": "npm run build:vercel",
+  "outputDirectory": "client/build",
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/ops(?:/.*)?",
+      "dest": "/ops/index.html"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ]
+}
