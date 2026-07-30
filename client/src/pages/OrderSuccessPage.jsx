@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { buildSepayQrUrl, formatMoney, SEPAY } from "../config/site";
+import { formatMoney } from "../config/site";
 import { api } from "../services/api";
 
 export default function OrderSuccessPage() {
@@ -8,6 +8,14 @@ export default function OrderSuccessPage() {
   const order = state?.order;
   const [copied, setCopied] = useState("");
   const [paymentStatus, setPaymentStatus] = useState(order?.paymentStatus || "pending");
+  const [paymentDetails, setPaymentDetails] = useState(null);
+
+  useEffect(() => {
+    if (!order || order.paymentMethod !== "bank") return;
+    api.get(`/payments/sepay/orders/${encodeURIComponent(order.id)}/checkout?trackingCode=${encodeURIComponent(order.trackingCode)}`)
+      .then((result) => setPaymentDetails(result.data))
+      .catch(() => setPaymentDetails(null));
+  }, [order]);
 
   useEffect(() => {
     if (!order || order.paymentMethod === "cod" || paymentStatus === "paid") return undefined;
@@ -67,20 +75,17 @@ export default function OrderSuccessPage() {
           </div>
           <div className="sepay-payment-card__qr">
             <span>Thanh toán qua <b>SePay</b></span>
-            <img src={buildSepayQrUrl({ amount: order.total, description: transferContent })} alt={`Mã QR thanh toán cho đơn ${order.id}`} />
+            {paymentDetails?.qrUrl
+              ? <img src={paymentDetails.qrUrl} alt={`Mã QR thanh toán cho đơn ${order.id}`} />
+              : <div className="skeleton skeleton--panel" aria-label="Đang tải mã QR" />}
             <small>Quét bằng ứng dụng ngân hàng</small>
           </div>
           <div className="sepay-payment-card__info">
-            {!SEPAY.configured && (
-              <p className="sepay-payment-card__demo">
-                Chế độ thử nghiệm — hãy cấu hình tài khoản SePay thật trước khi nhận thanh toán.
-              </p>
-            )}
             <p className="eyebrow">Chờ thanh toán</p>
             <h2>{formatMoney(order.total)}</h2>
-            <div><span>Ngân hàng</span><strong>{SEPAY.bank}</strong></div>
-            <div><span>Số tài khoản</span><strong>{SEPAY.accountNumber}</strong><button type="button" onClick={() => copy(SEPAY.accountNumber, "account")}>{copied === "account" ? "Đã chép" : "Sao chép"}</button></div>
-            <div><span>Chủ tài khoản</span><strong>{SEPAY.accountName}</strong></div>
+            <div><span>Ngân hàng</span><strong>{paymentDetails?.bankCode || "Đang tải..."}</strong></div>
+            <div><span>Số tài khoản</span><strong>{paymentDetails?.accountNumber || "Đang tải..."}</strong>{paymentDetails?.accountNumber && <button type="button" onClick={() => copy(paymentDetails.accountNumber, "account")}>{copied === "account" ? "Đã chép" : "Sao chép"}</button>}</div>
+            <div><span>Chủ tài khoản</span><strong>{paymentDetails?.accountName || "Đang tải..."}</strong></div>
             <div><span>Nội dung chuyển khoản</span><strong>{transferContent}</strong><button type="button" onClick={() => copy(transferContent, "content")}>{copied === "content" ? "Đã chép" : "Sao chép"}</button></div>
             <p className="sepay-payment-card__notice">Sau khi chuyển khoản, hệ thống sẽ tự động xác nhận trong khoảng 1–5 phút.</p>
           </div>

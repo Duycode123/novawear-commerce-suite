@@ -16,10 +16,11 @@ export default function ProductPage() {
   const [size, setSize] = useState("");
   const [color, setColor] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [reviewForm, setReviewForm] = useState({ rating: 5, content: "" });
+  const [reviewForm, setReviewForm] = useState({ rating: 5, content: "", images: [] });
+  const [uploadingReviewImage, setUploadingReviewImage] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewEligibility, setReviewEligibility] = useState(null);
-  const { addToCart, toggleWishlist, wishlist, user, notify } = useShop();
+  const { addToCart, toggleWishlist, wishlist, user, notify, integrations } = useShop();
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
@@ -97,12 +98,28 @@ export default function ProductPage() {
     try {
       const result = await api.post(`/products/${product.id}/reviews`, reviewForm);
       setReviews((current) => [result.data, ...current]);
-      setReviewForm({ rating: 5, content: "" });
+      setReviewForm({ rating: 5, content: "", images: [] });
       notify(result.message);
     } catch (requestError) {
       notify(requestError.message, "error");
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const uploadReviewImage = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || reviewForm.images.length >= 3) return;
+    setUploadingReviewImage(true);
+    try {
+      const result = await api.upload("/uploads/review", file);
+      setReviewForm((current) => ({ ...current, images: [...current.images, result.data.url] }));
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setUploadingReviewImage(false);
+      event.target.value = "";
     }
   };
 
@@ -252,6 +269,7 @@ export default function ProductPage() {
                 </div>
                 <p className="review-stars">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</p>
                 <p>{review.content}</p>
+                {review.images?.length > 0 && <div className="review-images">{review.images.map((image) => <SmartImage src={image} alt="Ảnh đánh giá" key={image} />)}</div>}
               </article>
             )) : <p className="muted">Chưa có đánh giá. Hãy là người đầu tiên chia sẻ cảm nhận.</p>}
           </div>
@@ -273,6 +291,11 @@ export default function ProductPage() {
                 <option value={2}>2 — Chưa tốt</option>
                 <option value={1}>1 — Không hài lòng</option>
               </select>
+            </label>
+            <label>
+              <span>Ảnh thực tế (tối đa 3)</span>
+              {integrations.uploads && <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadReviewImage} disabled={uploadingReviewImage || reviewForm.images.length >= 3 || !reviewEligibility?.eligible} />}
+              {reviewForm.images.length > 0 && <div className="review-images">{reviewForm.images.map((image) => <SmartImage src={image} alt="Ảnh chờ gửi" key={image} />)}</div>}
             </label>
             <label>
               <span>Cảm nhận</span>

@@ -15,6 +15,38 @@ test.before(async () => {
   const app = createApp({
     dataFile: path.join(tempDir, "store.json"),
     sepayWebhookApiKey: "test-sepay-key",
+    sepayQr: {
+      bankCode: "MBBank",
+      accountNumber: "0000000000",
+      accountName: "NOVAWEAR TEST",
+      template: "compact",
+    },
+    oauthService: {
+      publicConfig: () => ({ google: true, facebook: false }),
+      isConfigured: (provider) => provider === "google",
+      createVerifier: () => "test-verifier",
+      createChallenge: () => "test-challenge",
+      authorizationUrl: (_provider, state) => `https://accounts.example/authorize?state=${encodeURIComponent(state)}`,
+      exchange: async () => ({
+        providerId: "google-customer-001",
+        email: "oauth.customer@example.com",
+        name: "OAuth Customer",
+        avatar: "https://images.example/avatar.jpg",
+      }),
+    },
+    cloudinaryService: {
+      configured: true,
+      async uploadImage(_buffer, folder) {
+        return {
+          url: `https://res.cloudinary.example/${folder}/test-image.webp`,
+          publicId: `${folder}/test-image`,
+          width: 800,
+          height: 1000,
+          bytes: 1024,
+          format: "webp",
+        };
+      },
+    },
     exposeVerificationCode: true,
     mailer: {
       configured: true,
@@ -165,6 +197,72 @@ test("operations handoff is short lived and can only be exchanged once", async (
   assert.equal(replay.response.status, 401);
 });
 
+test("OAuth uses state validation and a one-time exchange code", async () => {
+  const started = await fetch(`${baseUrl}/auth/oauth/google/start`, { redirect: "manual" });
+  assert.equal(started.status, 302);
+  const authorizationUrl = new URL(started.headers.get("location"));
+  const state = authorizationUrl.searchParams.get("state");
+  assert.ok(state);
+
+  const callback = await fetch(
+    `${baseUrl}/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code`,
+    { redirect: "manual" },
+  );
+  assert.equal(callback.status, 302);
+  const callbackUrl = new URL(callback.headers.get("location"));
+  const exchangeCode = callbackUrl.searchParams.get("code");
+  assert.ok(exchangeCode);
+
+  const exchanged = await request("/auth/oauth/exchange", {
+    method: "POST",
+    body: JSON.stringify({ code: exchangeCode }),
+  });
+  assert.equal(exchanged.response.status, 200);
+  assert.equal(exchanged.body.user.email, "oauth.customer@example.com");
+  assert.ok(exchanged.body.token);
+
+  const replay = await request("/auth/oauth/exchange", {
+    method: "POST",
+    body: JSON.stringify({ code: exchangeCode }),
+  });
+  assert.equal(replay.response.status, 401);
+});
+
+test("authenticated image uploads enforce roles and persist avatars", async () => {
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const deniedForm = new FormData();
+  deniedForm.append("file", new Blob(["image"], { type: "image/png" }), "product.png");
+  const denied = await fetch(`${baseUrl}/uploads/product`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: deniedForm,
+  });
+  assert.equal(denied.status, 403);
+
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const productForm = new FormData();
+  productForm.append("file", new Blob(["image"], { type: "image/png" }), "product.png");
+  const uploadedProduct = await fetch(`${baseUrl}/uploads/product`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}` },
+    body: productForm,
+  });
+  assert.equal(uploadedProduct.status, 201);
+
+  const avatarForm = new FormData();
+  avatarForm.append("file", new Blob(["image"], { type: "image/png" }), "avatar.png");
+  const uploadedAvatar = await fetch(`${baseUrl}/uploads/avatar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: avatarForm,
+  });
+  assert.equal(uploadedAvatar.status, 201);
+  const profile = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${customerToken}` },
+  });
+  assert.match(profile.body.user.avatar, /^https:\/\/res\.cloudinary\.example\//);
+});
+
 test("customer can sign in, place an order and read order history", async () => {
   const login = await request("/auth/login", {
     method: "POST",
@@ -223,6 +321,13 @@ test("SePay webhook verifies, deduplicates and confirms a bank transfer", async 
   assert.equal(created.body.data.paymentProvider, "sepay");
   assert.equal(created.body.data.paymentStatus, "awaiting");
   assert.equal(created.body.data.paymentCode, created.body.data.trackingCode);
+
+  const checkout = await request(
+    `/payments/sepay/orders/${created.body.data.id}/checkout?trackingCode=${created.body.data.trackingCode}`,
+  );
+  assert.equal(checkout.response.status, 200);
+  assert.equal(checkout.body.data.amount, created.body.data.total);
+  assert.match(checkout.body.data.qrUrl, /^https:\/\/qr\.sepay\.vn\/img\?/);
 
   const before = await request(
     `/payments/sepay/orders/${created.body.data.id}/status?trackingCode=${created.body.data.trackingCode}`,

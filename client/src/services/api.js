@@ -15,9 +15,10 @@ export class ApiError extends Error {
 
 export async function apiRequest(path, options = {}) {
   const token = sessionStorage.getItem("novawear_token");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers = {
     Accept: "application/json",
-    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(options.body && !isFormData ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
@@ -56,4 +57,9 @@ export const api = {
   put: (path, body, options) => apiRequest(path, { ...options, method: "PUT", body: JSON.stringify(body) }),
   patch: (path, body, options) => apiRequest(path, { ...options, method: "PATCH", body: JSON.stringify(body) }),
   delete: (path, options) => apiRequest(path, { ...options, method: "DELETE" }),
+  upload: (path, file, options) => {
+    const body = new FormData();
+    body.append("file", file);
+    return apiRequest(path, { ...options, method: "POST", body });
+  },
 };

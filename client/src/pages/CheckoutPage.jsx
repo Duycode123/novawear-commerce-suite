@@ -6,7 +6,7 @@ import { useShop } from "../context/ShopContext";
 import { SmartImage } from "../components/Common";
 
 export default function CheckoutPage() {
-  const { cart, cartSubtotal, user, clearCart, notify } = useShop();
+  const { cart, cartSubtotal, user, clearCart, notify, integrations } = useShop();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     name: user?.name || "",
@@ -231,17 +231,13 @@ export default function CheckoutPage() {
           <section className="checkout-section">
             <div className="checkout-section__head"><span>03</span><div><h2>Phương thức thanh toán</h2><p>Chọn cách thuận tiện nhất với bạn.</p></div></div>
             <div className="payment-options">
-              <label className={form.paymentMethod === "bank" ? "is-active" : ""}>
+              {integrations.sepay && <label className={form.paymentMethod === "bank" ? "is-active" : ""}>
                 <input type="radio" name="paymentMethod" value="bank" checked={form.paymentMethod === "bank"} onChange={change} />
                 <b className="sepay-mark">SePay</b><span><strong>Chuyển khoản qua SePay</strong><small>Quét QR, đối soát thanh toán tự động.</small></span><i>✓</i>
-              </label>
+              </label>}
               <label className={form.paymentMethod === "cod" ? "is-active" : ""}>
                 <input type="radio" name="paymentMethod" value="cod" checked={form.paymentMethod === "cod"} onChange={change} />
                 <b>₫</b><span><strong>Thanh toán khi nhận hàng</strong><small>Thanh toán tiền mặt cho đơn vị vận chuyển.</small></span><i>✓</i>
-              </label>
-              <label className={form.paymentMethod === "wallet" ? "is-active" : ""}>
-                <input type="radio" name="paymentMethod" value="wallet" checked={form.paymentMethod === "wallet"} onChange={change} />
-                <b>◈</b><span><strong>Ví điện tử / QR</strong><small>Quét mã nhanh qua ứng dụng ngân hàng.</small></span><i>✓</i>
               </label>
             </div>
           </section>

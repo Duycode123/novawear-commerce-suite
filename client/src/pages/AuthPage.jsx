@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
+import { api, API_BASE } from "../services/api";
 
 export default function AuthPage({ mode = "login" }) {
   const isLogin = mode === "login";
@@ -9,10 +10,19 @@ export default function AuthPage({ mode = "login" }) {
   const [verification, setVerification] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [oauth, setOauth] = useState({ google: false, facebook: false });
   const navigate = useNavigate();
   const location = useLocation();
   const operationsUrl = process.env.REACT_APP_OPS_URL
     || (window.location.hostname === "localhost" ? "http://localhost:3001" : "/ops");
+
+  useEffect(() => {
+    api.get("/auth/oauth/config")
+      .then((result) => setOauth(result.data || {}))
+      .catch(() => setOauth({ google: false, facebook: false }));
+    const errorCode = new URLSearchParams(window.location.search).get("oauthError");
+    if (errorCode) notify("Không thể đăng nhập bằng tài khoản liên kết. Vui lòng thử lại.", "error");
+  }, [notify]);
 
   if (user) return <Navigate to="/tai-khoan" replace />;
 
@@ -186,10 +196,11 @@ export default function AuthPage({ mode = "login" }) {
               <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang xử lý..." : isLogin ? "Đăng nhập →" : "Tạo tài khoản →"}</button>
             </form>
           )}
-          {isLogin && !verification && (
+          {isLogin && !verification && (oauth.google || oauth.facebook) && (
             <div className="auth-social">
               <span>hoặc</span>
-              <button type="button" onClick={() => notify("Đăng nhập Google sẽ được bật khi cấu hình OAuth.", "info")}><b>G</b> Đăng nhập với Google</button>
+              {oauth.google && <button type="button" onClick={() => window.location.assign(`${API_BASE}/auth/oauth/google/start`)}><b>G</b> Đăng nhập với Google</button>}
+              {oauth.facebook && <button type="button" onClick={() => window.location.assign(`${API_BASE}/auth/oauth/facebook/start`)}><b>f</b> Đăng nhập với Facebook</button>}
             </div>
           )}
           {isLogin && !verification && (

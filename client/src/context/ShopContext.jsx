@@ -23,6 +23,21 @@ export function ShopProvider({ children }) {
     }
   });
   const [toasts, setToasts] = useState([]);
+  const [integrations, setIntegrations] = useState({
+    email: false,
+    uploads: false,
+    oauth: { google: false, facebook: false },
+    sepay: false,
+  });
+
+  useEffect(() => {
+    api.get("/config")
+      .then((result) => setIntegrations((current) => ({
+        ...current,
+        ...(result.integrations || {}),
+      })))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("novawear_cart", JSON.stringify(cart));
@@ -40,7 +55,11 @@ export function ShopProvider({ children }) {
 
   const notify = useCallback((message, type = "success") => {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((current) => [...current, { id, message, type }]);
+    setToasts((current) => (
+      current.some((toast) => toast.message === message && toast.type === type)
+        ? current
+        : [...current, { id, message, type }]
+    ));
     window.setTimeout(() => {
       setToasts((current) => current.filter((item) => item.id !== id));
     }, 3600);
@@ -157,6 +176,14 @@ export function ShopProvider({ children }) {
     return api.post("/auth/resend-verification", { email });
   }, []);
 
+  const completeOAuth = useCallback(async (code) => {
+    const result = await api.post("/auth/oauth/exchange", { code });
+    sessionStorage.setItem("novawear_token", result.token);
+    sessionStorage.setItem("novawear_user", JSON.stringify(result.user));
+    setUser(result.user);
+    return result;
+  }, []);
+
   const logout = useCallback(() => {
     sessionStorage.removeItem("novawear_token");
     sessionStorage.removeItem("novawear_user");
@@ -193,8 +220,10 @@ export function ShopProvider({ children }) {
     register,
     verifyAccount,
     resendVerification,
+    completeOAuth,
     logout,
     updateLocalUser,
+    integrations,
   }), [
     cart,
     cartCount,
@@ -213,8 +242,10 @@ export function ShopProvider({ children }) {
     register,
     verifyAccount,
     resendVerification,
+    completeOAuth,
     logout,
     updateLocalUser,
+    integrations,
   ]);
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;

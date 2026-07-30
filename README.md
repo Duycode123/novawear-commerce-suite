@@ -128,8 +128,15 @@ Chạy toàn bộ kiểm tra:
 npm run check
 ```
 
-SMS, hãng vận chuyển và lưu trữ ảnh đám mây đã có điểm nối trong luồng nghiệp vụ nhưng cần tài khoản/khóa API của nhà cung cấp trước khi bật trên môi trường thật.
+SMS và hãng vận chuyển chưa được đưa vào cấu hình vì dự án hiện không có nhà cung cấp tương ứng. Lưu trữ ảnh Cloudinary đã được nối đầy đủ cho ảnh sản phẩm, avatar, ảnh đánh giá và ảnh bằng chứng đổi trả; giao diện tải ảnh tự ẩn khi `CLOUDINARY_ENABLED=false`.
 
 ### Thanh toán SePay
 
-Luồng chuyển khoản đã có QR động, nội dung thanh toán riêng cho từng đơn, webhook chống ghi nhận trùng và tự cập nhật trạng thái đơn. Sao chép `client/.env.example` và `BackEnd/server/.env.example` sang tệp `.env` tương ứng, sau đó điền tài khoản ngân hàng cùng `SEPAY_WEBHOOK_API_KEY` thật trước khi nhận thanh toán.
+Luồng chuyển khoản lấy thông tin tài khoản từ backend, tạo QR riêng cho từng đơn, dùng nội dung thanh toán duy nhất, chống webhook trùng và tự cập nhật trạng thái đơn. Chỉ cần điền nhóm `SEPAY_*` trong `BackEnd/server/.env`; frontend không chứa số tài khoản. Khi thiếu bất kỳ trường bắt buộc nào, lựa chọn SePay tự ẩn và API từ chối tạo đơn chuyển khoản.
+
+### Google/Facebook OAuth và Cloudinary
+
+- OAuth dùng `state` một lần, Google PKCE và mã trao đổi nội bộ có hiệu lực 60 giây; JWT không xuất hiện trên URL.
+- Bật riêng từng nhà cung cấp bằng `GOOGLE_OAUTH_ENABLED` hoặc `FACEBOOK_OAUTH_ENABLED`, sau đó điền đủ client ID, secret và callback URL. Nút đăng nhập chỉ hiện với nhà cung cấp đã cấu hình hợp lệ.
+- Bật tải ảnh bằng `CLOUDINARY_ENABLED=true`, rồi điền `CLOUDINARY_URL` hoặc bộ `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
+- Backend kiểm tra cấu hình khi khởi động. Một tích hợp được bật nhưng thiếu khóa bắt buộc sẽ làm quá trình khởi động dừng với thông báo rõ trường còn thiếu.

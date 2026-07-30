@@ -13,13 +13,14 @@ export class ApiError extends Error {
 
 export async function request(path, options = {}) {
   const token = sessionStorage.getItem("nova_ops_token");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   let response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
         Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.body && !isFormData ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
@@ -46,4 +47,9 @@ export const api = {
   put: (path, body) => request(path, { method: "PUT", body: JSON.stringify(body) }),
   patch: (path, body) => request(path, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (path) => request(path, { method: "DELETE" }),
+  upload: (path, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request(path, { method: "POST", body });
+  },
 };

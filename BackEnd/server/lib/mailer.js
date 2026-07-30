@@ -13,6 +13,11 @@ function money(value) {
   return `${Number(value || 0).toLocaleString("vi-VN")} ₫`;
 }
 
+function usable(value) {
+  const normalized = String(value || "").trim();
+  return Boolean(normalized && !/replace-with|your-|example/i.test(normalized));
+}
+
 function emailShell(title, content) {
   return `<!doctype html>
   <html lang="vi">
@@ -43,7 +48,16 @@ function createMailer(options = {}) {
   const pass = String(options.pass || process.env.SMTP_PASSWORD || "");
   const from = String(options.from || process.env.MAIL_FROM || "").trim();
   const replyTo = String(options.replyTo || process.env.MAIL_REPLY_TO || "").trim();
-  const configured = Boolean(options.transporter || (host && from));
+  const frontendBaseUrl = String(options.frontendBaseUrl || process.env.FRONTEND_BASE_URL || "http://localhost:3000")
+    .replace(/\/$/, "");
+  const connectionTimeout = Number(options.connectionTimeout || process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000);
+  const greetingTimeout = Number(options.greetingTimeout || process.env.SMTP_GREETING_TIMEOUT_MS || 10000);
+  const socketTimeout = Number(options.socketTimeout || process.env.SMTP_SOCKET_TIMEOUT_MS || 20000);
+  const configured = Boolean(options.transporter || (
+    usable(host)
+    && usable(from)
+    && (!user || (usable(user) && usable(pass)))
+  ));
   const transporter = options.transporter || (configured
     ? nodemailer.createTransport({
       host,
@@ -51,6 +65,9 @@ function createMailer(options = {}) {
       secure,
       ...(user ? { auth: { user, pass } } : {}),
       requireTLS: !secure,
+      connectionTimeout,
+      greetingTimeout,
+      socketTimeout,
     })
     : null);
 
@@ -109,6 +126,7 @@ function createMailer(options = {}) {
           <div style="padding:18px;background:#f3f1eb"><b>Mã tra cứu: ${escapeHtml(order.trackingCode)}</b><br><span style="font-size:13px">Trạng thái: Đã tiếp nhận</span></div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;font-size:14px">${itemRows}</table>
           <p style="margin:22px 0 0;text-align:right;font-size:18px"><b>Tổng: ${money(order.total)}</b></p>
+          <p style="margin:24px 0 0"><a href="${escapeHtml(`${frontendBaseUrl}/tra-cuu`)}" style="display:inline-block;padding:12px 18px;background:#101820;color:#fff;text-decoration:none">Tra cứu đơn hàng</a></p>
           <p style="color:#6b7375;font-size:13px;line-height:1.7">Nếu bạn không tạo đơn này, hãy liên hệ NOVAWEAR ngay và cung cấp mã đơn ở trên.</p>
         `),
       });

@@ -1,12 +1,15 @@
 require("dotenv").config();
+process.env.TZ = process.env.APP_TIME_ZONE || "Asia/Ho_Chi_Minh";
 const { createApp } = require("./app");
 const { createStoreFromEnv } = require("./lib/store");
+const { validateEnvironment } = require("./lib/env");
 
 const port = Number(process.env.PORT || 5000);
 let server;
 let store;
 
 async function start() {
+  validateEnvironment();
   store = await createStoreFromEnv();
   const app = createApp({ store });
   if (app.locals.mailer.configured) {

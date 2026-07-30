@@ -60,6 +60,8 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyProduct);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadsEnabled, setUploadsEnabled] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,6 +89,12 @@ export default function ProductsPage() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
+  useEffect(() => {
+    api.get("/config")
+      .then((result) => setUploadsEnabled(Boolean(result.integrations?.uploads)))
+      .catch(() => setUploadsEnabled(false));
+  }, []);
+
   const inventoryValue = useMemo(() => products.reduce((sum, item) => sum + item.cost * item.stock, 0), [products]);
 
   const openForm = (product = null) => {
@@ -104,6 +112,26 @@ export default function ProductsPage() {
   const change = (event) => {
     const { name, value, type, checked } = event.target;
     setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+  };
+
+  const uploadProductImage = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const result = await api.upload("/uploads/product", file);
+      setForm((current) => ({
+        ...current,
+        image: result.data.url,
+        imagesText: [current.imagesText, result.data.url].filter(Boolean).join("\n"),
+      }));
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
   };
 
   const save = async (event) => {
@@ -220,6 +248,7 @@ export default function ProductsPage() {
               <label className="ops-field"><span>Dành cho</span><select name="audience" value={form.audience} onChange={change}><option value="men">Nam</option><option value="women">Nữ</option><option value="unisex">Unisex</option></select></label>
               <label className="ops-field"><span>Nhãn sản phẩm</span><input name="badge" value={form.badge} onChange={change} placeholder="Mới / Bán chạy" /></label>
               <label className="ops-field ops-field--wide"><span>Đường dẫn ảnh *</span><input name="image" required value={form.image} onChange={change} placeholder="/Images/ten-anh.jpg" /></label>
+              {uploadsEnabled && <label className="ops-field ops-field--wide"><span>Tải ảnh lên Cloudinary</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadProductImage} disabled={uploading} /><small>{uploading ? "Đang tải và tối ưu ảnh…" : "Tối đa 12MB. Ảnh tải lên sẽ tự điền vào đường dẫn và thư viện ảnh."}</small></label>}
               <label className="ops-field ops-field--wide"><span>Thư viện ảnh (mỗi dòng một đường dẫn)</span><textarea name="imagesText" rows={4} value={form.imagesText} onChange={change} placeholder={"/Images/anh-chinh.jpg\n/Images/anh-chi-tiet.jpg"} /></label>
               <label className="ops-field"><span>Màu sắc (cách nhau bằng dấu phẩy)</span><input name="colorsText" value={form.colorsText} onChange={change} /></label>
               <label className="ops-field"><span>Kích thước (cách nhau bằng dấu phẩy)</span><input name="sizesText" value={form.sizesText} onChange={change} /></label>

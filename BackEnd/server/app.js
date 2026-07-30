@@ -3,8 +3,11 @@ const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
 const { JsonStore } = require("./lib/store");
 const { createMailer } = require("./lib/mailer");
+const { createCloudinaryService } = require("./lib/cloudinary");
+const { createOAuthService } = require("./lib/oauth");
 const { hashPassword, verifyPassword, sanitizeUser } = require("./lib/security");
 
 const ORDER_STATUS_LABELS = {
@@ -203,7 +206,31 @@ function createApp(options = {}) {
   const exposeVerificationCode = options.exposeVerificationCode
     ?? String(process.env.EXPOSE_VERIFICATION_CODE || "false").toLowerCase() === "true";
   const mailer = options.mailer || createMailer(options.mailerOptions);
+  const cloudinaryService = options.cloudinaryService || createCloudinaryService();
+  const oauthService = options.oauthService || createOAuthService();
   const sepayWebhookApiKey = String(options.sepayWebhookApiKey || process.env.SEPAY_WEBHOOK_API_KEY || "").trim();
+  const validSepayWebhookKey = Boolean(
+    sepayWebhookApiKey && !/replace-with|your-|example/i.test(sepayWebhookApiKey),
+  );
+  const sepayQr = {
+    bankCode: String(options.sepayQr?.bankCode || process.env.SEPAY_QR_BANK_CODE || "").trim(),
+    accountNumber: String(options.sepayQr?.accountNumber || process.env.SEPAY_QR_BANK_ACCOUNT || "").trim(),
+    accountName: String(options.sepayQr?.accountName || process.env.SEPAY_QR_ACCOUNT_NAME || "").trim(),
+    template: String(options.sepayQr?.template || process.env.SEPAY_QR_TEMPLATE || "compact").trim(),
+  };
+  const sepayConfigured = Boolean(
+    validSepayWebhookKey && sepayQr.bankCode && sepayQr.accountNumber && sepayQr.accountName,
+  );
+  const requestBodyLimit = String(process.env.REQUEST_BODY_LIMIT || "1mb");
+  const otpTtlSeconds = asPositiveInt(process.env.OTP_TTL_SECONDS, 600);
+  const otpResendSeconds = asPositiveInt(process.env.OTP_RESEND_SECONDS, 60);
+  const otpMaxAttempts = asPositiveInt(process.env.OTP_MAX_ATTEMPTS, 5);
+  const authMaxAttempts = asPositiveInt(process.env.AUTH_MAX_ATTEMPTS, 5);
+  const authLockSeconds = asPositiveInt(process.env.AUTH_LOCK_SECONDS, 60);
+  const operationsHandoffTtlSeconds = asPositiveInt(process.env.OPERATIONS_HANDOFF_TTL_SECONDS, 60);
+  const guestCheckoutTokenTtlSeconds = asPositiveInt(process.env.GUEST_CHECKOUT_TOKEN_TTL_SECONDS, 900);
+  const checkoutRequestWindowSeconds = asPositiveInt(process.env.CHECKOUT_REQUEST_WINDOW_SECONDS, 900);
+  const checkoutMaxCodeRequests = asPositiveInt(process.env.CHECKOUT_MAX_CODE_REQUESTS, 5);
   const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
     .split(",")
     .map((item) => item.trim())
@@ -212,6 +239,8 @@ function createApp(options = {}) {
   const guestVerificationAttempts = new Map();
   const usedGuestCheckoutTokens = new Map();
   const operationsHandoffs = new Map();
+  const oauthStates = new Map();
+  const oauthExchanges = new Map();
   const registrationLocks = new Set();
   const checkoutRequestLimits = new Map();
   const dummyPasswordHash = hashPassword("Invalid-password-value-2026");
@@ -224,7 +253,7 @@ function createApp(options = {}) {
     const code = crypto.randomBytes(32).toString("base64url");
     operationsHandoffs.set(temporaryKey(code), {
       userId: user.id,
-      expiresAt: Date.now() + 60_000,
+      expiresAt: Date.now() + operationsHandoffTtlSeconds * 1000,
     });
     return code;
   }
@@ -241,7 +270,7 @@ function createApp(options = {}) {
         algorithm: "HS256",
         audience: "novawear-checkout",
         issuer: "novawear-api",
-        expiresIn: "15m",
+        expiresIn: guestCheckoutTokenTtlSeconds,
       },
     );
   }
@@ -250,7 +279,7 @@ function createApp(options = {}) {
     const code = createVerificationCode();
     const now = Date.now();
     user.verificationCodeHash = hashVerificationCode(user.email, code, jwtSecret);
-    user.verificationExpiresAt = new Date(now + 10 * 60_000).toISOString();
+    user.verificationExpiresAt = new Date(now + otpTtlSeconds * 1000).toISOString();
     user.verificationSentAt = new Date(now).toISOString();
     user.verificationAttempts = 0;
     return code;
@@ -261,15 +290,20 @@ function createApp(options = {}) {
       message,
       requiresVerification: true,
       email: user.email,
-      expiresInSeconds: 600,
+      expiresInSeconds: otpTtlSeconds,
       ...(exposeVerificationCode ? { verificationCode: code } : {}),
     };
   }
 
   app.locals.store = store;
   app.locals.mailer = mailer;
+  app.locals.cloudinary = cloudinaryService;
+  app.locals.oauth = oauthService;
 
   app.disable("x-powered-by");
+  if (String(process.env.TRUST_PROXY || "false").toLowerCase() === "true") {
+    app.set("trust proxy", 1);
+  }
   app.use((req, res, next) => {
     req.requestId = crypto.randomUUID();
     res.setHeader("X-Request-Id", req.requestId);
@@ -294,8 +328,8 @@ function createApp(options = {}) {
     },
     credentials: true,
   }));
-  app.use(express.json({ limit: "1mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+  app.use(express.json({ limit: requestBodyLimit }));
+  app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
 
   function optionalAuth(req, _res, next) {
     const authorization = req.headers.authorization || "";
@@ -370,8 +404,8 @@ function createApp(options = {}) {
     }
     const current = authAttempts.get(key) || { count: 0, blockedUntil: 0 };
     current.count += 1;
-    if (current.count >= 5) {
-      current.blockedUntil = Date.now() + 60_000;
+    if (current.count >= authMaxAttempts) {
+      current.blockedUntil = Date.now() + authLockSeconds * 1000;
       current.count = 0;
     }
     authAttempts.set(key, current);
@@ -550,7 +584,7 @@ function createApp(options = {}) {
         code: "VERIFICATION_EXPIRED",
       });
     }
-    if (Number(user.verificationAttempts || 0) >= 5) {
+    if (Number(user.verificationAttempts || 0) >= otpMaxAttempts) {
       return res.status(429).json({
         message: "Bạn đã nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.",
         code: "VERIFICATION_LOCKED",
@@ -562,7 +596,7 @@ function createApp(options = {}) {
       user.verificationAttempts = Number(user.verificationAttempts || 0) + 1;
       store.save();
       return res.status(400).json({
-        message: `Mã xác minh không đúng. Còn ${Math.max(0, 5 - user.verificationAttempts)} lần thử.`,
+        message: `Mã xác minh không đúng. Còn ${Math.max(0, otpMaxAttempts - user.verificationAttempts)} lần thử.`,
         code: "VERIFICATION_INVALID",
       });
     }
@@ -600,7 +634,7 @@ function createApp(options = {}) {
       return res.status(409).json({ message: "Tài khoản đã được xác minh." });
     }
     const lastSentAt = new Date(user.verificationSentAt || 0).getTime();
-    const remainingSeconds = Math.ceil((60_000 - (Date.now() - lastSentAt)) / 1000);
+    const remainingSeconds = Math.ceil((otpResendSeconds * 1000 - (Date.now() - lastSentAt)) / 1000);
     if (remainingSeconds > 0) {
       return res.status(429).json({
         message: `Vui lòng chờ ${remainingSeconds} giây trước khi gửi lại mã.`,
@@ -642,9 +676,11 @@ function createApp(options = {}) {
   app.get("/api/health", (_req, res) => {
     res.json({
       status: "ok",
-      service: "novawear-api",
+      service: process.env.APP_NAME || "novawear-commerce-backend",
       version: store.data.meta?.version || 1,
       emailConfigured: Boolean(mailer.configured),
+      cloudinaryConfigured: Boolean(cloudinaryService.configured),
+      sepayConfigured,
       time: new Date().toISOString(),
     });
   });
@@ -659,6 +695,12 @@ function createApp(options = {}) {
         email: "hello@novawear.vn",
         hours: "08:00 - 21:00, Thứ 2 - Chủ nhật",
       },
+      integrations: {
+        email: Boolean(mailer.configured),
+        uploads: Boolean(cloudinaryService.configured),
+        oauth: oauthService.publicConfig(),
+        sepay: sepayConfigured,
+      },
     });
   });
 
@@ -666,6 +708,140 @@ function createApp(options = {}) {
   app.post("/api/auth/login", rateLimitAuth, loginHandler);
   app.post("/api/createaccount", rateLimitAuth, registerHandler);
   app.post("/api/login", rateLimitAuth, loginHandler);
+
+  app.get("/api/auth/oauth/config", (_req, res) => {
+    return res.json({ data: oauthService.publicConfig() });
+  });
+
+  app.get("/api/auth/oauth/:provider/start", rateLimitAuth, (req, res) => {
+    const provider = String(req.params.provider || "").toLowerCase();
+    if (!oauthService.isConfigured(provider)) {
+      return res.status(503).json({ message: "Phương thức đăng nhập này chưa được cấu hình." });
+    }
+    const state = crypto.randomBytes(32).toString("base64url");
+    const verifier = provider === "google" ? oauthService.createVerifier() : "";
+    oauthStates.set(temporaryKey(state), {
+      provider,
+      verifier,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    return res.redirect(oauthService.authorizationUrl(
+      provider,
+      state,
+      verifier ? oauthService.createChallenge(verifier) : "",
+    ));
+  });
+
+  async function oauthCallback(req, res) {
+    const provider = String(req.params.provider || "").toLowerCase();
+    const successUrl = String(process.env.OAUTH_SUCCESS_URL || "http://localhost:3000/oauth/callback");
+    const failureUrl = String(process.env.OAUTH_FAILURE_URL || "http://localhost:3000/dang-nhap");
+    const fail = (code) => {
+      const url = new URL(failureUrl);
+      url.searchParams.set("oauthError", code);
+      return res.redirect(url.toString());
+    };
+    const state = String(req.query.state || "");
+    const stateKey = temporaryKey(state);
+    const pending = oauthStates.get(stateKey);
+    oauthStates.delete(stateKey);
+    if (!state || !pending || pending.provider !== provider || pending.expiresAt < Date.now()) {
+      return fail("invalid_state");
+    }
+    if (req.query.error || !req.query.code) return fail("authorization_cancelled");
+    try {
+      const profile = await oauthService.exchange(provider, String(req.query.code), pending.verifier);
+      let user = store.data.users.find((item) => normalizeText(item.email) === normalizeText(profile.email));
+      if (user && user.role !== "customer") return fail("employee_account_not_supported");
+      if (user && user.status !== "active") return fail("account_locked");
+
+      const providerField = provider === "google" ? "googleId" : "facebookId";
+      const now = new Date().toISOString();
+      if (!user) {
+        const customerId = store.nextId("customers", "cus-");
+        user = {
+          id: store.nextId("users", "usr-"),
+          name: profile.name,
+          email: profile.email,
+          phone: "",
+          avatar: profile.avatar,
+          role: "customer",
+          customerId,
+          employeeId: null,
+          status: "active",
+          emailVerifiedAt: now,
+          tokenVersion: 0,
+          passwordHash: hashPassword(crypto.randomBytes(48).toString("base64url")),
+          [providerField]: profile.providerId,
+          createdAt: now,
+        };
+        store.data.customers.push({
+          id: customerId,
+          name: profile.name,
+          email: profile.email,
+          phone: "",
+          avatar: profile.avatar,
+          address: "",
+          tier: "Member",
+          totalSpent: 0,
+          orderCount: 0,
+          status: "active",
+          createdAt: now,
+        });
+        store.data.users.push(user);
+      } else {
+        if (user[providerField] && user[providerField] !== profile.providerId) {
+          return fail("provider_account_mismatch");
+        }
+        user[providerField] = profile.providerId;
+        user.emailVerifiedAt = user.emailVerifiedAt || now;
+        user.avatar = user.avatar || profile.avatar;
+      }
+      store.audit("oauth_login", "user", user.id, { id: user.id, name: provider });
+      store.save();
+
+      const exchangeCode = crypto.randomBytes(32).toString("base64url");
+      oauthExchanges.set(temporaryKey(exchangeCode), {
+        userId: user.id,
+        expiresAt: Date.now() + 60 * 1000,
+      });
+      const redirect = new URL(successUrl);
+      redirect.searchParams.set("code", exchangeCode);
+      return res.redirect(redirect.toString());
+    } catch (error) {
+      return fail(error.code || "provider_error");
+    }
+  }
+
+  app.get("/api/auth/google/callback", rateLimitAuth, (req, res) => {
+    req.params.provider = "google";
+    return oauthCallback(req, res);
+  });
+  app.get("/api/auth/facebook/callback", rateLimitAuth, (req, res) => {
+    req.params.provider = "facebook";
+    return oauthCallback(req, res);
+  });
+
+  app.post("/api/auth/oauth/exchange", rateLimitAuth, (req, res) => {
+    const code = String(req.body.code || "").trim();
+    const key = temporaryKey(code);
+    const pending = oauthExchanges.get(key);
+    oauthExchanges.delete(key);
+    if (!code || !pending || pending.expiresAt < Date.now()) {
+      recordAuthFailure(req.authAttemptKey);
+      return res.status(401).json({ message: "Mã đăng nhập đã hết hạn hoặc đã được sử dụng." });
+    }
+    const user = store.data.users.find((item) => item.id === pending.userId);
+    if (!user || user.role !== "customer" || user.status !== "active" || !user.emailVerifiedAt) {
+      return res.status(403).json({ message: "Tài khoản không thể đăng nhập bằng phương thức này." });
+    }
+    clearAuthFailures(req.authAttemptKey);
+    return res.json({
+      message: "Đăng nhập thành công.",
+      token: createToken(user, jwtSecret),
+      user: sanitizeUser(user),
+    });
+  });
 
   app.post("/api/auth/operations-exchange", rateLimitAuth, (req, res) => {
     const code = String(req.body.code || "").trim();
@@ -747,6 +923,59 @@ function createApp(options = {}) {
     return res.json({
       message: "Đổi mật khẩu thành công.",
       token: createToken(user, jwtSecret),
+    });
+  });
+
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: asPositiveInt(process.env.UPLOAD_MAX_FILE_SIZE_MB, 12) * 1024 * 1024 },
+    fileFilter(_req, file, callback) {
+      if (!/^image\/(jpeg|png|webp|gif|avif)$/.test(file.mimetype)) {
+        callback(new Error("Chỉ chấp nhận ảnh JPEG, PNG, WebP, GIF hoặc AVIF."));
+        return;
+      }
+      callback(null, true);
+    },
+  });
+  const uploadFolders = {
+    product: process.env.CLOUDINARY_PRODUCT_FOLDER || "novawear/products",
+    avatar: process.env.CLOUDINARY_AVATAR_FOLDER || "novawear/avatars",
+    review: process.env.CLOUDINARY_REVIEW_FOLDER || "novawear/reviews",
+    return: process.env.CLOUDINARY_RETURN_FOLDER || "novawear/returns",
+  };
+
+  app.post("/api/uploads/:kind", requireAuth, (req, res) => {
+    const kind = String(req.params.kind || "");
+    if (!Object.hasOwn(uploadFolders, kind)) return notFound(res, "Loại ảnh");
+    if (kind === "product" && !["admin", "staff"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Bạn không có quyền tải ảnh sản phẩm." });
+    }
+    if (kind !== "product" && req.user.role !== "customer") {
+      return res.status(403).json({ message: "Loại tài khoản không phù hợp với ảnh này." });
+    }
+    return upload.single("file")(req, res, async (uploadError) => {
+      if (uploadError) {
+        return res.status(400).json({ message: uploadError.message || "Ảnh tải lên không hợp lệ." });
+      }
+      if (!req.file) return res.status(400).json({ message: "Vui lòng chọn một tệp ảnh." });
+      try {
+        const data = await cloudinaryService.uploadImage(req.file.buffer, uploadFolders[kind]);
+        if (kind === "avatar") {
+          const user = store.data.users.find((item) => item.id === req.user.id);
+          user.avatar = data.url;
+          const customer = store.data.customers.find((item) => item.id === user.customerId);
+          if (customer) customer.avatar = data.url;
+          store.audit("upload_avatar", "user", user.id, req.user);
+          store.save();
+        }
+        return res.status(201).json({ message: "Tải ảnh lên thành công.", data });
+      } catch (error) {
+        return res.status(error.code === "CLOUDINARY_NOT_CONFIGURED" ? 503 : 502).json({
+          message: error.code === "CLOUDINARY_NOT_CONFIGURED"
+            ? error.message
+            : "Cloudinary chưa thể xử lý ảnh. Vui lòng thử lại.",
+        });
+      }
     });
   });
 
@@ -871,6 +1100,9 @@ function createApp(options = {}) {
     if (!product) return notFound(res, "Sản phẩm");
     const rating = Number(req.body.rating);
     const content = String(req.body.content || "").trim();
+    const images = Array.isArray(req.body.images)
+      ? req.body.images.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
+      : [];
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({ message: "Điểm đánh giá phải từ 1 đến 5." });
     }
@@ -895,6 +1127,7 @@ function createApp(options = {}) {
       name: req.user.name,
       rating,
       content,
+      images,
       status: "published",
       createdAt: new Date().toISOString(),
     };
@@ -955,7 +1188,7 @@ function createApp(options = {}) {
   });
 
   app.post("/api/payments/sepay/webhook", (req, res) => {
-    if (!sepayWebhookApiKey) {
+    if (!validSepayWebhookKey) {
       return res.status(503).json({ success: false, message: "SePay webhook is not configured." });
     }
 
@@ -1036,17 +1269,48 @@ function createApp(options = {}) {
     });
   });
 
+  app.get("/api/payments/sepay/orders/:id/checkout", (req, res) => {
+    if (!sepayConfigured) {
+      return res.status(503).json({ message: "Thanh toán chuyển khoản chưa được cấu hình." });
+    }
+    const order = store.data.orders.find((item) => item.id === req.params.id);
+    const trackingCode = normalizePaymentCode(req.query.trackingCode);
+    if (!order || order.paymentProvider !== "sepay"
+      || !trackingCode || trackingCode !== normalizePaymentCode(order.trackingCode)) {
+      return notFound(res, "Payment");
+    }
+    const description = normalizePaymentCode(order.paymentCode || order.trackingCode);
+    const query = new URLSearchParams({
+      acc: sepayQr.accountNumber,
+      bank: sepayQr.bankCode,
+      amount: String(asMoney(order.total)),
+      des: description,
+      template: sepayQr.template,
+    });
+    return res.json({
+      data: {
+        orderId: order.id,
+        amount: asMoney(order.total),
+        description,
+        bankCode: sepayQr.bankCode,
+        accountNumber: sepayQr.accountNumber,
+        accountName: sepayQr.accountName,
+        qrUrl: `https://qr.sepay.vn/img?${query.toString()}`,
+      },
+    });
+  });
+
   app.post("/api/checkout/verification/request", rateLimitAuth, async (req, res) => {
     const email = normalizeText(req.body.email);
     const name = String(req.body.name || "Khách hàng").trim().slice(0, 100);
     if (!emailPattern.test(email)) {
       return res.status(400).json({ message: "Email chưa đúng định dạng." });
     }
-    const requestWindow = 15 * 60_000;
+    const requestWindow = checkoutRequestWindowSeconds * 1000;
     const requestKey = String(req.ip || "unknown");
     const recentRequests = (checkoutRequestLimits.get(requestKey) || [])
       .filter((timestamp) => Date.now() - timestamp < requestWindow);
-    if (recentRequests.length >= 5) {
+    if (recentRequests.length >= checkoutMaxCodeRequests) {
       return res.status(429).json({
         message: "Đã gửi quá nhiều mã từ kết nối này. Vui lòng thử lại sau 15 phút.",
       });
@@ -1063,8 +1327,8 @@ function createApp(options = {}) {
     const key = temporaryKey(email);
     const current = guestVerificationAttempts.get(key);
     const now = Date.now();
-    if (current?.sentAt && now - current.sentAt < 60_000) {
-      const retryAfterSeconds = Math.ceil((60_000 - (now - current.sentAt)) / 1000);
+    if (current?.sentAt && now - current.sentAt < otpResendSeconds * 1000) {
+      const retryAfterSeconds = Math.ceil((otpResendSeconds * 1000 - (now - current.sentAt)) / 1000);
       return res.status(429).json({
         message: `Vui lòng chờ ${retryAfterSeconds} giây trước khi gửi lại mã.`,
         retryAfterSeconds,
@@ -1074,7 +1338,7 @@ function createApp(options = {}) {
     const code = createVerificationCode();
     const record = {
       codeHash: hashVerificationCode(email, code, jwtSecret),
-      expiresAt: now + 10 * 60_000,
+      expiresAt: now + otpTtlSeconds * 1000,
       sentAt: now,
       attempts: 0,
     };
@@ -1096,7 +1360,7 @@ function createApp(options = {}) {
       message: "Mã xác minh đã được gửi tới email nhận thông báo đơn hàng.",
       requiresVerification: true,
       email,
-      expiresInSeconds: 600,
+      expiresInSeconds: otpTtlSeconds,
       ...(exposeVerificationCode ? { verificationCode: code } : {}),
     });
   });
@@ -1114,7 +1378,7 @@ function createApp(options = {}) {
       guestVerificationAttempts.delete(key);
       return res.status(410).json({ message: "Mã xác minh đã hết hạn. Vui lòng yêu cầu mã mới." });
     }
-    if (record.attempts >= 5) {
+    if (record.attempts >= otpMaxAttempts) {
       return res.status(429).json({ message: "Bạn đã nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới." });
     }
     const expectedHash = hashVerificationCode(email, code, jwtSecret);
@@ -1122,7 +1386,7 @@ function createApp(options = {}) {
       record.attempts += 1;
       recordAuthFailure(req.authAttemptKey);
       return res.status(400).json({
-        message: `Mã xác minh không đúng. Còn ${Math.max(0, 5 - record.attempts)} lần thử.`,
+        message: `Mã xác minh không đúng. Còn ${Math.max(0, otpMaxAttempts - record.attempts)} lần thử.`,
       });
     }
     guestVerificationAttempts.delete(key);
@@ -1130,7 +1394,7 @@ function createApp(options = {}) {
     return res.json({
       message: "Email đã được xác minh cho lần đặt hàng này.",
       checkoutToken: createGuestCheckoutToken(email),
-      expiresInSeconds: 900,
+      expiresInSeconds: guestCheckoutTokenTtlSeconds,
     });
   });
 
@@ -1237,9 +1501,15 @@ function createApp(options = {}) {
     const id = `ORD-${year}-${String(orderNumber).padStart(3, "0")}`;
     const trackingCode = `NVA${String(year).slice(-2)}${String(orderNumber).padStart(4, "0")}`;
     const createdAt = new Date().toISOString();
-    const paymentMethod = ["cod", "bank", "wallet"].includes(req.body.paymentMethod)
+    const paymentMethod = ["cod", "bank"].includes(req.body.paymentMethod)
       ? req.body.paymentMethod
       : "cod";
+    if (paymentMethod === "bank" && !sepayConfigured) {
+      return res.status(503).json({
+        message: "Thanh toán chuyển khoản đang tạm ngưng do SePay chưa được cấu hình đầy đủ.",
+        code: "SEPAY_NOT_CONFIGURED",
+      });
+    }
 
     let customerRecord = null;
     if (req.user?.customerId) {
@@ -1294,7 +1564,7 @@ function createApp(options = {}) {
       product.sold += line.quantity;
     }
     if (guestCheckoutJti) {
-      usedGuestCheckoutTokens.set(guestCheckoutJti, Date.now() + 15 * 60_000);
+      usedGuestCheckoutTokens.set(guestCheckoutJti, Date.now() + guestCheckoutTokenTtlSeconds * 1000);
       if (usedGuestCheckoutTokens.size > 5000) {
         const now = Date.now();
         for (const [jti, expiresAt] of usedGuestCheckoutTokens) {
@@ -1445,6 +1715,9 @@ function createApp(options = {}) {
       type: req.body.type === "exchange" ? "exchange" : "return",
       reason,
       note: String(req.body.note || "").slice(0, 500),
+      proofImages: Array.isArray(req.body.proofImages)
+        ? req.body.proofImages.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5)
+        : [],
       items,
       refundAmount: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
       status: "requested",

@@ -21,6 +21,7 @@ import PromotionsPage from "./pages/PromotionsPage";
 import ReturnsPage from "./pages/ReturnsPage";
 import LifestylePage from "./pages/LifestylePage";
 import NotFoundPage from "./pages/NotFoundPage";
+import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import { ToastViewport } from "./components/Common";
 
 export default function App() {
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/thanh-toan" element={<CheckoutPage />} />
         <Route path="/dang-nhap" element={<AuthPage mode="login" />} />
         <Route path="/dang-ky" element={<AuthPage mode="register" />} />
+        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
         <Route path="/DangNhap" element={<Navigate to="/dang-nhap" replace />} />
         <Route path="/DangKy" element={<Navigate to="/dang-ky" replace />} />
       </Routes>

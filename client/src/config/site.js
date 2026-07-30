@@ -12,28 +12,6 @@ export const SITE = {
     (process.env.NODE_ENV === "production" ? "/ops" : "http://localhost:3001"),
 };
 
-export const SEPAY = {
-  bank: process.env.REACT_APP_SEPAY_BANK || "MBBank",
-  accountNumber: process.env.REACT_APP_SEPAY_ACCOUNT || "0000000000",
-  accountName: process.env.REACT_APP_SEPAY_ACCOUNT_NAME || "NOVAWEAR DEMO",
-  configured: Boolean(process.env.REACT_APP_SEPAY_ACCOUNT),
-};
-
-export const buildSepayQrUrl = ({ amount, description }) => {
-  const query = new URLSearchParams({
-    acc: SEPAY.accountNumber,
-    bank: SEPAY.bank,
-    amount: String(Math.round(Number(amount || 0))),
-    des: String(description || "").toUpperCase().replace(/[^A-Z0-9]/g, ""),
-    template: "compact",
-    showinfo: "true",
-    fullacc: "true",
-    holder: SEPAY.accountName,
-    store: SITE.name,
-  });
-  return `https://vietqr.app/img?${query.toString()}`;
-};
-
 export const formatMoney = (value) =>
   new Intl.NumberFormat("vi-VN", {
     style: "currency",

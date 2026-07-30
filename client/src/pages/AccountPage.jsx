@@ -6,7 +6,7 @@ import { useShop } from "../context/ShopContext";
 import { ErrorState, Modal, SmartImage, StatusPill } from "../components/Common";
 
 export default function AccountPage() {
-  const { user, logout, notify, updateLocalUser } = useShop();
+  const { user, logout, notify, updateLocalUser, integrations } = useShop();
   const [tab, setTab] = useState("overview");
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState({ name: user?.name || "", phone: user?.phone || "", address: "" });
@@ -14,6 +14,7 @@ export default function AccountPage() {
   const [error, setError] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
 
   const load = useCallback(async () => {
@@ -80,6 +81,22 @@ export default function AccountPage() {
     finally { setSaving(false); }
   };
 
+  const uploadAvatar = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const result = await api.upload("/uploads/avatar", file);
+      updateLocalUser({ avatar: result.data.url });
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setUploadingAvatar(false);
+      event.target.value = "";
+    }
+  };
+
   const activeOrders = orders.filter((order) => !["delivered", "cancelled"].includes(order.status));
   const totalSpent = orders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
 
@@ -87,7 +104,11 @@ export default function AccountPage() {
     <div className="account-page section">
       <header className="account-header">
         <div className="account-header__identity">
-          <div className="avatar avatar--large">{user.name?.charAt(0)}</div>
+          {integrations.uploads ? <label className="avatar avatar--large account-avatar-upload" title="Đổi ảnh đại diện">
+            {user.avatar ? <SmartImage src={user.avatar} alt={user.name} /> : user.name?.charAt(0)}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadAvatar} disabled={uploadingAvatar} />
+            <span>{uploadingAvatar ? "…" : "＋"}</span>
+          </label> : <span className="avatar avatar--large">{user.avatar ? <SmartImage src={user.avatar} alt={user.name} /> : user.name?.charAt(0)}</span>}
           <div><p className="eyebrow">NOVA MEMBER / ACTIVE</p><h1>Xin chào, {user.name?.split(" ").slice(-1)[0]}.</h1><p>Quản lý đơn hàng, hồ sơ và bảo mật tài khoản của bạn.</p></div>
         </div>
         <div className="account-header__meta">
