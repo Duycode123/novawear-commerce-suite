@@ -23,6 +23,8 @@ export function ShopProvider({ children }) {
     }
   });
   const [toasts, setToasts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [integrations, setIntegrations] = useState({
     email: false,
     uploads: false,
@@ -184,12 +186,58 @@ export function ShopProvider({ children }) {
     return result;
   }, []);
 
-  const logout = useCallback(() => {
-    sessionStorage.removeItem("novawear_token");
-    sessionStorage.removeItem("novawear_user");
-    setUser(null);
-    notify("Bạn đã đăng xuất.", "info");
+  const logout = useCallback(async () => {
+    try {
+      if (sessionStorage.getItem("novawear_token")) await api.post("/auth/logout", {});
+    } catch (_error) {
+      // Always clear the browser session, even if the network is unavailable.
+    } finally {
+      sessionStorage.removeItem("novawear_token");
+      sessionStorage.removeItem("novawear_user");
+      setUser(null);
+      setNotifications([]);
+      setNotificationUnreadCount(0);
+      notify("Bạn đã đăng xuất.", "info");
+    }
   }, [notify]);
+
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const result = await api.get("/notifications?limit=20");
+      setNotifications(result.data || []);
+      setNotificationUnreadCount(Number(result.unreadCount || 0));
+    } catch (_error) {
+      // Session errors are handled by the shared API service.
+    }
+  }, [user]);
+
+  const markNotificationRead = useCallback(async (id) => {
+    await api.patch(`/notifications/${id}/read`, {});
+    setNotifications((current) => current.map((item) => (
+      item.id === id && !item.readAt ? { ...item, readAt: new Date().toISOString() } : item
+    )));
+    setNotificationUnreadCount((count) => Math.max(0, count - 1));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    await api.patch("/notifications/read-all", {});
+    const readAt = new Date().toISOString();
+    setNotifications((current) => current.map((item) => ({ ...item, readAt: item.readAt || readAt })));
+    setNotificationUnreadCount(0);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    loadNotifications();
+    const timer = window.setInterval(loadNotifications, 15000);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") loadNotifications(); };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [user, loadNotifications]);
 
   const updateLocalUser = useCallback((updates) => {
     setUser((current) => {
@@ -224,6 +272,11 @@ export function ShopProvider({ children }) {
     logout,
     updateLocalUser,
     integrations,
+    notifications,
+    notificationUnreadCount,
+    loadNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
   }), [
     cart,
     cartCount,
@@ -246,6 +299,11 @@ export function ShopProvider({ children }) {
     logout,
     updateLocalUser,
     integrations,
+    notifications,
+    notificationUnreadCount,
+    loadNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
   ]);
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;

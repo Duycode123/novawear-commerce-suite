@@ -6,6 +6,18 @@ const day = (offset) => {
   date.setDate(date.getDate() + offset);
   return date.toISOString();
 };
+const localDayKey = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: process.env.APP_TIME_ZONE || "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date()).reduce((result, item) => {
+    result[item.type] = item.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
 
 function createSeedData() {
   const createdAt = now();
@@ -265,8 +277,6 @@ function createSeedData() {
   const employees = [
     { id: "emp-001", employeeCode: "NV001", name: "Đỗ Hải Yến", email: "admin@novawear.vn", phone: "0908000001", roleTitle: "Quản lý cửa hàng", department: "Vận hành", status: "active", joinDate: "2024-01-08", shift: "08:00 - 17:00", performance: 96, address: "TP. Hồ Chí Minh", avatar: "" },
     { id: "emp-002", employeeCode: "NV002", name: "Vũ Quốc Bảo", email: "staff@novawear.vn", phone: "0908000002", roleTitle: "Nhân viên bán hàng", department: "Bán hàng", status: "active", joinDate: "2024-06-12", shift: "09:00 - 18:00", performance: 91, address: "TP. Hồ Chí Minh", avatar: "" },
-    { id: "emp-003", employeeCode: "NV003", name: "Ngô Ngọc Mai", email: "mai.ngo@novawear.vn", phone: "0908000003", roleTitle: "Nhân viên kho", department: "Kho vận", status: "active", joinDate: "2025-02-03", shift: "08:00 - 17:00", performance: 88, address: "Bình Dương", avatar: "" },
-    { id: "emp-004", employeeCode: "NV004", name: "Phan Tuấn Kiệt", email: "kiet.phan@novawear.vn", phone: "0908000004", roleTitle: "CSKH", department: "Chăm sóc khách hàng", status: "on_leave", joinDate: "2025-07-21", shift: "10:00 - 19:00", performance: 90, address: "TP. Hồ Chí Minh", avatar: "" },
   ];
 
   const users = [
@@ -392,9 +402,8 @@ function createSeedData() {
       { id: "PO-2026-002", supplier: "May An Thịnh", expectedDate: day(-2), status: "received", total: 10620000, items: [{ productId: "prd-007", quantity: 60, unitCost: 177000 }], createdAt: day(-12), receivedAt: day(-2) },
     ],
     attendance: [
-      { id: "att-001", employeeId: "emp-001", date: new Date().toISOString().slice(0, 10), checkIn: "07:52", checkOut: null, status: "present" },
-      { id: "att-002", employeeId: "emp-002", date: new Date().toISOString().slice(0, 10), checkIn: "08:47", checkOut: null, status: "present" },
-      { id: "att-003", employeeId: "emp-003", date: new Date().toISOString().slice(0, 10), checkIn: "07:58", checkOut: null, status: "present" },
+      { id: "att-001", employeeId: "emp-001", date: localDayKey(), checkIn: "07:52", checkOut: null, status: "present" },
+      { id: "att-002", employeeId: "emp-002", date: localDayKey(), checkIn: "08:47", checkOut: null, status: "present" },
     ],
     tasks: [
       { id: "task-001", employeeId: "emp-002", title: "Xác nhận đơn mới trong ca", description: "Kiểm tra địa chỉ và ghi chú của các đơn đang chờ.", priority: "high", status: "in_progress", dueDate: day(0.3), createdAt },
@@ -416,6 +425,10 @@ function createSeedData() {
     ],
     contacts: [],
     subscribers: [],
+    returns: [],
+    notifications: [],
+    inventoryMovements: [],
+    paymentTransactions: [],
     auditLogs: [],
   };
 }

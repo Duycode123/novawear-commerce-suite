@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { formatMoney } from "../config/site";
+import { formatMoney, PAYMENT_STATUS } from "../config/site";
 import { api } from "../services/api";
 
 export default function OrderSuccessPage() {
@@ -18,7 +18,7 @@ export default function OrderSuccessPage() {
   }, [order]);
 
   useEffect(() => {
-    if (!order || order.paymentMethod === "cod" || paymentStatus === "paid") return undefined;
+    if (!order || order.paymentMethod === "cod" || ["paid", "expired", "cancelled", "failed"].includes(paymentStatus)) return undefined;
     const controller = new AbortController();
     const checkPayment = async () => {
       try {
@@ -65,22 +65,22 @@ export default function OrderSuccessPage() {
         <div><span>Phương thức</span><strong>{order.paymentMethod === "cod" ? "Thanh toán khi nhận" : order.paymentMethod === "bank" ? "Chuyển khoản" : "Ví điện tử / QR"}</strong></div>
       </div>
       {order.paymentMethod !== "cod" && (
-        <section className={`sepay-payment-card ${paymentStatus === "paid" ? "sepay-payment-card--paid" : ""}`}>
+        <section className={`sepay-payment-card ${paymentStatus === "paid" ? "sepay-payment-card--paid" : ""} ${["expired", "cancelled", "failed"].includes(paymentStatus) ? "sepay-payment-card--failed" : ""}`}>
           <div className="sepay-payment-state" role="status">
-            <span>{paymentStatus === "paid" ? "✓" : ""}</span>
+            <span>{paymentStatus === "paid" ? "✓" : ["expired", "cancelled", "failed"].includes(paymentStatus) ? "!" : ""}</span>
             <div>
-              <strong>{paymentStatus === "paid" ? "Thanh toán thành công" : "Đang chờ thanh toán"}</strong>
-              <small>{paymentStatus === "paid" ? "Đơn hàng đã được tự động xác nhận." : "Trang sẽ tự cập nhật ngay khi SePay báo tiền về."}</small>
+              <strong>{PAYMENT_STATUS[paymentStatus]?.label || "Đang chờ thanh toán"}</strong>
+              <small>{paymentStatus === "paid" ? "Đơn hàng đã được tự động xác nhận." : ["expired", "cancelled", "failed"].includes(paymentStatus) ? "Đơn không còn nhận chuyển khoản. Tồn kho đã được giải phóng; vui lòng đặt đơn mới." : "Trang sẽ tự cập nhật ngay khi SePay báo tiền về."}</small>
             </div>
           </div>
-          <div className="sepay-payment-card__qr">
+          {!['expired', 'cancelled', 'failed'].includes(paymentStatus) && <div className="sepay-payment-card__qr">
             <span>Thanh toán qua <b>SePay</b></span>
             {paymentDetails?.qrUrl
               ? <img src={paymentDetails.qrUrl} alt={`Mã QR thanh toán cho đơn ${order.id}`} />
               : <div className="skeleton skeleton--panel" aria-label="Đang tải mã QR" />}
             <small>Quét bằng ứng dụng ngân hàng</small>
-          </div>
-          <div className="sepay-payment-card__info">
+          </div>}
+          {!['expired', 'cancelled', 'failed'].includes(paymentStatus) && <div className="sepay-payment-card__info">
             <p className="eyebrow">Chờ thanh toán</p>
             <h2>{formatMoney(order.total)}</h2>
             <div><span>Ngân hàng</span><strong>{paymentDetails?.bankCode || "Đang tải..."}</strong></div>
@@ -88,7 +88,7 @@ export default function OrderSuccessPage() {
             <div><span>Chủ tài khoản</span><strong>{paymentDetails?.accountName || "Đang tải..."}</strong></div>
             <div><span>Nội dung chuyển khoản</span><strong>{transferContent}</strong><button type="button" onClick={() => copy(transferContent, "content")}>{copied === "content" ? "Đã chép" : "Sao chép"}</button></div>
             <p className="sepay-payment-card__notice">Sau khi chuyển khoản, hệ thống sẽ tự động xác nhận trong khoảng 1–5 phút.</p>
-          </div>
+          </div>}
         </section>
       )}
       <div className="success-actions">

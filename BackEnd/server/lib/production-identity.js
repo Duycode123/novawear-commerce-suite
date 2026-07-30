@@ -29,8 +29,11 @@ function enforceProductionIdentityPolicy(store, options = {}) {
   const allowDemoAccounts = options.allowDemoAccounts
     ?? enabled(process.env.ALLOW_DEMO_ACCOUNTS);
 
-  if (!production || allowDemoAccounts) {
+  if (!production) {
     return { changed: false, demoAccountsDisabled: false, bootstrapAdminReady: false };
+  }
+  if (allowDemoAccounts) {
+    throw new Error("ALLOW_DEMO_ACCOUNTS không được phép bật trên production.");
   }
 
   const email = normalizeEmail(options.bootstrapEmail || process.env.BOOTSTRAP_ADMIN_EMAIL);

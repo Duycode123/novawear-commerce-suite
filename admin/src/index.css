@@ -2179,6 +2179,18 @@ p {
   font-size: 0.58rem;
 }
 
+.ops-staff-assignment strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  font-size: 0.62rem;
+}
+
+.ops-staff-assignment .ops-secondary-button {
+  align-self: flex-start;
+  min-height: 36px;
+}
+
 .ops-order-detail__grid {
   display: grid;
   margin-top: 20px;

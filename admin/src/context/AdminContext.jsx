@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../services/api";
 
 const AdminContext = createContext(null);
@@ -12,9 +12,13 @@ function readUser() {
 }
 
 export function AdminProvider({ children }) {
-  const [user, setUser] = useState(readUser);
-  const [bootstrapping, setBootstrapping] = useState(() => window.location.hash.includes("code="));
+  const handoffCodeRef = useRef(new URLSearchParams(window.location.hash.replace(/^#/, "")).get("code"));
+  const handoffStartedRef = useRef(false);
+  const [user, setUser] = useState(() => (handoffCodeRef.current ? null : readUser()));
+  const [bootstrapping, setBootstrapping] = useState(() => Boolean(handoffCodeRef.current));
   const [toasts, setToasts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
 
   useEffect(() => {
     const expire = () => setUser(null);
@@ -23,12 +27,18 @@ export function AdminProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const code = params.get("code");
+    const code = handoffCodeRef.current;
     if (!code) {
       setBootstrapping(false);
       return;
     }
+    // React StrictMode runs mount effects twice in development. Keep the
+    // one-time handoff alive instead of letting the second pass redirect the
+    // operator back to the storefront while the exchange is still pending.
+    if (handoffStartedRef.current) return;
+    handoffStartedRef.current = true;
+    sessionStorage.removeItem("nova_ops_token");
+    sessionStorage.removeItem("nova_ops_user");
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     api.post("/auth/operations-exchange", { code })
       .then((result) => {
@@ -74,11 +84,67 @@ export function AdminProvider({ children }) {
     return exchanged.user;
   }, []);
 
-  const logout = useCallback(() => {
-    sessionStorage.removeItem("nova_ops_token");
-    sessionStorage.removeItem("nova_ops_user");
-    setUser(null);
+  const logout = useCallback(async () => {
+    try {
+      if (sessionStorage.getItem("nova_ops_token")) await api.post("/auth/logout", {});
+    } catch (_error) {
+      // Always clear the local session, even if the API is unavailable.
+    } finally {
+      sessionStorage.removeItem("nova_ops_token");
+      sessionStorage.removeItem("nova_ops_user");
+      setUser(null);
+      setNotifications([]);
+      setNotificationUnreadCount(0);
+    }
   }, []);
+
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    const result = await api.put("/auth/password", { currentPassword, newPassword });
+    if (result.token) sessionStorage.setItem("nova_ops_token", result.token);
+    if (result.user) {
+      sessionStorage.setItem("nova_ops_user", JSON.stringify(result.user));
+      setUser(result.user);
+    }
+    return result;
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const result = await api.get("/notifications?limit=30");
+      setNotifications(result.data || []);
+      setNotificationUnreadCount(Number(result.unreadCount || 0));
+    } catch (_error) {
+      // Session errors are handled centrally by the API service.
+    }
+  }, [user]);
+
+  const markNotificationRead = useCallback(async (id) => {
+    await api.patch(`/notifications/${id}/read`, {});
+    setNotifications((current) => current.map((item) => (
+      item.id === id && !item.readAt ? { ...item, readAt: new Date().toISOString() } : item
+    )));
+    setNotificationUnreadCount((count) => Math.max(0, count - 1));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    await api.patch("/notifications/read-all", {});
+    const readAt = new Date().toISOString();
+    setNotifications((current) => current.map((item) => ({ ...item, readAt: item.readAt || readAt })));
+    setNotificationUnreadCount(0);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    loadNotifications();
+    const timer = window.setInterval(loadNotifications, 15000);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") loadNotifications(); };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [user, loadNotifications]);
 
   const value = useMemo(() => ({
     user,
@@ -87,8 +153,17 @@ export function AdminProvider({ children }) {
     login,
     logout,
     notify,
+    changePassword,
+    notifications,
+    notificationUnreadCount,
+    loadNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
     removeToast: (id) => setToasts((current) => current.filter((toast) => toast.id !== id)),
-  }), [user, bootstrapping, toasts, login, logout, notify]);
+  }), [
+    user, bootstrapping, toasts, login, logout, notify, changePassword, notifications,
+    notificationUnreadCount, loadNotifications, markNotificationRead, markAllNotificationsRead,
+  ]);
 
   return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>;
 }

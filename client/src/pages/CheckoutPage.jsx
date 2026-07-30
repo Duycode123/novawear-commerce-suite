@@ -31,6 +31,10 @@ export default function CheckoutPage() {
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
   const touchedRecipientFields = useRef(new Set());
   const activeUserId = useRef(user?.id || null);
+  const checkoutRequestId = useRef(
+    window.crypto?.randomUUID?.()
+      || `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
+  );
 
   const standardShippingFee = useMemo(() => {
     if (cartSubtotal >= SITE.freeShippingThreshold) return 0;
@@ -211,6 +215,7 @@ export default function CheckoutPage() {
         paymentMethod: form.paymentMethod,
         note: form.note,
         checkoutToken: emailVerification.checkoutToken,
+        requestId: checkoutRequestId.current,
       });
       notify(result.message, result.warning ? "info" : "success");
       clearCart();

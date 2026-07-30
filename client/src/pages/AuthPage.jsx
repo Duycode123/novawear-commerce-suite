@@ -21,7 +21,13 @@ export default function AuthPage({ mode = "login" }) {
     api.get("/auth/oauth/config")
       .then((result) => setOauth(result.data || {}))
       .catch(() => setOauth({ google: false, facebook: false }));
-    const errorCode = new URLSearchParams(window.location.search).get("oauthError");
+    const params = new URLSearchParams(window.location.search);
+    const errorCode = params.get("oauthError");
+    const verifyEmail = params.get("verifyEmail");
+    if (verifyEmail) {
+      setVerification({ email: verifyEmail, code: "", demoCode: "" });
+      notify("Hãy nhập mã đã gửi tới email để hoàn tất đăng nhập liên kết.", "info");
+    }
     if (errorCode) notify("Không thể đăng nhập bằng tài khoản liên kết. Vui lòng thử lại.", "error");
   }, [notify]);
 

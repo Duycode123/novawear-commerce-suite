@@ -1,8 +1,5 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
 const Account = require('../model/taikhoan');
-
-const SECRET_KEY = 'your-secret-key'; // Khóa bí mật dùng để mã hóa token (nên lưu trong biến môi trường thực tế)
 
 exports.loginAccount = (req, res) => {
     const { email, mat_khau } = req.body;
@@ -22,13 +19,19 @@ exports.loginAccount = (req, res) => {
 
         // Nếu đăng nhập thành công, tạo token
         const user = result.user;
+        const secretKey = String(process.env.JWT_SECRET || "");
+        if (Buffer.byteLength(secretKey, "utf8") < 32) {
+            return res.status(503).json({
+                message: "Máy chủ chưa được cấu hình khóa đăng nhập an toàn.",
+            });
+        }
         const token = jwt.sign(
             {
                 id_tai_khoan: user.id_tai_khoan,
                 ten_nguoi_dung: user.ten_nguoi_dung,
                 email: user.email,
             },
-            SECRET_KEY,
+            secretKey,
             { expiresIn: '1h' } // Thời gian hết hạn của token là 1 giờ
         );
 

@@ -247,7 +247,7 @@ export default function HomePage() {
         </div>
         <div className="home-v4-hero__copy">
           <p className="eyebrow">BỘ SƯU TẬP MỚI · 2026</p>
-          <h1>Mặc đẹp theo <em>nhịp của bạn.</em></h1>
+          <h1>Mặc đẹp, theo <em>nhịp của bạn.</em></h1>
           <p>Những thiết kế tối giản, linh hoạt và dễ chịu — sẵn sàng đi cùng bạn từ ngày làm việc đến khoảng thời gian dành riêng cho mình.</p>
           <div>
             <Link className="button button--dark" to="/cua-hang">Khám phá bộ sưu tập <span>→</span></Link>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { BRAND } from "../config";
+import { BRAND, formatDate } from "../config";
 import { useAdmin } from "../context/AdminContext";
 import { Toasts } from "./Ui";
 import OpsIcon from "./OpsIcon";
@@ -9,7 +9,7 @@ const groups = [
   {
     label: "Tổng quan",
     items: [
-      { to: "/", label: "Bảng điều khiển", icon: "home", end: true },
+      { to: "/", label: "Bảng điều khiển", icon: "home", end: true, adminOnly: true },
       { to: "/workspace", label: "Không gian nhân viên", icon: "workspace" },
     ],
   },
@@ -47,9 +47,13 @@ const groups = [
 ];
 
 export default function AdminLayout() {
-  const { user, logout } = useAdmin();
+  const {
+    user, logout, notifications, notificationUnreadCount,
+    markNotificationRead, markAllNotificationsRead,
+  } = useAdmin();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,6 +61,7 @@ export default function AdminLayout() {
   useEffect(() => {
     setSidebarOpen(false);
     setProfileOpen(false);
+    setNotificationOpen(false);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [location.pathname]);
 
@@ -103,7 +108,41 @@ export default function AdminLayout() {
           </form>
           <div className="ops-topbar__actions">
             <div className="ops-topbar__date"><strong>Hôm nay</strong><span>{new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date())}</span></div>
-            <button type="button" aria-label="Thông báo" className="ops-notification"><OpsIcon name="bell" /><span>3</span></button>
+            <button
+              type="button"
+              aria-label="Thông báo"
+              className={`ops-notification ${notificationOpen ? "is-open" : ""}`}
+              aria-expanded={notificationOpen}
+              onClick={() => { setNotificationOpen((value) => !value); setProfileOpen(false); }}
+            >
+              <OpsIcon name="bell" />
+              {notificationUnreadCount > 0 && <span>{notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}</span>}
+            </button>
+            {notificationOpen && (
+              <div className="ops-notification-menu">
+                <header>
+                  <div><strong>Thông báo vận hành</strong><small>{notificationUnreadCount} thông báo chưa đọc</small></div>
+                  {notificationUnreadCount > 0 && <button type="button" onClick={markAllNotificationsRead}>Đọc tất cả</button>}
+                </header>
+                <div>
+                  {notifications.length ? notifications.map((item) => (
+                    <button
+                      type="button"
+                      className={item.readAt ? "" : "is-unread"}
+                      key={item.id}
+                      onClick={async () => {
+                        if (!item.readAt) await markNotificationRead(item.id);
+                        setNotificationOpen(false);
+                        navigate(item.href || "/orders");
+                      }}
+                    >
+                      <i />
+                      <span><strong>{item.title}</strong><small>{item.message}</small><time>{formatDate(item.createdAt, true)}</time></span>
+                    </button>
+                  )) : <p>Chưa có cập nhật mới.</p>}
+                </div>
+              </div>
+            )}
             <button type="button" className="ops-profile-trigger" onClick={() => setProfileOpen((value) => !value)}>
               <span>{user?.name?.charAt(0)}</span>
               <div><strong>{user?.name}</strong><small>{user?.role === "admin" ? "Quản trị viên" : "Nhân viên"}</small></div>

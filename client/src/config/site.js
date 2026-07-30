@@ -28,10 +28,35 @@ export const formatDate = (value, options = {}) =>
   }).format(new Date(value));
 
 export const ORDER_STATUS = {
-  pending: { label: "Chờ xác nhận", tone: "amber" },
+  pending: { label: "Đã tiếp nhận", tone: "amber" },
   confirmed: { label: "Đã xác nhận", tone: "blue" },
   packing: { label: "Đang đóng gói", tone: "purple" },
+  ready_to_ship: { label: "Chờ bàn giao vận chuyển", tone: "amber" },
   shipping: { label: "Đang giao", tone: "blue" },
-  delivered: { label: "Đã giao", tone: "green" },
+  delivery_failed: { label: "Giao chưa thành công", tone: "red" },
+  delivered: { label: "Giao thành công", tone: "green" },
   cancelled: { label: "Đã hủy", tone: "red" },
+};
+
+export const PAYMENT_STATUS = {
+  pending: { label: "Thanh toán khi nhận hàng", tone: "amber" },
+  awaiting: { label: "Chờ chuyển khoản", tone: "amber" },
+  paid: { label: "Đã thanh toán", tone: "green" },
+  refund_pending: { label: "Đang xử lý hoàn tiền", tone: "purple" },
+  refunded: { label: "Đã hoàn tiền", tone: "blue" },
+  partially_refunded: { label: "Đã hoàn tiền một phần", tone: "blue" },
+  expired: { label: "Hết hạn thanh toán", tone: "red" },
+  failed: { label: "Thanh toán thất bại", tone: "red" },
+  cancelled: { label: "Thanh toán đã hủy", tone: "neutral" },
+  review_required: { label: "Đang đối soát thanh toán", tone: "red" },
+};
+
+export const RETURN_STATUS = {
+  requested: "Đã tiếp nhận yêu cầu",
+  approved: "Đã chấp thuận",
+  receiving: "Đang nhận hàng hoàn",
+  inspecting: "Đang kiểm tra sản phẩm",
+  completed: "Đã hoàn tất",
+  rejected: "Đã từ chối",
+  cancelled: "Bạn đã hủy yêu cầu",
 };

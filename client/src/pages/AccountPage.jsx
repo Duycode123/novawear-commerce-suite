@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
-import { formatDate, formatMoney } from "../config/site";
+import { formatDate, formatMoney, PAYMENT_STATUS } from "../config/site";
 import { useShop } from "../context/ShopContext";
 import { ErrorState, Modal, SmartImage, StatusPill } from "../components/Common";
 
 export default function AccountPage() {
   const { user, logout, notify, updateLocalUser, integrations } = useShop();
-  const [tab, setTab] = useState("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => searchParams.get("tab") || "overview");
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState({ name: user?.name || "", phone: user?.phone || "", address: "" });
   const [loading, setLoading] = useState(true);
@@ -16,29 +17,67 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [cancelReason, setCancelReason] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!user) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const [me, history] = await Promise.all([api.get("/auth/me"), api.get("/orders/my")]);
       setOrders(history.data);
+      const openId = searchParams.get("order");
+      setSelectedOrder((current) => {
+        const targetId = openId || current?.id;
+        return targetId ? history.data.find((item) => item.id === targetId) || null : current;
+      });
       setProfile({
         name: me.user.name,
         phone: me.user.phone || "",
         address: me.customer?.address || me.employee?.address || "",
       });
     } catch (requestError) {
-      setError(requestError.message);
+      if (!silent) setError(requestError.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [user]);
+  }, [user, searchParams]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const timer = window.setInterval(() => load({ silent: true }), 15000);
+    return () => window.clearInterval(timer);
+  }, [user, load]);
+
+  const changeTab = (nextTab) => {
+    setTab(nextTab);
+    const next = new URLSearchParams(searchParams);
+    if (nextTab === "overview") next.delete("tab"); else next.set("tab", nextTab);
+    next.delete("order");
+    setSearchParams(next, { replace: true });
+  };
+
+  const openOrder = (order) => {
+    setSelectedOrder(order);
+    setCancelReason("");
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", "orders");
+    next.set("order", order.id);
+    setTab("orders");
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeOrder = () => {
+    setSelectedOrder(null);
+    setCancelReason("");
+    const next = new URLSearchParams(searchParams);
+    next.delete("order");
+    setSearchParams(next, { replace: true });
+  };
 
   if (!user) return <Navigate to="/dang-nhap" state={{ from: "/tai-khoan" }} replace />;
 
@@ -56,15 +95,19 @@ export default function AccountPage() {
     }
   };
 
-  const cancelOrder = async (orderId) => {
-    if (!window.confirm("Bạn chắc chắn muốn hủy đơn hàng này?")) return;
+  const cancelOrder = async (order) => {
     try {
-      const result = await api.patch(`/orders/${orderId}/cancel`, {});
-      setOrders((current) => current.map((item) => item.id === orderId ? result.data : item));
+      const result = await api.patch(`/orders/${order.id}/cancel`, {
+        reason: cancelReason,
+        expectedVersion: order.version,
+      });
+      setOrders((current) => current.map((item) => item.id === order.id ? result.data : item));
       setSelectedOrder(result.data);
+      setCancelReason("");
       notify(result.message);
     } catch (requestError) {
       notify(requestError.message, "error");
+      if (requestError.status === 409) await load({ silent: true });
     }
   };
   const changePassword = async (event) => {
@@ -98,7 +141,9 @@ export default function AccountPage() {
   };
 
   const activeOrders = orders.filter((order) => !["delivered", "cancelled"].includes(order.status));
-  const totalSpent = orders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
+  const totalSpent = orders
+    .filter((order) => order.status === "delivered" && ["paid", "partially_refunded"].includes(order.paymentStatus))
+    .reduce((sum, order) => sum + Math.max(0, order.total - Number(order.refundedAmount || 0)), 0);
 
   return (
     <div className="account-page section">
@@ -121,10 +166,10 @@ export default function AccountPage() {
       <div className="account-layout">
         <aside className="account-nav">
           <p>Quản lý tài khoản</p>
-          <button className={tab === "overview" ? "is-active" : ""} onClick={() => setTab("overview")} type="button"><span>01</span>Tổng quan</button>
-          <button className={tab === "orders" ? "is-active" : ""} onClick={() => setTab("orders")} type="button"><span>02</span>Đơn hàng <b>{orders.length}</b></button>
-          <button className={tab === "profile" ? "is-active" : ""} onClick={() => setTab("profile")} type="button"><span>03</span>Thông tin cá nhân</button>
-          <button className={tab === "security" ? "is-active" : ""} onClick={() => setTab("security")} type="button"><span>04</span>Bảo mật</button>
+          <button className={tab === "overview" ? "is-active" : ""} onClick={() => changeTab("overview")} type="button"><span>01</span>Tổng quan</button>
+          <button className={tab === "orders" ? "is-active" : ""} onClick={() => changeTab("orders")} type="button"><span>02</span>Đơn hàng <b>{orders.length}</b></button>
+          <button className={tab === "profile" ? "is-active" : ""} onClick={() => changeTab("profile")} type="button"><span>03</span>Thông tin cá nhân</button>
+          <button className={tab === "security" ? "is-active" : ""} onClick={() => changeTab("security")} type="button"><span>04</span>Bảo mật</button>
           <p>Dịch vụ</p>
           <Link to="/doi-tra"><span>05</span>Đổi trả & hoàn tiền</Link>
           <Link to="/ho-tro"><span>06</span>Trợ giúp</Link>
@@ -137,20 +182,20 @@ export default function AccountPage() {
           {!loading && !error && tab === "overview" && (
             <>
               <div className="account-stats">
-                <div><span>Đơn đang xử lý</span><strong>{activeOrders.length}</strong><small>Theo dõi ngay →</small></div>
+                <button type="button" onClick={() => changeTab("orders")}><span>Đơn đang xử lý</span><strong>{activeOrders.length}</strong><small>Theo dõi ngay →</small></button>
                 <div><span>Tổng đơn hàng</span><strong>{orders.length}</strong><small>Từ khi tham gia</small></div>
                 <div><span>Tổng chi tiêu</span><strong>{formatMoney(totalSpent)}</strong><small>Cảm ơn bạn!</small></div>
               </div>
               <section className="account-panel">
-                <div className="panel-heading"><div><p className="eyebrow">Gần đây</p><h2>Đơn hàng mới nhất</h2></div><button type="button" onClick={() => setTab("orders")}>Xem tất cả →</button></div>
+                <div className="panel-heading"><div><p className="eyebrow">Gần đây</p><h2>Đơn hàng mới nhất</h2></div><button type="button" onClick={() => changeTab("orders")}>Xem tất cả →</button></div>
                 {orders.length ? (
                   <div className="compact-orders">
                     {orders.slice(0, 3).map((order) => (
-                      <button type="button" className="compact-order" onClick={() => setSelectedOrder(order)} key={order.id}>
+                      <button type="button" className="compact-order" onClick={() => openOrder(order)} key={order.id}>
                         <div className="compact-order__images">
                           {order.items.slice(0, 2).map((item, index) => <SmartImage src={item.image} alt="" key={`${item.productId}-${index}`} />)}
                         </div>
-                        <div><strong>{order.id}</strong><span>{formatDate(order.createdAt)} · {order.items.length} sản phẩm</span></div>
+                        <div><strong>{order.id}</strong><span>{formatDate(order.createdAt)} · {order.items.reduce((sum, item) => sum + item.quantity, 0)} sản phẩm</span></div>
                         <StatusPill status={order.status} />
                         <b>{formatMoney(order.total)}</b>
                         <span>→</span>
@@ -183,7 +228,7 @@ export default function AccountPage() {
                           ))}
                         </div>
                         <div><span>Tổng thanh toán</span><strong>{formatMoney(order.total)}</strong></div>
-                        <button type="button" onClick={() => setSelectedOrder(order)}>Xem chi tiết →</button>
+                        <button type="button" onClick={() => openOrder(order)}>Xem chi tiết →</button>
                       </div>
                     </article>
                   ))}
@@ -214,19 +259,23 @@ export default function AccountPage() {
         </main>
       </div>
 
-      <Modal open={Boolean(selectedOrder)} title={`Chi tiết ${selectedOrder?.id || ""}`} onClose={() => setSelectedOrder(null)} size="large">
+      <Modal open={Boolean(selectedOrder)} title={`Chi tiết ${selectedOrder?.id || ""}`} onClose={closeOrder} size="large">
         {selectedOrder && (
           <div className="order-detail-modal">
             <div className="order-detail-meta">
               <div><span>Trạng thái</span><StatusPill status={selectedOrder.status} /></div>
               <div><span>Mã tra cứu</span><strong>{selectedOrder.trackingCode}</strong></div>
               <div><span>Ngày đặt</span><strong>{formatDate(selectedOrder.createdAt)}</strong></div>
+              <div><span>Thanh toán</span><strong className={`customer-payment customer-payment--${selectedOrder.paymentStatus}`}>{PAYMENT_STATUS[selectedOrder.paymentStatus]?.label || selectedOrder.paymentStatus}</strong></div>
             </div>
+            {selectedOrder.paymentStatus === "refund_pending" && <div className="order-alert order-alert--refund"><strong>Khoản thanh toán đang được hoàn</strong><p>NOVAWEAR sẽ cập nhật mã đối soát ngay khi giao dịch hoàn tiền hoàn tất.</p></div>}
+            {selectedOrder.status === "delivery_failed" && <div className="order-alert order-alert--danger"><strong>Lần giao gần nhất chưa thành công</strong><p>{selectedOrder.lastDeliveryFailure?.reason || "Đội ngũ vận hành đang liên hệ để sắp xếp giao lại."}</p></div>}
             <div className="order-timeline">
               {selectedOrder.timeline.map((entry, index) => (
-                <div className="is-done" key={`${entry.status}-${index}`}><i>✓</i><span><strong>{entry.label}</strong><small>{formatDate(entry.at, { hour: "2-digit", minute: "2-digit" })}</small></span></div>
+                <div className="is-done" key={entry.id || `${entry.status}-${index}`}><i>✓</i><span><strong>{entry.label}</strong>{entry.note && <p>{entry.note}</p>}<small>{entry.actorName || "Hệ thống NOVAWEAR"} · {formatDate(entry.at, { hour: "2-digit", minute: "2-digit" })}</small></span></div>
               ))}
             </div>
+            {selectedOrder.shipment?.trackingNumber && <div className="order-shipment"><div><span>Đơn vị vận chuyển</span><strong>{selectedOrder.shipment.carrier}</strong></div><div><span>Mã vận đơn</span><strong>{selectedOrder.shipment.trackingNumber}</strong></div><div><span>Số lần giao</span><strong>{selectedOrder.deliveryAttempts || 1}</strong></div>{selectedOrder.shipment.estimatedDeliveryAt && <div><span>Dự kiến giao</span><strong>{formatDate(selectedOrder.shipment.estimatedDeliveryAt, { hour: "2-digit", minute: "2-digit" })}</strong></div>}</div>}
             <div className="order-detail-items">
               {selectedOrder.items.map((item, index) => (
                 <div key={`${item.productId}-${index}`}>
@@ -238,7 +287,7 @@ export default function AccountPage() {
             </div>
             <div className="order-detail-total"><span>Tổng thanh toán</span><strong>{formatMoney(selectedOrder.total)}</strong></div>
             {["pending", "confirmed"].includes(selectedOrder.status) && (
-              <button className="button button--danger" type="button" onClick={() => cancelOrder(selectedOrder.id)}>Hủy đơn hàng</button>
+              <div className="customer-cancel-order"><label className="field"><span>Lý do hủy đơn *</span><input value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} minLength={5} placeholder="Ví dụ: Tôi muốn thay đổi sản phẩm trong đơn" /></label><button className="button button--danger" disabled={cancelReason.trim().length < 5} type="button" onClick={() => cancelOrder(selectedOrder)}>Xác nhận hủy đơn hàng</button><small>Đơn đã thanh toán sẽ chuyển sang quy trình hoàn tiền, không thay đổi thủ công.</small></div>
             )}
           </div>
         )}

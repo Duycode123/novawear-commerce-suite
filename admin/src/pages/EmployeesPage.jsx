@@ -17,7 +17,7 @@ const emptyForm = {
   address: "",
   createAccount: true,
   accountRole: "staff",
-  temporaryPassword: "Welcome@123",
+  temporaryPassword: "Welcome@2026!",
 };
 
 export default function EmployeesPage() {
@@ -139,7 +139,7 @@ export default function EmployeesPage() {
           {!selected && (
             <div className="ops-account-create">
               <label className="ops-check"><input type="checkbox" name="createAccount" checked={form.createAccount} onChange={change} /><span>Tạo tài khoản đăng nhập NOVA OPS</span></label>
-              {form.createAccount && <div className="ops-form-grid"><label className="ops-field"><span>Quyền tài khoản</span><select name="accountRole" value={form.accountRole} onChange={change}><option value="staff">Nhân viên</option><option value="admin">Quản trị viên</option></select></label><label className="ops-field"><span>Mật khẩu tạm</span><input name="temporaryPassword" minLength={8} value={form.temporaryPassword} onChange={change} /></label></div>}
+              {form.createAccount && <div className="ops-form-grid"><label className="ops-field"><span>Quyền tài khoản</span><select name="accountRole" value={form.accountRole} onChange={change}><option value="staff">Nhân viên</option><option value="admin">Quản trị viên</option></select></label><label className="ops-field"><span>Mật khẩu tạm</span><input name="temporaryPassword" type="password" required minLength={12} maxLength={128} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,128}" value={form.temporaryPassword} onChange={change} /><small>Ít nhất 12 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt. Người dùng phải đổi ngay lần đầu đăng nhập.</small></label></div>}
             </div>
           )}
           <div className="ops-form-actions">{selected && selected.status !== "inactive" && <button className="ops-danger-button" type="button" onClick={() => deactivate(selected)}>Ngừng hoạt động</button>}<div /><button className="ops-secondary-button" type="button" onClick={close}>Hủy</button><button className="ops-primary-button" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu hồ sơ"}</button></div>

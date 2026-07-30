@@ -118,7 +118,15 @@ const projectionSchemas = [
     payment_method TEXT,
     total BIGINT NOT NULL DEFAULT 0,
     tracking_code TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    carrier TEXT,
+    shipment_tracking_number TEXT,
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    payment_expires_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
     data JSONB NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS novawear_customers (
@@ -187,7 +195,48 @@ const projectionSchemas = [
     reason TEXT,
     status TEXT,
     refund_amount BIGINT NOT NULL DEFAULT 0,
+    refund_status TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    refunded_at TIMESTAMPTZ,
+    data JSONB NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS novawear_notifications (
+    id TEXT PRIMARY KEY,
+    audience TEXT NOT NULL,
+    user_id TEXT,
+    customer_id TEXT,
+    order_id TEXT,
+    type TEXT,
+    title TEXT NOT NULL,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ,
+    data JSONB NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS novawear_inventory_movements (
+    id TEXT PRIMARY KEY,
+    product_id TEXT,
+    order_id TEXT,
+    return_id TEXT,
+    size TEXT,
+    color TEXT,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    reason TEXT,
+    before_stock INTEGER NOT NULL DEFAULT 0,
+    after_stock INTEGER NOT NULL DEFAULT 0,
+    actor_id TEXT,
+    created_at TIMESTAMPTZ,
+    data JSONB NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS novawear_payment_transactions (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    gateway TEXT,
+    reference_code TEXT,
+    transfer_amount BIGINT NOT NULL DEFAULT 0,
+    received_at TIMESTAMPTZ,
     data JSONB NOT NULL
   )`,
 ];
@@ -200,7 +249,11 @@ const projectionQueries = [
       (id,name,email,phone,role,status,verified_at,customer_id,employee_id,created_at,data)
       SELECT item->>'id', item->>'name', item->>'email', item->>'phone',
         item->>'role', item->>'status', NULLIF(item->>'emailVerifiedAt','')::timestamptz,
-        item->>'customerId', item->>'employeeId', NULLIF(item->>'createdAt','')::timestamptz, item
+        item->>'customerId', item->>'employeeId', NULLIF(item->>'createdAt','')::timestamptz,
+        item - 'passwordHash' - 'verificationCodeHash' - 'verificationExpiresAt'
+          - 'verificationAttempts' - 'verificationSentAt' - 'passwordResetCodeHash'
+          - 'passwordResetExpiresAt' - 'passwordResetAttempts' - 'passwordResetSentAt'
+          - 'tokenVersion' - 'googleId' - 'facebookId'
       FROM jsonb_array_elements($1::jsonb) AS item`,
   },
   {
@@ -230,11 +283,16 @@ const projectionQueries = [
     table: "novawear_orders",
     collection: "orders",
     sql: `INSERT INTO novawear_orders
-      (id,customer_id,customer_name,customer_phone,status,payment_status,payment_method,total,tracking_code,created_at,data)
+      (id,customer_id,customer_name,customer_phone,status,payment_status,payment_method,total,tracking_code,
+       version,carrier,shipment_tracking_number,delivery_attempts,payment_expires_at,delivered_at,cancelled_at,created_at,updated_at,data)
       SELECT item->>'id', item->>'customerId', item#>>'{customer,name}', item#>>'{customer,phone}',
         item->>'status', item->>'paymentStatus', item->>'paymentMethod',
         COALESCE(NULLIF(item->>'total','')::bigint,0), item->>'trackingCode',
-        NULLIF(item->>'createdAt','')::timestamptz, item
+        COALESCE(NULLIF(item->>'version','')::integer,1), item#>>'{shipment,carrier}',
+        item#>>'{shipment,trackingNumber}', COALESCE(NULLIF(item->>'deliveryAttempts','')::integer,0),
+        NULLIF(item->>'paymentExpiresAt','')::timestamptz, NULLIF(item->>'deliveredAt','')::timestamptz,
+        NULLIF(item->>'cancelledAt','')::timestamptz, NULLIF(item->>'createdAt','')::timestamptz,
+        NULLIF(item->>'updatedAt','')::timestamptz, item
       FROM jsonb_array_elements($1::jsonb) AS item`,
   },
   {
@@ -296,20 +354,75 @@ const projectionQueries = [
     table: "novawear_returns",
     collection: "returns",
     sql: `INSERT INTO novawear_returns
-      (id,order_id,customer_id,type,reason,status,refund_amount,created_at,data)
+      (id,order_id,customer_id,type,reason,status,refund_amount,refund_status,version,created_at,updated_at,completed_at,refunded_at,data)
       SELECT item->>'id', item->>'orderId', item->>'customerId', item->>'type',
         item->>'reason', item->>'status',
         COALESCE(NULLIF(item->>'refundAmount','')::bigint,0),
+        item->>'refundStatus', COALESCE(NULLIF(item->>'version','')::integer,1),
+        NULLIF(item->>'createdAt','')::timestamptz, NULLIF(item->>'updatedAt','')::timestamptz,
+        NULLIF(item->>'completedAt','')::timestamptz, NULLIF(item->>'refundedAt','')::timestamptz, item
+      FROM jsonb_array_elements($1::jsonb) AS item`,
+  },
+  {
+    table: "novawear_notifications",
+    collection: "notifications",
+    sql: `INSERT INTO novawear_notifications
+      (id,audience,user_id,customer_id,order_id,type,title,read_at,created_at,data)
+      SELECT item->>'id', item->>'audience', item->>'userId', item->>'customerId',
+        item->>'orderId', item->>'type', item->>'title',
+        NULLIF(item->>'readAt','')::timestamptz,
         NULLIF(item->>'createdAt','')::timestamptz, item
+      FROM jsonb_array_elements($1::jsonb) AS item`,
+  },
+  {
+    table: "novawear_inventory_movements",
+    collection: "inventoryMovements",
+    sql: `INSERT INTO novawear_inventory_movements
+      (id,product_id,order_id,return_id,size,color,quantity,reason,before_stock,after_stock,actor_id,created_at,data)
+      SELECT item->>'id', item->>'productId', item->>'orderId', item->>'returnId',
+        item->>'size', item->>'color', COALESCE(NULLIF(item->>'quantity','')::integer,0),
+        item->>'reason', COALESCE(NULLIF(item->>'before','')::integer,0),
+        COALESCE(NULLIF(item->>'after','')::integer,0), item->>'actorId',
+        NULLIF(item->>'createdAt','')::timestamptz, item
+      FROM jsonb_array_elements($1::jsonb) AS item`,
+  },
+  {
+    table: "novawear_payment_transactions",
+    collection: "paymentTransactions",
+    sql: `INSERT INTO novawear_payment_transactions
+      (id,order_id,gateway,reference_code,transfer_amount,received_at,data)
+      SELECT item->>'id', item->>'orderId', item->>'gateway', item->>'referenceCode',
+        COALESCE(NULLIF(item->>'transferAmount','')::bigint,0),
+        NULLIF(item->>'receivedAt','')::timestamptz, item
       FROM jsonb_array_elements($1::jsonb) AS item`,
   },
 ];
 
 async function ensureProjectionSchema(pool) {
   for (const statement of projectionSchemas) await pool.query(statement);
+  await pool.query(`ALTER TABLE novawear_orders
+    ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS carrier TEXT,
+    ADD COLUMN IF NOT EXISTS shipment_tracking_number TEXT,
+    ADD COLUMN IF NOT EXISTS delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS payment_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE novawear_returns
+    ADD COLUMN IF NOT EXISTS refund_status TEXT,
+    ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ`);
   await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS novawear_users_email_idx ON novawear_users (LOWER(email))");
   await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS novawear_products_slug_idx ON novawear_products (slug)");
   await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS novawear_coupons_code_idx ON novawear_coupons (UPPER(code))");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_notifications_audience_created_idx ON novawear_notifications (audience, created_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_notifications_user_idx ON novawear_notifications (user_id, read_at)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_inventory_order_idx ON novawear_inventory_movements (order_id, created_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_inventory_return_idx ON novawear_inventory_movements (return_id, created_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_payments_order_idx ON novawear_payment_transactions (order_id, received_at DESC)");
 }
 
 async function syncProjections(client, data) {
@@ -389,6 +502,10 @@ async function createStoreFromEnv() {
   if (String(process.env.DB_TYPE || "json").toLowerCase() !== "postgres") {
     return new JsonStore(process.env.DATA_FILE || path.join(__dirname, "..", "data", "store.json"));
   }
+  const sslEnabled = String(process.env.DB_SSL || "false").toLowerCase() === "true";
+  const rejectUnauthorized = String(
+    process.env.DB_SSL_REJECT_UNAUTHORIZED || "true",
+  ).toLowerCase() !== "false";
   const pool = new Pool({
     host: process.env.DB_HOST || "127.0.0.1",
     port: Number(process.env.DB_PORT || 5432),
@@ -396,7 +513,7 @@ async function createStoreFromEnv() {
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || "postgres",
     max: Number(process.env.DB_POOL_SIZE || 10),
-    ssl: String(process.env.DB_SSL || "false").toLowerCase() === "true" ? { rejectUnauthorized: false } : false,
+    ssl: sslEnabled ? { rejectUnauthorized } : false,
   });
   await pool.query(`CREATE TABLE IF NOT EXISTS novawear_app_state (
     id SMALLINT PRIMARY KEY CHECK (id = 1),

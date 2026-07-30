@@ -52,18 +52,13 @@ export default function AccountsPage() {
                   <tr key={user.id}>
                     <td><div className="ops-customer-cell"><span>{user.name.charAt(0)}</span><div><strong>{user.name}</strong><small>{user.id}</small></div></div></td>
                     <td>{user.email}</td>
-                    <td><select className="ops-inline-select" value={user.role} disabled={user.id === currentUser.id} onChange={(event) => update(user, { role: event.target.value })}><option value="customer">Khách hàng</option><option value="staff">Nhân viên</option><option value="admin">Quản trị viên</option></select></td>
+                    <td>{user.employeeId ? <select className="ops-inline-select" value={user.role} disabled={user.id === currentUser.id} onChange={(event) => update(user, { role: event.target.value })}><option value="staff">Nhân viên</option><option value="admin">Quản trị viên</option></select> : <span>Khách hàng</span>}</td>
                     <td>{user.employeeId || user.customerId || "—"}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td>
-                      <button
-                        className={`ops-status-button ${user.verified ? "is-verified" : "is-pending"}`}
-                        type="button"
-                        disabled={user.id === currentUser.id}
-                        onClick={() => update(user, { verified: !user.verified })}
-                      >
+                      <span className={`ops-status-button ${user.verified ? "is-verified" : "is-pending"}`}>
                         {user.verified ? "Đã xác minh" : "Chờ xác minh"}
-                      </button>
+                      </span>
                     </td>
                     <td><button className="ops-status-button" type="button" disabled={user.id === currentUser.id} onClick={() => update(user, { status: user.status === "active" ? "inactive" : "active" })}><Status value={user.status} type="account" /></button></td>
                   </tr>

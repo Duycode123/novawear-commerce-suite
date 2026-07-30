@@ -9,6 +9,7 @@ const { enforceProductionIdentityPolicy } = require("../lib/production-identity"
 const { verifyPassword } = require("../lib/security");
 
 let server;
+let application;
 let baseUrl;
 let tempDir;
 const sentEmails = [];
@@ -16,7 +17,7 @@ const sepayPollingResults = new Map();
 
 test.before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "novawear-api-"));
-  const app = createApp({
+  application = createApp({
     dataFile: path.join(tempDir, "store.json"),
     sepayWebhookApiKey: "test-sepay-key",
     sepayQr: {
@@ -27,17 +28,28 @@ test.before(async () => {
     },
     sepayTransactionLookup: async ({ reference }) => sepayPollingResults.get(reference) || null,
     oauthService: {
-      publicConfig: () => ({ google: true, facebook: false }),
-      isConfigured: (provider) => provider === "google",
+      publicConfig: () => ({ google: true, facebook: true }),
+      isConfigured: (provider) => ["google", "facebook"].includes(provider),
       createVerifier: () => "test-verifier",
       createChallenge: () => "test-challenge",
       authorizationUrl: (_provider, state) => `https://accounts.example/authorize?state=${encodeURIComponent(state)}`,
-      exchange: async () => ({
-        providerId: "google-customer-001",
-        email: "oauth.customer@example.com",
-        name: "OAuth Customer",
-        avatar: "https://images.example/avatar.jpg",
-      }),
+      exchange: async (provider, code) => provider === "facebook"
+        ? {
+          providerId: "facebook-customer-001",
+          email: code === "existing-account-code"
+            ? "demo@novawear.vn"
+            : "facebook.oauth.customer@example.com",
+          emailVerified: false,
+          name: "Facebook OAuth Customer",
+          avatar: "https://images.example/facebook-avatar.jpg",
+        }
+        : {
+          providerId: "google-customer-001",
+          email: "oauth.customer@example.com",
+          emailVerified: true,
+          name: "OAuth Customer",
+          avatar: "https://images.example/avatar.jpg",
+        },
     },
     cloudinaryService: {
       configured: true,
@@ -61,10 +73,16 @@ test.before(async () => {
       async sendOrderConfirmation(payload) {
         sentEmails.push({ type: "order", ...payload });
       },
+      async sendOrderStatusUpdate(payload) {
+        sentEmails.push({ type: "order-status", ...payload });
+      },
+      async sendReturnStatusUpdate(payload) {
+        sentEmails.push({ type: "return-status", ...payload });
+      },
     },
   });
   await new Promise((resolve) => {
-    server = app.listen(0, "127.0.0.1", resolve);
+    server = application.listen(0, "127.0.0.1", resolve);
   });
   baseUrl = `http://127.0.0.1:${server.address().port}/api`;
 });
@@ -112,6 +130,31 @@ test("health check and catalog are available", async () => {
   assert.equal(products.response.status, 200);
   assert.equal(products.body.data.length, 4);
   assert.ok(products.body.data.every((item) => item.featured));
+
+  const hiddenProduct = application.locals.store.data.products[0];
+  const previousProductStatus = hiddenProduct.status;
+  hiddenProduct.status = "draft";
+  const hiddenCategory = application.locals.store.data.categories[0];
+  const previousCategoryStatus = hiddenCategory.status;
+  hiddenCategory.status = "draft";
+  application.locals.store.save();
+
+  const publicAllAttempt = await request(`/products?status=all&search=${encodeURIComponent(hiddenProduct.sku)}`);
+  assert.equal(publicAllAttempt.response.status, 200);
+  assert.equal(publicAllAttempt.body.data.length, 0);
+  const publicDetailAttempt = await request(`/products/${hiddenProduct.id}`);
+  assert.equal(publicDetailAttempt.response.status, 404);
+  const legacyDetailAttempt = await request(`/getsp/${hiddenProduct.id}`);
+  assert.equal(legacyDetailAttempt.response.status, 200);
+  assert.equal(legacyDetailAttempt.body.length, 0);
+  const publicCategories = await request("/categories");
+  assert.equal(publicCategories.body.data.some((item) => item.id === hiddenCategory.id), false);
+  const legacyCategories = await request("/getalldm");
+  assert.equal(legacyCategories.body.some((item) => item.id === hiddenCategory.id), false);
+
+  hiddenProduct.status = previousProductStatus;
+  hiddenCategory.status = previousCategoryStatus;
+  application.locals.store.save();
 });
 
 test("guest checkout requires a verified email and sends an order confirmation", async () => {
@@ -159,7 +202,10 @@ test("guest checkout requires a verified email and sends an order confirmation",
     }),
   });
   assert.equal(created.response.status, 201);
-  assert.equal(created.body.data.emailNotification.status, "sent");
+  assert.match(created.body.data.trackingCode, /^NVA\d{2}[A-F0-9]{12}$/);
+  const storedGuestOrder = application.locals.store.data.orders.find((item) => item.id === created.body.data.id);
+  assert.equal(storedGuestOrder.emailNotification.status, "sent");
+  assert.equal(Object.hasOwn(created.body.data, "emailNotification"), false);
   assert.ok(sentEmails.some((item) => (
     item.type === "order" && item.to === customer.email && item.order.id === created.body.data.id
   )));
@@ -173,7 +219,85 @@ test("guest checkout requires a verified email and sends an order confirmation",
       paymentMethod: "cod",
     }),
   });
-  assert.equal(replayed.response.status, 403);
+  assert.equal(replayed.response.status, 200);
+  assert.equal(replayed.body.idempotent, true);
+  assert.equal(replayed.body.data.id, created.body.data.id);
+  assert.equal(Object.hasOwn(replayed.body.data, "guestCheckoutJti"), false);
+});
+
+test("a guest checkout token cannot bypass a newly created account", async () => {
+  const email = "guest.becomes.member@example.com";
+  const requested = await request("/checkout/verification/request", {
+    method: "POST",
+    body: JSON.stringify({ email, name: "Guest Becomes Member" }),
+  });
+  const verified = await request("/checkout/verification/verify", {
+    method: "POST",
+    body: JSON.stringify({ email, code: requested.body.verificationCode }),
+  });
+  assert.equal(verified.response.status, 200);
+
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Guest Becomes Member",
+      email,
+      phone: "0908887776",
+      password: "Member@2026",
+    }),
+  });
+  assert.equal(registered.response.status, 201);
+
+  const blocked = await request("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      customer: {
+        name: "Guest Becomes Member",
+        email,
+        phone: "0908887776",
+        address: "15 Nguyen Hue, District 1, Ho Chi Minh City",
+      },
+      checkoutToken: verified.body.checkoutToken,
+      items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
+      paymentMethod: "cod",
+    }),
+  });
+  assert.equal(blocked.response.status, 409);
+  assert.equal(blocked.body.code, "ACCOUNT_LOGIN_REQUIRED");
+});
+
+test("a verified registration adopts prior guest orders without duplicating the customer", async () => {
+  const email = "verified.guest@example.com";
+  const guestOrder = application.locals.store.data.orders
+    .find((item) => item.customer.email === email);
+  assert.ok(guestOrder);
+
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Guest Becomes Customer",
+      email,
+      phone: "0987654321",
+      password: "MemberGuest@2026",
+    }),
+  });
+  assert.equal(registered.response.status, 201);
+
+  const verified = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({ email, code: registered.body.verificationCode }),
+  });
+  assert.equal(verified.response.status, 200);
+  const history = await request("/orders/my", {
+    headers: { Authorization: `Bearer ${verified.body.token}` },
+  });
+  assert.equal(history.response.status, 200);
+  assert.equal(history.body.data.some((item) => item.id === guestOrder.id), true);
+  assert.equal(
+    application.locals.store.data.customers
+      .filter((item) => item.email === email).length,
+    1,
+  );
 });
 
 test("operations handoff is short lived and can only be exchanged once", async () => {
@@ -233,6 +357,56 @@ test("OAuth uses state validation and a one-time exchange code", async () => {
   assert.equal(replay.response.status, 401);
 });
 
+test("OAuth without a verified provider email requires email OTP and cannot take over an existing account", async () => {
+  const started = await fetch(`${baseUrl}/auth/oauth/facebook/start`, { redirect: "manual" });
+  assert.equal(started.status, 302);
+  const authorizationUrl = new URL(started.headers.get("location"));
+  const state = authorizationUrl.searchParams.get("state");
+  assert.ok(state);
+
+  const callback = await fetch(
+    `${baseUrl}/auth/facebook/callback?state=${encodeURIComponent(state)}&code=provider-code`,
+    { redirect: "manual" },
+  );
+  assert.equal(callback.status, 302);
+  const callbackUrl = new URL(callback.headers.get("location"));
+  assert.equal(callbackUrl.searchParams.get("verifyEmail"), "facebook.oauth.customer@example.com");
+  assert.equal(callbackUrl.searchParams.get("code"), null);
+
+  const pendingUser = application.locals.store.data.users
+    .find((item) => item.email === "facebook.oauth.customer@example.com");
+  assert.equal(pendingUser.status, "pending");
+  assert.equal(pendingUser.emailVerifiedAt, null);
+  const verificationEmail = sentEmails.find((item) => (
+    item.type === "verification"
+      && item.to === "facebook.oauth.customer@example.com"
+      && item.purpose === "account"
+  ));
+  assert.ok(verificationEmail);
+
+  const verified = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      email: pendingUser.email,
+      code: verificationEmail.code,
+    }),
+  });
+  assert.equal(verified.response.status, 200);
+  assert.ok(verified.body.token);
+
+  const takeoverStart = await fetch(`${baseUrl}/auth/oauth/facebook/start`, { redirect: "manual" });
+  const takeoverState = new URL(takeoverStart.headers.get("location")).searchParams.get("state");
+  const takeoverCallback = await fetch(
+    `${baseUrl}/auth/facebook/callback?state=${encodeURIComponent(takeoverState)}&code=existing-account-code`,
+    { redirect: "manual" },
+  );
+  assert.equal(takeoverCallback.status, 302);
+  const takeoverUrl = new URL(takeoverCallback.headers.get("location"));
+  assert.equal(takeoverUrl.searchParams.get("oauthError"), "provider_email_not_verified");
+  const existingUser = application.locals.store.data.users.find((item) => item.email === "demo@novawear.vn");
+  assert.equal(existingUser.facebookId, undefined);
+});
+
 test("authenticated image uploads enforce roles and persist avatars", async () => {
   const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
   const deniedForm = new FormData();
@@ -276,24 +450,37 @@ test("customer can sign in, place an order and read order history", async () => 
   assert.equal(login.response.status, 200);
   assert.ok(login.body.token);
 
+  const checkoutRequestId = "customer-checkout-request-0001";
+  const orderPayload = {
+    customer: {
+      name: "Nguyễn Minh Anh",
+      email: "demo@novawear.vn",
+      phone: "0901234567",
+      address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
+    },
+    items: [{ productId: "prd-001", quantity: 1, size: "M", color: "Than chì" }],
+    paymentMethod: "cod",
+    couponCode: "",
+    requestId: checkoutRequestId,
+  };
   const order = await request("/orders", {
     method: "POST",
     headers: { Authorization: `Bearer ${login.body.token}` },
-    body: JSON.stringify({
-      customer: {
-        name: "Nguyễn Minh Anh",
-        email: "demo@novawear.vn",
-        phone: "0901234567",
-        address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
-      },
-      items: [{ productId: "prd-001", quantity: 1, size: "M", color: "Than chì" }],
-      paymentMethod: "cod",
-      couponCode: "",
-    }),
+    body: JSON.stringify(orderPayload),
   });
   assert.equal(order.response.status, 201);
   assert.equal(order.body.data.status, "pending");
   assert.equal(order.body.data.items[0].price, 289000);
+  assert.equal(Object.hasOwn(order.body.data, "checkoutRequestId"), false);
+
+  const replayedOrder = await request("/orders", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${login.body.token}` },
+    body: JSON.stringify(orderPayload),
+  });
+  assert.equal(replayedOrder.response.status, 200);
+  assert.equal(replayedOrder.body.idempotent, true);
+  assert.equal(replayedOrder.body.data.id, order.body.data.id);
 
   const unsafeTracking = await request(`/orders/track/${order.body.data.trackingCode}`);
   assert.equal(unsafeTracking.response.status, 400);
@@ -436,26 +623,311 @@ test("staff portal is protected and supports order workflow", async () => {
   });
   assert.equal(exchange.response.status, 200);
   const staffToken = exchange.body.token;
+  const staffAuth = { Authorization: `Bearer ${staffToken}` };
 
   const overview = await request("/admin/overview", {
-    headers: { Authorization: `Bearer ${staffToken}` },
+    headers: staffAuth,
   });
-  assert.equal(overview.response.status, 200);
-  assert.ok(overview.body.data.orderCount >= 4);
+  assert.equal(overview.response.status, 403);
+
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const protectedOrder = await request("/admin/orders/ORD-2026-002", {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  const assignedElsewhere = await request("/admin/orders/ORD-2026-002", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({
+      status: "packing",
+      assigneeId: "emp-001",
+      expectedVersion: protectedOrder.body.data.version,
+    }),
+  });
+  assert.equal(assignedElsewhere.response.status, 200);
+
+  const scopedOrders = await request("/admin/orders", { headers: staffAuth });
+  assert.equal(scopedOrders.response.status, 200);
+  assert.equal(scopedOrders.body.data.some((item) => item.id === "ORD-2026-002"), false);
+  assert.equal(scopedOrders.body.data.some((item) => item.id === "ORD-2026-004"), true);
+  const scopedLegacyOrders = await request("/getalldonhang", { headers: staffAuth });
+  assert.equal(scopedLegacyOrders.response.status, 200);
+  assert.equal(scopedLegacyOrders.body.some((item) => item.id === "ORD-2026-002"), false);
+  const deniedAssignedOrder = await request("/admin/orders/ORD-2026-002", { headers: staffAuth });
+  assert.equal(deniedAssignedOrder.response.status, 403);
+  const deniedAssignedMutation = await request("/admin/orders/ORD-2026-002", {
+    method: "PATCH",
+    headers: staffAuth,
+    body: JSON.stringify({
+      status: "ready_to_ship",
+      expectedVersion: assignedElsewhere.body.data.version,
+    }),
+  });
+  assert.equal(deniedAssignedMutation.response.status, 403);
+  const scopedNotifications = await request("/notifications", { headers: staffAuth });
+  assert.equal(scopedNotifications.response.status, 200);
+  assert.equal(scopedNotifications.body.data.some((item) => item.orderId === "ORD-2026-002"), false);
+
+  const deniedInventoryAdjustment = await request("/admin/inventory/adjust", {
+    method: "POST",
+    headers: staffAuth,
+    body: JSON.stringify({ productId: "prd-001", quantity: 1, reason: "Không được phép" }),
+  });
+  assert.equal(deniedInventoryAdjustment.response.status, 403);
+  const deniedPurchaseCreation = await request("/admin/purchase-orders", {
+    method: "POST",
+    headers: staffAuth,
+    body: JSON.stringify({
+      supplier: "Nhà cung cấp thử nghiệm",
+      items: [{ productId: "prd-001", quantity: 1, unitCost: 100000 }],
+    }),
+  });
+  assert.equal(deniedPurchaseCreation.response.status, 403);
+  const deniedPurchaseReceiving = await request("/admin/purchase-orders/PO-2026-001/receive", {
+    method: "PATCH",
+    headers: staffAuth,
+    body: JSON.stringify({}),
+  });
+  assert.equal(deniedPurchaseReceiving.response.status, 403);
+
+  const beforeUpdate = await request("/admin/orders/ORD-2026-004", {
+    headers: staffAuth,
+  });
+  assert.equal(beforeUpdate.response.status, 200);
 
   const update = await request("/admin/orders/ORD-2026-004", {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${staffToken}` },
-    body: JSON.stringify({ status: "confirmed", assigneeId: "emp-002" }),
+    headers: staffAuth,
+    body: JSON.stringify({
+      status: "confirmed",
+      assigneeId: "emp-002",
+      expectedVersion: beforeUpdate.body.data.version,
+    }),
   });
   assert.equal(update.response.status, 200);
   assert.equal(update.body.data.status, "confirmed");
 
   const workspace = await request("/staff/workspace", {
-    headers: { Authorization: `Bearer ${staffToken}` },
+    headers: staffAuth,
   });
   assert.equal(workspace.response.status, 200);
   assert.equal(workspace.body.data.employee.id, "emp-002");
+});
+
+test("order state machine synchronizes delivery, inventory and notifications", async () => {
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const customerAuth = { Authorization: `Bearer ${customerToken}` };
+  const adminAuth = { Authorization: `Bearer ${adminToken}` };
+  const productBefore = await request("/products/prd-003");
+
+  const created = await request("/orders", {
+    method: "POST",
+    headers: customerAuth,
+    body: JSON.stringify({
+      customer: {
+        name: "Nguyễn Minh Anh",
+        email: "demo@novawear.vn",
+        phone: "0901234567",
+        address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
+      },
+      items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Xanh sương" }],
+      paymentMethod: "cod",
+      shippingMethod: "standard",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  let order = created.body.data;
+
+  const skipped = await request(`/admin/orders/${order.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({
+      expectedVersion: order.version,
+      status: "shipping",
+      shipment: { carrier: "GHN", trackingNumber: "GHN-SKIP-001" },
+    }),
+  });
+  assert.equal(skipped.response.status, 409);
+
+  for (const status of ["confirmed", "packing", "ready_to_ship"]) {
+    const updated = await request(`/admin/orders/${order.id}`, {
+      method: "PATCH",
+      headers: adminAuth,
+      body: JSON.stringify({
+        expectedVersion: order.version,
+        status,
+        publicNote: `Cập nhật ${status}.`,
+        internalNote: "Ghi chú vận hành không được trả về phía khách hàng.",
+      }),
+    });
+    assert.equal(updated.response.status, 200);
+    order = updated.body.data;
+  }
+
+  const missingShipment = await request(`/admin/orders/${order.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ expectedVersion: order.version, status: "shipping" }),
+  });
+  assert.equal(missingShipment.response.status, 409);
+
+  const shipped = await request(`/admin/orders/${order.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({
+      expectedVersion: order.version,
+      status: "shipping",
+      shipment: { carrier: "GHN", trackingNumber: "GHN-REAL-001" },
+      publicNote: "Đơn đã được bàn giao cho GHN.",
+    }),
+  });
+  assert.equal(shipped.response.status, 200);
+  order = shipped.body.data;
+
+  const failed = await request(`/admin/orders/${order.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({
+      expectedVersion: order.version,
+      status: "delivery_failed",
+      reason: "Khách hàng chưa thể nhận hàng trong khung giờ giao.",
+    }),
+  });
+  assert.equal(failed.response.status, 200);
+  order = failed.body.data;
+
+  const retried = await request(`/admin/orders/${order.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ expectedVersion: order.version, status: "shipping", publicNote: "Đơn đang được giao lại." }),
+  });
+  assert.equal(retried.response.status, 200);
+  assert.equal(retried.body.data.deliveryAttempts, 2);
+  order = retried.body.data;
+
+  const delivered = await request(`/admin/orders/${order.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ expectedVersion: order.version, status: "delivered", publicNote: "Khách hàng đã nhận đủ sản phẩm." }),
+  });
+  assert.equal(delivered.response.status, 200);
+  assert.equal(delivered.body.data.paymentStatus, "paid");
+  const storedDelivered = application.locals.store.data.orders.find((item) => item.id === order.id);
+  storedDelivered.paymentStatus = "review_required";
+  application.locals.store.save();
+  const returnBeforeReconciliation = await request("/returns", {
+    method: "POST",
+    headers: customerAuth,
+    body: JSON.stringify({
+      orderId: order.id,
+      type: "return",
+      reason: "Kiểm tra chặn đổi trả trước khi hoàn tất đối soát.",
+      items: [{
+        productId: order.items[0].productId,
+        size: order.items[0].size,
+        color: order.items[0].color,
+        quantity: 1,
+      }],
+    }),
+  });
+  assert.equal(returnBeforeReconciliation.response.status, 409);
+  const reconciled = await request(`/admin/orders/${order.id}/payment-reconcile`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({
+      expectedVersion: delivered.body.data.version,
+      reference: "RC-TEST-0001",
+      reason: "Đã đối chiếu sao kê và biên nhận giao hàng.",
+    }),
+  });
+  assert.equal(reconciled.response.status, 200);
+  assert.equal(reconciled.body.data.paymentStatus, "paid");
+  const productAfter = await request("/products/prd-003");
+  assert.equal(productAfter.body.data.stock, productBefore.body.data.stock - 1);
+
+  const customerNotifications = await request("/notifications?limit=100", { headers: customerAuth });
+  assert.equal(customerNotifications.response.status, 200);
+  assert.ok(customerNotifications.body.data.some((item) => item.orderId === order.id && item.title.includes("Giao thành công")));
+  assert.ok(customerNotifications.body.data.every((item) => !Object.hasOwn(item, "userId") && !Object.hasOwn(item, "customerId") && !Object.hasOwn(item, "readBy")));
+  const unread = customerNotifications.body.data.find((item) => !item.readAt);
+  const marked = await request(`/notifications/${unread.id}/read`, { method: "PATCH", headers: customerAuth, body: "{}" });
+  assert.equal(marked.response.status, 200);
+  assert.ok(marked.body.data.readAt);
+
+  const operationsNotifications = await request("/notifications?limit=100", { headers: adminAuth });
+  assert.ok(operationsNotifications.body.data.some((item) => item.orderId === order.id));
+  const customerHistory = await request("/orders/my", { headers: customerAuth });
+  const publicOrderData = customerHistory.body.data.find((item) => item.id === order.id);
+  assert.equal(Object.hasOwn(publicOrderData, "internalNote"), false);
+  assert.ok(publicOrderData.timeline.every((event) => !Object.hasOwn(event, "internalNote") && !Object.hasOwn(event, "actorId")));
+  assert.equal(Object.hasOwn(publicOrderData, "paymentTransaction"), false);
+  assert.equal(Object.hasOwn(publicOrderData, "paymentReconciliation"), false);
+  assert.equal(Object.hasOwn(publicOrderData, "paymentReviewReason"), false);
+  assert.equal(Object.hasOwn(publicOrderData, "userId"), false);
+  assert.equal(Object.hasOwn(publicOrderData, "customerId"), false);
+  assert.equal(Object.hasOwn(publicOrderData, "stockReservedAt"), false);
+});
+
+test("cancellation and payment expiry restore stock exactly once", async () => {
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const auth = { Authorization: `Bearer ${customerToken}` };
+  const productBefore = await request("/products/prd-004");
+  const customer = {
+    name: "Nguyễn Minh Anh",
+    email: "demo@novawear.vn",
+    phone: "0901234567",
+    address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
+  };
+  const created = await request("/orders", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({
+      customer,
+      items: [{ productId: "prd-004", quantity: 1, size: "M", color: "Xám khói" }],
+      paymentMethod: "cod",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  const cancelled = await request(`/orders/${created.body.data.id}/cancel`, {
+    method: "PATCH",
+    headers: auth,
+    body: JSON.stringify({
+      expectedVersion: created.body.data.version,
+      reason: "Tôi muốn thay đổi sản phẩm trong đơn hàng.",
+    }),
+  });
+  assert.equal(cancelled.response.status, 200);
+  assert.equal(cancelled.body.data.paymentStatus, "cancelled");
+  const productAfterCancel = await request("/products/prd-004");
+  assert.equal(productAfterCancel.body.data.stock, productBefore.body.data.stock);
+  const duplicateCancel = await request(`/orders/${created.body.data.id}/cancel`, {
+    method: "PATCH",
+    headers: auth,
+    body: JSON.stringify({ expectedVersion: cancelled.body.data.version, reason: "Hủy lại lần nữa." }),
+  });
+  assert.equal(duplicateCancel.response.status, 409);
+  const productAfterDuplicate = await request("/products/prd-004");
+  assert.equal(productAfterDuplicate.body.data.stock, productBefore.body.data.stock);
+
+  const bankOrder = await request("/orders", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({
+      customer,
+      items: [{ productId: "prd-004", quantity: 1, size: "M", color: "Xám khói" }],
+      paymentMethod: "bank",
+    }),
+  });
+  assert.equal(bankOrder.response.status, 201);
+  const stored = application.locals.store.data.orders.find((item) => item.id === bankOrder.body.data.id);
+  stored.paymentExpiresAt = new Date(Date.now() - 1000).toISOString();
+  application.locals.store.save();
+  const history = await request("/orders/my", { headers: auth });
+  const expired = history.body.data.find((item) => item.id === bankOrder.body.data.id);
+  assert.equal(expired.status, "cancelled");
+  assert.equal(expired.paymentStatus, "expired");
+  const productAfterExpiry = await request("/products/prd-004");
+  assert.equal(productAfterExpiry.body.data.stock, productBefore.body.data.stock);
 });
 
 test("customer self-service, coupon and support flows work end to end", async () => {
@@ -539,6 +1011,112 @@ test("customer self-service, coupon and support flows work end to end", async ()
   assert.equal(newsletter.response.status, 200);
 });
 
+test("coupon schedule and usage limits are enforced and restored after cancellation", async () => {
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const adminAuth = { Authorization: `Bearer ${adminToken}` };
+  const yesterday = new Date(Date.now() - 86400000).toISOString();
+  const tomorrow = new Date(Date.now() + 86400000).toISOString();
+  const twoDaysFromNow = new Date(Date.now() + 2 * 86400000).toISOString();
+
+  const futureCoupon = await request("/admin/coupons", {
+    method: "POST",
+    headers: adminAuth,
+    body: JSON.stringify({
+      code: "FUTURE1",
+      type: "percent",
+      value: 10,
+      startsAt: tomorrow,
+      expiresAt: twoDaysFromNow,
+      usageLimit: 10,
+    }),
+  });
+  assert.equal(futureCoupon.response.status, 201);
+
+  const limitedCoupon = await request("/admin/coupons", {
+    method: "POST",
+    headers: adminAuth,
+    body: JSON.stringify({
+      code: "LIMIT1",
+      type: "fixed",
+      value: 10000,
+      startsAt: yesterday,
+      expiresAt: tomorrow,
+      usageLimit: 1,
+    }),
+  });
+  assert.equal(limitedCoupon.response.status, 201);
+
+  const promotionsBefore = await request("/promotions");
+  assert.equal(promotionsBefore.body.data.some((item) => item.code === "FUTURE1"), false);
+  assert.equal(promotionsBefore.body.data.some((item) => item.code === "LIMIT1"), true);
+
+  const futureValidation = await request("/coupons/validate", {
+    method: "POST",
+    body: JSON.stringify({ code: "FUTURE1", subtotal: 500000 }),
+  });
+  assert.equal(futureValidation.response.status, 409);
+  assert.equal(futureValidation.body.code, "COUPON_NOT_STARTED");
+
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const customerAuth = { Authorization: `Bearer ${customerToken}` };
+  const product = application.locals.store.data.products.find((item) => (
+    item.status === "active"
+      && Number(item.stock || 0) >= 2
+      && (!item.variants?.length || item.variants.some((variant) => Number(variant.stock || 0) >= 2))
+  ));
+  assert.ok(product);
+  const variant = product.variants?.find((item) => Number(item.stock || 0) >= 2);
+  const customerRecord = application.locals.store.data.customers
+    .find((item) => item.id === application.locals.store.data.users
+      .find((user) => user.email === "demo@novawear.vn").customerId);
+
+  const firstOrder = await request("/orders", {
+    method: "POST",
+    headers: customerAuth,
+    body: JSON.stringify({
+      customer: {
+        name: customerRecord.name,
+        email: customerRecord.email,
+        phone: customerRecord.phone,
+        address: customerRecord.address || "Hà Nội",
+      },
+      items: [{
+        productId: product.id,
+        quantity: 1,
+        size: variant?.size || product.sizes?.[0] || "",
+        color: variant?.color || product.colors?.[0] || "",
+      }],
+      paymentMethod: "cod",
+      couponCode: "LIMIT1",
+      requestId: `coupon-order-${Date.now()}`,
+    }),
+  });
+  assert.equal(firstOrder.response.status, 201);
+  assert.equal(application.locals.store.data.coupons.find((item) => item.code === "LIMIT1").usedCount, 1);
+
+  const exhaustedValidation = await request("/coupons/validate", {
+    method: "POST",
+    body: JSON.stringify({ code: "LIMIT1", subtotal: 500000 }),
+  });
+  assert.equal(exhaustedValidation.response.status, 409);
+  assert.equal(exhaustedValidation.body.code, "COUPON_USAGE_LIMIT_REACHED");
+  const promotionsExhausted = await request("/promotions");
+  assert.equal(promotionsExhausted.body.data.some((item) => item.code === "LIMIT1"), false);
+
+  const cancelled = await request(`/orders/${firstOrder.body.data.id}/cancel`, {
+    method: "PATCH",
+    headers: customerAuth,
+    body: JSON.stringify({
+      expectedVersion: firstOrder.body.data.version,
+      reason: "Không còn nhu cầu mua sản phẩm.",
+    }),
+  });
+  assert.equal(cancelled.response.status, 200);
+  assert.equal(application.locals.store.data.coupons.find((item) => item.code === "LIMIT1").usedCount, 0);
+  const promotionsRestored = await request("/promotions");
+  assert.equal(promotionsRestored.body.data.some((item) => item.code === "LIMIT1"), true);
+});
+
 test("JWT protects private APIs and rotates after a password change", async () => {
   const register = await request("/auth/register", {
     method: "POST",
@@ -593,6 +1171,177 @@ test("JWT protects private APIs and rotates after a password change", async () =
     headers: { Authorization: `Bearer ${changed.body.token}` },
   });
   assert.equal(rotatedTokenAccepted.response.status, 200);
+});
+
+test("security boundaries prevent token bypass, privilege escalation and stale sessions", async () => {
+  const verificationBypass = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({ email: "demo@novawear.vn", code: "000000" }),
+  });
+  assert.equal(verificationBypass.response.status, 409);
+  assert.equal(verificationBypass.body.code, "ACCOUNT_ALREADY_VERIFIED");
+  assert.equal(verificationBypass.body.token, undefined);
+
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const internalCustomer = application.locals.store.data.users.find((item) => item.email === "demo@novawear.vn");
+  internalCustomer.passwordResetCodeHash = "must-not-leak";
+  internalCustomer.passwordResetExpiresAt = new Date(Date.now() + 60000).toISOString();
+  internalCustomer.googleId = "private-provider-id";
+  const safeProfile = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${customerToken}` },
+  });
+  assert.equal(safeProfile.response.status, 200);
+  assert.equal(Object.hasOwn(safeProfile.body.user, "passwordResetCodeHash"), false);
+  assert.equal(Object.hasOwn(safeProfile.body.user, "passwordResetExpiresAt"), false);
+  assert.equal(Object.hasOwn(safeProfile.body.user, "tokenVersion"), false);
+  assert.equal(Object.hasOwn(safeProfile.body.user, "googleId"), false);
+
+  const staffToken = await loginAs("staff@novawear.vn", "Staff@123", "admin");
+  const staffAuth = { Authorization: `Bearer ${staffToken}` };
+  const deniedEmployees = await request("/admin/employees", { headers: staffAuth });
+  assert.equal(deniedEmployees.response.status, 403);
+  const deniedOverview = await request("/admin/overview", { headers: staffAuth });
+  assert.equal(deniedOverview.response.status, 403);
+  for (const protectedPath of ["/admin/news", "/admin/coupons", "/admin/suppliers"]) {
+    const protectedResult = await request(protectedPath, { headers: staffAuth });
+    assert.equal(protectedResult.response.status, 403);
+  }
+  const deniedProductEdit = await request("/admin/products/prd-001", {
+    method: "PUT",
+    headers: staffAuth,
+    body: JSON.stringify({ name: "Unauthorized edit" }),
+  });
+  assert.equal(deniedProductEdit.response.status, 403);
+  const deniedLegacyEmployees = await request("/getallnv", { headers: staffAuth });
+  assert.equal(deniedLegacyEmployees.response.status, 403);
+
+  const publicLegacyProducts = await request("/getallsp");
+  assert.equal(publicLegacyProducts.response.status, 200);
+  assert.ok(publicLegacyProducts.body.length > 0);
+  assert.ok(publicLegacyProducts.body.every((item) => !Object.hasOwn(item, "cost")));
+
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const adminAuth = { Authorization: `Bearer ${adminToken}` };
+  const selfMutation = await request("/admin/users/usr-admin", {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ status: "inactive" }),
+  });
+  assert.equal(selfMutation.response.status, 409);
+  const selfEmployeeDeactivation = await request("/admin/employees/emp-001", {
+    method: "DELETE",
+    headers: adminAuth,
+  });
+  assert.equal(selfEmployeeDeactivation.response.status, 409);
+  const customerPromotion = await request("/admin/users/usr-demo", {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ role: "admin" }),
+  });
+  assert.equal(customerPromotion.response.status, 400);
+  const manualVerification = await request("/admin/users/usr-demo", {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({ verified: false }),
+  });
+  assert.equal(manualVerification.response.status, 400);
+
+  const duplicateEmployee = await request("/admin/employees", {
+    method: "POST",
+    headers: adminAuth,
+    body: JSON.stringify({
+      name: "Duplicate Customer",
+      email: "demo@novawear.vn",
+      phone: "0909123456",
+      createAccount: true,
+      temporaryPassword: "Temporary@2026!",
+    }),
+  });
+  assert.equal(duplicateEmployee.response.status, 409);
+
+  const weakEmployee = await request("/admin/employees", {
+    method: "POST",
+    headers: adminAuth,
+    body: JSON.stringify({
+      name: "Weak Password Staff",
+      email: "weak.staff@novawear.vn",
+      phone: "0909123457",
+      createAccount: true,
+      temporaryPassword: "Welcome123",
+    }),
+  });
+  assert.equal(weakEmployee.response.status, 400);
+
+  const createdEmployee = await request("/admin/employees", {
+    method: "POST",
+    headers: adminAuth,
+    body: JSON.stringify({
+      name: "Secure Test Staff",
+      email: "secure.staff@novawear.vn",
+      phone: "0909123458",
+      createAccount: true,
+      accountRole: "staff",
+      temporaryPassword: "InitialOps@2026!",
+    }),
+  });
+  assert.equal(createdEmployee.response.status, 201);
+
+  const temporaryToken = await loginAs("secure.staff@novawear.vn", "InitialOps@2026!", "admin");
+  const blockedUntilPasswordChange = await request("/admin/orders", {
+    headers: { Authorization: `Bearer ${temporaryToken}` },
+  });
+  assert.equal(blockedUntilPasswordChange.response.status, 403);
+  assert.equal(blockedUntilPasswordChange.body.code, "PASSWORD_CHANGE_REQUIRED");
+  const changedPassword = await request("/auth/password", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${temporaryToken}` },
+    body: JSON.stringify({
+      currentPassword: "InitialOps@2026!",
+      newPassword: "PrivateOps@2026!",
+    }),
+  });
+  assert.equal(changedPassword.response.status, 200);
+  assert.equal(changedPassword.body.user.mustChangePassword, false);
+  const staleTemporaryToken = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${temporaryToken}` },
+  });
+  assert.equal(staleTemporaryToken.response.status, 401);
+  const allowedAfterPasswordChange = await request("/admin/orders", {
+    headers: { Authorization: `Bearer ${changedPassword.body.token}` },
+  });
+  assert.equal(allowedAfterPasswordChange.response.status, 200);
+
+  const staffInbox = await request("/admin/contacts", { headers: staffAuth });
+  assert.equal(staffInbox.response.status, 200);
+  assert.ok(staffInbox.body.data.length > 0);
+  const claimedContact = await request(`/admin/contacts/${staffInbox.body.data[0].id}`, {
+    method: "PATCH",
+    headers: staffAuth,
+    body: JSON.stringify({ status: "in_progress" }),
+  });
+  assert.equal(claimedContact.response.status, 200);
+  assert.equal(claimedContact.body.data.assigneeId, "usr-staff");
+
+  const secondStaffAuth = { Authorization: `Bearer ${changedPassword.body.token}` };
+  const scopedInbox = await request("/admin/contacts", { headers: secondStaffAuth });
+  assert.equal(scopedInbox.response.status, 200);
+  assert.equal(scopedInbox.body.data.some((item) => item.id === claimedContact.body.data.id), false);
+  const deniedContactTakeover = await request(`/admin/contacts/${claimedContact.body.data.id}`, {
+    method: "PATCH",
+    headers: secondStaffAuth,
+    body: JSON.stringify({ status: "resolved" }),
+  });
+  assert.equal(deniedContactTakeover.response.status, 403);
+
+  const loggedOut = await request("/auth/logout", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${changedPassword.body.token}` },
+  });
+  assert.equal(loggedOut.response.status, 200);
+  const revokedAfterLogout = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${changedPassword.body.token}` },
+  });
+  assert.equal(revokedAfterLogout.response.status, 401);
 });
 
 test("password reset uses an emailed one-time code and revokes old sessions", async () => {
@@ -676,6 +1425,17 @@ test("production identity policy disables demo logins and bootstraps a private a
   assert.equal(owner.role, "admin");
   assert.equal(owner.status, "active");
   assert.equal(verifyPassword("PrivateOwner@2026!", owner.passwordHash), true);
+});
+
+test("production identity policy refuses known demo accounts", () => {
+  const identityStore = new JsonStore(path.join(tempDir, "production-demo-refusal.json"));
+  assert.throws(
+    () => enforceProductionIdentityPolicy(identityStore, {
+      production: true,
+      allowDemoAccounts: true,
+    }),
+    /ALLOW_DEMO_ACCOUNTS/,
+  );
 });
 
 test("admin can manage catalog, inventory and purchase receiving", async () => {
@@ -791,10 +1551,13 @@ test("admin can assign work and customer return is processed end to end", async 
   assert.equal(task.response.status, 201);
   assert.equal(task.body.data.status, "todo");
 
+  const orderBeforeDelivery = await request("/admin/orders/ORD-2026-001", { headers: adminAuth });
+  assert.equal(orderBeforeDelivery.response.status, 200);
+
   const delivered = await request("/admin/orders/ORD-2026-001", {
     method: "PATCH",
     headers: adminAuth,
-    body: JSON.stringify({ status: "delivered" }),
+    body: JSON.stringify({ status: "delivered", expectedVersion: orderBeforeDelivery.body.data.version }),
   });
   assert.equal(delivered.response.status, 200);
   assert.equal(delivered.body.data.paymentStatus, "paid");
@@ -817,17 +1580,79 @@ test("admin can assign work and customer return is processed end to end", async 
   assert.equal(created.response.status, 201);
   assert.equal(created.body.data.status, "requested");
 
-  for (const status of ["approved", "receiving", "completed"]) {
+  const secureEmployee = application.locals.store.data.employees
+    .find((item) => item.email === "secure.staff@novawear.vn");
+  assert.ok(secureEmployee);
+  const approved = await request(`/admin/returns/${created.body.data.id}`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({
+      status: "approved",
+      assigneeId: secureEmployee.id,
+      expectedVersion: created.body.data.version,
+      publicNote: "Yêu cầu hợp lệ, vui lòng gửi sản phẩm về NOVAWEAR.",
+      internalNote: "Đã đối chiếu đơn hàng và điều kiện đổi trả.",
+    }),
+  });
+  assert.equal(approved.response.status, 200);
+  assert.equal(approved.body.data.assigneeId, secureEmployee.id);
+
+  const staffToken = await loginAs("staff@novawear.vn", "Staff@123", "admin");
+  const staffAuth = { Authorization: `Bearer ${staffToken}` };
+  const scopedReturns = await request("/admin/returns", { headers: staffAuth });
+  assert.equal(scopedReturns.response.status, 200);
+  assert.equal(scopedReturns.body.data.some((item) => item.id === created.body.data.id), false);
+  const deniedReturnTakeover = await request(`/admin/returns/${created.body.data.id}`, {
+    method: "PATCH",
+    headers: staffAuth,
+    body: JSON.stringify({
+      status: "receiving",
+      expectedVersion: approved.body.data.version,
+    }),
+  });
+  assert.equal(deniedReturnTakeover.response.status, 403);
+  const scopedReturnNotifications = await request("/notifications", { headers: staffAuth });
+  assert.equal(scopedReturnNotifications.response.status, 200);
+  assert.equal(scopedReturnNotifications.body.data.some((item) => item.returnId === created.body.data.id), false);
+
+  let currentReturn = approved.body.data;
+  for (const status of ["receiving", "inspecting", "completed"]) {
     const update = await request(`/admin/returns/${created.body.data.id}`, {
       method: "PATCH",
       headers: adminAuth,
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        expectedVersion: currentReturn.version,
+        publicNote: "Đã cập nhật bước xử lý.",
+        internalNote: status === "completed" ? "Sản phẩm còn nguyên tem và đạt điều kiện nhập kho." : "Đang xử lý theo quy trình.",
+        inventoryDisposition: status === "completed" ? "restock" : undefined,
+      }),
     });
     assert.equal(update.response.status, 200);
     assert.equal(update.body.data.status, status);
+    currentReturn = update.body.data;
   }
+
+  assert.equal(currentReturn.refundStatus, "pending");
+  const refunded = await request(`/admin/returns/${created.body.data.id}/refund`, {
+    method: "PATCH",
+    headers: adminAuth,
+    body: JSON.stringify({
+      expectedVersion: currentReturn.version,
+      reference: "RF-TEST-0001",
+      internalNote: "Đã đối soát giao dịch hoàn tiền thành công.",
+    }),
+  });
+  assert.equal(refunded.response.status, 200);
+  assert.equal(refunded.body.data.refundStatus, "refunded");
 
   const history = await request("/returns/my", { headers: customerAuth });
   assert.equal(history.response.status, 200);
   assert.equal(history.body.data[0].status, "completed");
+  assert.equal(history.body.data[0].refundStatus, "refunded");
+  assert.equal(Object.hasOwn(history.body.data[0], "userId"), false);
+  assert.equal(Object.hasOwn(history.body.data[0], "customerId"), false);
+  assert.equal(Object.hasOwn(history.body.data[0], "inspectionResult"), false);
+  assert.equal(Object.hasOwn(history.body.data[0], "inventoryDisposition"), false);
+  assert.ok(history.body.data[0].timeline.every((event) => !Object.hasOwn(event, "internalNote") && !Object.hasOwn(event, "actorId")));
 });

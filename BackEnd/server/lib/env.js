@@ -13,6 +13,18 @@ function requireWhen(condition, names, label, errors) {
   if (missing.length) errors.push(`${label} thiếu: ${missing.join(", ")}`);
 }
 
+function requireSecureUrl(name, errors) {
+  if (!present(name)) return;
+  try {
+    const url = new URL(String(process.env[name]).trim());
+    if (url.protocol !== "https:" || url.username || url.password) {
+      errors.push(`${name} trên production phải là URL HTTPS không chứa thông tin đăng nhập`);
+    }
+  } catch (_error) {
+    errors.push(`${name} không phải là URL hợp lệ`);
+  }
+}
+
 function validateEnvironment() {
   const errors = [];
   const dbType = String(process.env.DB_TYPE || "json").toLowerCase();
@@ -45,6 +57,51 @@ function validateEnvironment() {
   );
   if (process.env.NODE_ENV === "production") {
     requireWhen(true, ["JWT_SECRET", "FRONTEND_BASE_URL", "CORS_ORIGINS"], "Production", errors);
+    const jwtSecret = String(process.env.JWT_SECRET || "");
+    if (jwtSecret && Buffer.byteLength(jwtSecret, "utf8") < 32) {
+      errors.push("JWT_SECRET trên production phải có ít nhất 32 byte");
+    }
+    requireSecureUrl("FRONTEND_BASE_URL", errors);
+    if (isEnabled("GOOGLE_OAUTH_ENABLED")) {
+      ["GOOGLE_REDIRECT_URI", "OAUTH_SUCCESS_URL", "OAUTH_FAILURE_URL"]
+        .forEach((name) => requireSecureUrl(name, errors));
+    }
+    if (isEnabled("FACEBOOK_OAUTH_ENABLED")) {
+      ["FACEBOOK_REDIRECT_URI", "OAUTH_SUCCESS_URL", "OAUTH_FAILURE_URL"]
+        .forEach((name) => requireSecureUrl(name, errors));
+    }
+    if (isEnabled("EXPOSE_VERIFICATION_CODE")) {
+      errors.push("EXPOSE_VERIFICATION_CODE phải là false trên production");
+    }
+    if (isEnabled("ALLOW_DEMO_ACCOUNTS")) {
+      errors.push("ALLOW_DEMO_ACCOUNTS phải là false trên production");
+    }
+    const corsOrigins = String(process.env.CORS_ORIGINS || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (corsOrigins.includes("*")) {
+      errors.push("CORS_ORIGINS không được chứa * trên production");
+    }
+    if (corsOrigins.some((origin) => !/^https:\/\//i.test(origin))) {
+      errors.push("CORS_ORIGINS trên production chỉ được dùng địa chỉ HTTPS");
+    }
+    if (dbType === "postgres" && !isEnabled("DB_SSL")) {
+      errors.push("DB_SSL phải là true khi dùng PostgreSQL trên production");
+    }
+    if (dbType === "postgres"
+      && String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "true").toLowerCase() === "false") {
+      errors.push("DB_SSL_REJECT_UNAUTHORIZED không được là false trên production");
+    }
+    const jwtExpiresIn = String(process.env.JWT_EXPIRES_IN || "30m").trim();
+    const expiryMatch = jwtExpiresIn.match(/^(\d+)([smhd])$/i);
+    const expiryUnitSeconds = { s: 1, m: 60, h: 3600, d: 86400 };
+    const expirySeconds = expiryMatch
+      ? Number(expiryMatch[1]) * expiryUnitSeconds[expiryMatch[2].toLowerCase()]
+      : 0;
+    if (!expirySeconds || expirySeconds < 5 * 60 || expirySeconds > 24 * 60 * 60) {
+      errors.push("JWT_EXPIRES_IN trên production phải từ 5 phút đến 24 giờ (ví dụ: 30m)");
+    }
     if (!isEnabled("ALLOW_DEMO_ACCOUNTS")) {
       requireWhen(
         true,

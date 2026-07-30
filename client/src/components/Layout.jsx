@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { SITE } from "../config/site";
+import { formatDate, SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
 import { Logo } from "./Common";
 import Icon from "./Icon";
@@ -14,12 +14,16 @@ const navItems = [
 ];
 
 export default function Layout() {
-  const { cartCount, wishlist, user, logout } = useShop();
+  const {
+    cartCount, wishlist, user, logout, notifications, notificationUnreadCount,
+    markNotificationRead, markAllNotificationsRead,
+  } = useShop();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState([]);
   const [activeMegaMenu, setActiveMegaMenu] = useState("");
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -28,6 +32,7 @@ export default function Layout() {
     setMobileOpen(false);
     setSearchOpen(false);
     setActiveMegaMenu("");
+    setNotificationOpen(false);
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -176,6 +181,41 @@ export default function Layout() {
               <span aria-hidden="true"><Icon name="heart" /></span><span className="header-action__label">Đã lưu</span>
               {wishlist.length > 0 && <b>{wishlist.length}</b>}
             </Link>
+            {user && (
+              <div className="customer-notifications">
+                <button
+                  className="header-action"
+                  type="button"
+                  aria-label="Thông báo đơn hàng"
+                  aria-expanded={notificationOpen}
+                  onClick={() => setNotificationOpen((value) => !value)}
+                >
+                  <span aria-hidden="true"><Icon name="bell" /></span><span className="header-action__label">Thông báo</span>
+                  {notificationUnreadCount > 0 && <b>{notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}</b>}
+                </button>
+                {notificationOpen && (
+                  <div className="customer-notification-menu">
+                    <header><div><strong>Cập nhật của bạn</strong><small>{notificationUnreadCount} thông báo chưa đọc</small></div>{notificationUnreadCount > 0 && <button type="button" onClick={markAllNotificationsRead}>Đọc tất cả</button>}</header>
+                    <div>
+                      {notifications.length ? notifications.map((item) => (
+                        <button
+                          type="button"
+                          className={item.readAt ? "" : "is-unread"}
+                          key={item.id}
+                          onClick={async () => {
+                            if (!item.readAt) await markNotificationRead(item.id);
+                            setNotificationOpen(false);
+                            navigate(item.href || "/tai-khoan?tab=orders");
+                          }}
+                        >
+                          <i /><span><strong>{item.title}</strong><small>{item.message}</small><time>{formatDate(item.createdAt, { hour: "2-digit", minute: "2-digit" })}</time></span>
+                        </button>
+                      )) : <p>Chưa có cập nhật mới.</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <Link className="header-action" to={user ? "/tai-khoan" : "/dang-nhap"}>
               <span aria-hidden="true"><Icon name="user" /></span><span className="header-action__label">{user ? user.name.split(" ").slice(-1)[0] : "Tài khoản"}</span>
             </Link>

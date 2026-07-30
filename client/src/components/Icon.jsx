@@ -7,6 +7,7 @@ const drawings = {
   bag: <><path d="M5 8.5h14l-1 12H6l-1-12Z" /><path d="M9 9V6a3 3 0 0 1 6 0v3" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   close: <path d="m6 6 12 12M18 6 6 18" />,
+  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" /><path d="M10 21h4" /></>,
 };
 
 export default function Icon({ name, size = 20, filled = false, className = "" }) {

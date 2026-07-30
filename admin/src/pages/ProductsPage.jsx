@@ -239,7 +239,7 @@ export default function ProductsPage() {
                     <td><span className={`stock-number ${product.stock <= 20 ? "is-low" : ""}`}>{product.stock}</span></td>
                     <td><Status value={product.status} type="product" /></td>
                     <td>{product.sold}</td>
-                    <td><div className="ops-row-actions"><button type="button" onClick={() => openForm(product)}>Sửa</button>{user.role === "admin" && <button type="button" className="danger" onClick={() => remove(product)}>×</button>}</div></td>
+                    <td>{user.role === "admin" ? <div className="ops-row-actions"><button type="button" onClick={() => openForm(product)}>Sửa</button><button type="button" className="danger" onClick={() => remove(product)}>×</button></div> : <span>Chỉ xem</span>}</td>
                   </tr>
                 ))}
               </tbody>

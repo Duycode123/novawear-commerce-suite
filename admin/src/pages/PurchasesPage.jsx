@@ -5,7 +5,7 @@ import { useAdmin } from "../context/AdminContext";
 import { Empty, ErrorPanel, Loading, Modal, PageHeader, ProductImage } from "../components/Ui";
 
 export default function PurchasesPage() {
-  const { notify } = useAdmin();
+  const { notify, user } = useAdmin();
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +81,7 @@ export default function PurchasesPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Inbound logistics" title="Nhập hàng" copy="Tạo phiếu đặt nhà cung cấp và ghi nhận hàng về kho." actions={<button className="ops-primary-button" type="button" onClick={() => setCreateOpen(true)}>＋ Tạo phiếu nhập</button>} />
+      <PageHeader eyebrow="Inbound logistics" title="Nhập hàng" copy="Tạo phiếu đặt nhà cung cấp và ghi nhận hàng về kho." actions={user?.role === "admin" ? <button className="ops-primary-button" type="button" onClick={() => setCreateOpen(true)}>＋ Tạo phiếu nhập</button> : null} />
       {loading && <Loading rows={5} />}
       {error && <ErrorPanel message={error} onRetry={load} />}
       {!loading && !error && orders.length > 0 && (
@@ -104,7 +104,11 @@ export default function PurchasesPage() {
               <footer>
                 <div><span>Ngày dự kiến</span><strong>{order.expectedDate ? formatDate(order.expectedDate) : "Chưa đặt"}</strong></div>
                 <div><span>Tổng giá trị</span><strong>{formatMoney(order.total)}</strong></div>
-                {order.status !== "received" ? <button className="ops-primary-button" type="button" onClick={() => receive(order)}>Nhận hàng vào kho →</button> : <span className="purchase-received">✓ {formatDate(order.receivedAt, true)}</span>}
+                {order.status !== "received"
+                  ? user?.role === "admin"
+                    ? <button className="ops-primary-button" type="button" onClick={() => receive(order)}>Nhận hàng vào kho →</button>
+                    : <span className="ops-muted">Chờ quản trị viên xác nhận</span>
+                  : <span className="purchase-received">✓ {formatDate(order.receivedAt, true)}</span>}
               </footer>
             </article>
           ))}

@@ -16,7 +16,9 @@ const ORDER_STATUS_LABELS = {
   pending: "Đã tiếp nhận",
   confirmed: "Đã xác nhận",
   packing: "Đang đóng gói",
+  ready_to_ship: "Chờ bàn giao vận chuyển",
   shipping: "Đang giao hàng",
+  delivery_failed: "Giao hàng chưa thành công",
   delivered: "Giao thành công",
   cancelled: "Đã hủy",
 };
@@ -24,14 +26,61 @@ const ORDER_STATUS_LABELS = {
 const ALLOWED_ORDER_TRANSITIONS = {
   pending: ["confirmed", "cancelled"],
   confirmed: ["packing", "cancelled"],
-  packing: ["shipping", "cancelled"],
-  shipping: ["delivered"],
+  packing: ["ready_to_ship", "cancelled"],
+  ready_to_ship: ["shipping", "cancelled"],
+  shipping: ["delivered", "delivery_failed"],
+  delivery_failed: ["shipping", "cancelled"],
   delivered: [],
+  cancelled: [],
+};
+
+const PAYMENT_STATUS_LABELS = {
+  pending: "Chờ thanh toán COD",
+  awaiting: "Chờ chuyển khoản",
+  paid: "Đã thanh toán",
+  refund_pending: "Chờ hoàn tiền",
+  refunded: "Đã hoàn tiền",
+  partially_refunded: "Đã hoàn tiền một phần",
+  failed: "Thanh toán thất bại",
+  expired: "Đã hết hạn thanh toán",
+  cancelled: "Đã hủy thanh toán",
+  review_required: "Cần đối soát thanh toán",
+};
+
+const RETURN_STATUS_LABELS = {
+  requested: "Đã tiếp nhận yêu cầu",
+  approved: "Đã chấp thuận",
+  receiving: "Đang nhận hàng hoàn",
+  inspecting: "Đang kiểm tra sản phẩm",
+  completed: "Đã hoàn tất",
+  rejected: "Đã từ chối",
+  cancelled: "Khách hàng đã hủy",
+};
+
+const ALLOWED_RETURN_TRANSITIONS = {
+  requested: ["approved", "rejected", "cancelled"],
+  approved: ["receiving", "rejected"],
+  receiving: ["inspecting", "rejected"],
+  inspecting: ["completed", "rejected"],
+  completed: [],
+  rejected: [],
   cancelled: [],
 };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^[0-9+\s.-]{9,15}$/;
+const appTimeZone = process.env.APP_TIME_ZONE || "Asia/Ho_Chi_Minh";
+
+function localDateKey(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: appTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
 
 function normalizeText(value) {
   return String(value || "")
@@ -56,6 +105,16 @@ function asMoney(value) {
 function asPositiveInt(value, fallback = 1) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function validPassword(value, { minLength = 10, requireSpecial = false } = {}) {
+  const password = String(value || "");
+  return password.length >= minLength
+    && password.length <= 128
+    && /[a-z]/.test(password)
+    && /[A-Z]/.test(password)
+    && /\d/.test(password)
+    && (!requireSpecial || /[^A-Za-z0-9]/.test(password));
 }
 
 function normalizePaymentCode(value) {
@@ -93,6 +152,14 @@ function createVerificationCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
+function createTrackingCode(orders, year) {
+  let code;
+  do {
+    code = `NVA${String(year).slice(-2)}${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
+  } while (orders.some((item) => normalizeText(item.trackingCode) === normalizeText(code)));
+  return code;
+}
+
 function hashVerificationCode(email, code, secret) {
   return hashOneTimeCode("account", email, code, secret);
 }
@@ -113,6 +180,51 @@ function publicProduct(product, categories) {
   };
 }
 
+function publicOrder(order) {
+  const {
+    internalNote,
+    assigneeId,
+    userId,
+    customerId,
+    stockReservedAt,
+    stockRestoredAt,
+    checkoutRequestId,
+    guestCheckoutJti,
+    emailNotification,
+    paymentTransaction,
+    paymentReconciliation,
+    paymentReviewReason,
+    couponUsageCountedAt,
+    couponUsageRestoredAt,
+    ...safeOrder
+  } = order;
+  return {
+    ...safeOrder,
+    timeline: (order.timeline || []).map(({ internalNote: _internalNote, actorId: _actorId, ...event }) => event),
+  };
+}
+
+function publicReturn(returnRequest) {
+  const {
+    internalNote,
+    assigneeId,
+    userId,
+    customerId,
+    inspectionResult,
+    refundNote,
+    inventoryDisposition,
+    inventoryDispositionAt,
+    exchangeReservedAt,
+    exchangeReleasedAt,
+    stockRestockedAt,
+    ...safeReturn
+  } = returnRequest;
+  return {
+    ...safeReturn,
+    timeline: (returnRequest.timeline || []).map(({ internalNote: _internalNote, actorId: _actorId, ...event }) => event),
+  };
+}
+
 function ratingStats(productId, reviews) {
   const published = reviews.filter((item) => item.productId === productId && item.status === "published");
   if (!published.length) return { rating: 0, reviewCount: 0 };
@@ -127,7 +239,7 @@ function completedOrder(order) {
 function orderSalesByProduct(orders) {
   const result = new Map();
   orders
-    .filter((order) => order.status !== "cancelled")
+    .filter(completedOrder)
     .forEach((order) => order.items.forEach((line) => {
       result.set(line.productId, (result.get(line.productId) || 0) + Number(line.quantity || 0));
     }));
@@ -154,6 +266,7 @@ function rebuildCustomerMetrics(store, customerId) {
 function ensureDataShape(store) {
   const collections = [
     "returns",
+    "notifications",
     "suppliers",
     "inventoryMovements",
     "tasks",
@@ -173,6 +286,60 @@ function ensureDataShape(store) {
   store.data.products.forEach((product) => {
     if (!Array.isArray(product.variants)) product.variants = [];
   });
+  store.data.orders.forEach((order) => {
+    if (!Number.isFinite(Number(order.version)) || Number(order.version) < 1) order.version = 1;
+    if (!Array.isArray(order.timeline)) order.timeline = [];
+    order.timeline = order.timeline.map((entry, index) => ({
+      id: entry.id || `legacy-${order.id}-${index + 1}`,
+      eventType: entry.eventType || "status",
+      status: entry.status || order.status,
+      paymentStatus: entry.paymentStatus || order.paymentStatus,
+      label: entry.label || ORDER_STATUS_LABELS[entry.status] || "Đơn hàng được cập nhật",
+      note: String(entry.note || ""),
+      internalNote: String(entry.internalNote || ""),
+      actorId: entry.actorId || null,
+      actorName: entry.actorName || "Hệ thống NOVAWEAR",
+      actorRole: entry.actorRole || "system",
+      source: entry.source || "system",
+      at: entry.at || order.updatedAt || order.createdAt || new Date().toISOString(),
+    }));
+    if (!order.shipment) {
+      order.shipment = { carrier: "", trackingNumber: "", estimatedDeliveryAt: null };
+    }
+    if (!order.stockReservedAt && order.status !== "cancelled") order.stockReservedAt = order.createdAt;
+    if (order.status === "cancelled" && !order.stockRestoredAt) order.stockRestoredAt = order.updatedAt || order.createdAt;
+    if (order.status === "delivered" && !order.deliveredAt) {
+      order.deliveredAt = order.timeline.find((entry) => entry.status === "delivered")?.at || order.updatedAt;
+    }
+    if (order.status === "delivered" && ["pending", "awaiting"].includes(order.paymentStatus)) {
+      order.paymentStatus = "review_required";
+      order.paymentReviewReason = "Dữ liệu cũ ghi nhận đã giao hàng nhưng chưa có bằng chứng thu tiền.";
+    }
+  });
+  store.data.notifications.forEach((notification) => {
+    if (!Array.isArray(notification.readBy)) notification.readBy = [];
+  });
+  store.data.returns.forEach((returnRequest) => {
+    if (!Number.isFinite(Number(returnRequest.version)) || Number(returnRequest.version) < 1) {
+      returnRequest.version = 1;
+    }
+    if (!Array.isArray(returnRequest.timeline)) returnRequest.timeline = [];
+    returnRequest.timeline = returnRequest.timeline.map((entry, index) => ({
+      id: entry.id || `legacy-${returnRequest.id}-${index + 1}`,
+      status: entry.status || returnRequest.status,
+      label: entry.label || RETURN_STATUS_LABELS[entry.status] || "Yêu cầu đổi trả được cập nhật",
+      note: entry.status === "requested" && String(entry.note || "").includes("KhĂ¡ch hĂ")
+        ? "Khách hàng gửi yêu cầu."
+        : String(entry.note || ""),
+      internalNote: String(entry.internalNote || ""),
+      actorId: entry.actorId || null,
+      actorName: entry.actorName || "Hệ thống NOVAWEAR",
+      actorRole: entry.actorRole || "system",
+      source: entry.source || "system",
+      at: entry.at || returnRequest.updatedAt || returnRequest.createdAt || new Date().toISOString(),
+    }));
+    if (returnRequest.refundStatus === undefined) returnRequest.refundStatus = "not_applicable";
+  });
   store.data.users.forEach((user) => {
     if (user.tokenVersion === undefined) user.tokenVersion = 0;
     if (user.emailVerifiedAt === undefined) {
@@ -181,6 +348,60 @@ function ensureDataShape(store) {
         : null;
     }
   });
+}
+
+function couponAvailabilityError(coupon, subtotal = null, now = new Date()) {
+  if (!coupon || !coupon.active) {
+    return { status: 404, code: "COUPON_UNAVAILABLE", message: "Mã ưu đãi không tồn tại hoặc đang tạm dừng." };
+  }
+  const startsAt = new Date(coupon.startsAt || 0);
+  const expiresAt = new Date(coupon.expiresAt || 0);
+  if (Number.isNaN(startsAt.getTime()) || startsAt > now) {
+    return { status: 409, code: "COUPON_NOT_STARTED", message: "Mã ưu đãi chưa đến thời gian sử dụng." };
+  }
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt < now) {
+    return { status: 410, code: "COUPON_EXPIRED", message: "Mã ưu đãi đã hết hạn." };
+  }
+  const usageLimit = Math.max(0, Number(coupon.usageLimit || 0));
+  const usedCount = Math.max(0, Number(coupon.usedCount || 0));
+  if (usageLimit > 0 && usedCount >= usageLimit) {
+    return { status: 409, code: "COUPON_USAGE_LIMIT_REACHED", message: "Mã ưu đãi đã hết lượt sử dụng." };
+  }
+  if (subtotal !== null && asMoney(subtotal) < asMoney(coupon.minOrder)) {
+    return {
+      status: 400,
+      code: "COUPON_MINIMUM_NOT_MET",
+      message: `Đơn hàng cần tối thiểu ${asMoney(coupon.minOrder).toLocaleString("vi-VN")}đ để dùng mã này.`,
+    };
+  }
+  return null;
+}
+
+function couponBenefit(coupon, subtotal, shippingFee) {
+  let discount = 0;
+  let nextShippingFee = shippingFee;
+  if (coupon.type === "percent") {
+    const calculated = Math.round(subtotal * asMoney(coupon.value) / 100);
+    const maximum = asMoney(coupon.maxDiscount);
+    discount = maximum > 0 ? Math.min(calculated, maximum) : calculated;
+  }
+  if (coupon.type === "fixed") {
+    const value = asMoney(coupon.value);
+    const maximum = asMoney(coupon.maxDiscount);
+    discount = Math.min(value, maximum > 0 ? maximum : value, subtotal);
+  }
+  if (coupon.type === "shipping") {
+    nextShippingFee = Math.max(0, shippingFee - asMoney(coupon.value));
+  }
+  return { discount, shippingFee: nextShippingFee };
+}
+
+function restoreCouponUsage(store, order, at = new Date().toISOString()) {
+  if (!order.couponCode || !order.couponUsageCountedAt || order.couponUsageRestoredAt) return false;
+  const coupon = (store.data.coupons || []).find((item) => item.code === order.couponCode);
+  if (coupon) coupon.usedCount = Math.max(0, Number(coupon.usedCount || 0) - 1);
+  order.couponUsageRestoredAt = at;
+  return true;
 }
 
 function productVariant(product, size, color) {
@@ -204,6 +425,409 @@ function changeProductStock(product, quantity, size, color) {
   product.stock = Math.max(0, Number(product.stock || 0) + quantity);
 }
 
+function publicActor(actor, source = "operations") {
+  return {
+    actorId: actor?.id || null,
+    actorName: actor?.name || (source === "system" ? "Hệ thống NOVAWEAR" : "Đội ngũ NOVAWEAR"),
+    actorRole: actor?.role || source,
+    source,
+  };
+}
+
+function touchOrder(order, at = new Date().toISOString()) {
+  order.updatedAt = at;
+  order.version = Number(order.version || 0) + 1;
+  return at;
+}
+
+function appendOrderEvent(order, details = {}) {
+  const at = details.at || new Date().toISOString();
+  const actor = publicActor(details.actor, details.source);
+  const event = {
+    id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    eventType: details.eventType || "status",
+    status: details.status || order.status,
+    paymentStatus: details.paymentStatus || order.paymentStatus,
+    label: details.label || ORDER_STATUS_LABELS[details.status || order.status] || "Đơn hàng được cập nhật",
+    note: String(details.note || "").trim().slice(0, 500),
+    internalNote: String(details.internalNote || "").trim().slice(0, 1000),
+    at,
+    ...actor,
+  };
+  order.timeline = Array.isArray(order.timeline) ? order.timeline : [];
+  order.timeline.push(event);
+  return event;
+}
+
+function createNotification(store, details) {
+  store.data.notifications = store.data.notifications || [];
+  const notification = {
+    id: store.nextId("notifications", "ntf-"),
+    audience: details.audience,
+    userId: details.userId || null,
+    customerId: details.customerId || null,
+    orderId: details.orderId || null,
+    returnId: details.returnId || null,
+    type: details.type || "order_status",
+    title: String(details.title || "Đơn hàng được cập nhật").slice(0, 160),
+    message: String(details.message || "").slice(0, 500),
+    href: String(details.href || ""),
+    readAt: null,
+    readBy: [],
+    createdAt: details.createdAt || new Date().toISOString(),
+  };
+  store.data.notifications.unshift(notification);
+  store.data.notifications = store.data.notifications.slice(0, 2000);
+  return notification;
+}
+
+function notifyOrderChange(store, order, event, options = {}) {
+  const message = options.message || event.note || event.label;
+  createNotification(store, {
+    audience: "customer",
+    userId: order.userId,
+    customerId: order.customerId,
+    orderId: order.id,
+    type: options.type || event.eventType || "order_status",
+    title: `${order.id} · ${event.label}`,
+    message,
+    href: `/tai-khoan?tab=orders&order=${encodeURIComponent(order.id)}`,
+    createdAt: event.at,
+  });
+  createNotification(store, {
+    audience: "operations",
+    orderId: order.id,
+    type: options.type || event.eventType || "order_status",
+    title: `${order.id} · ${event.label}`,
+    message: options.operationsMessage || `${order.customer?.name || "Khách hàng"}: ${message}`,
+    href: `/orders?open=${encodeURIComponent(order.id)}`,
+    createdAt: event.at,
+  });
+}
+
+function touchReturn(returnRequest, at = new Date().toISOString()) {
+  returnRequest.updatedAt = at;
+  returnRequest.version = Number(returnRequest.version || 0) + 1;
+  return at;
+}
+
+function appendReturnEvent(returnRequest, details = {}) {
+  const at = details.at || new Date().toISOString();
+  const actor = publicActor(details.actor, details.source);
+  const event = {
+    id: `rev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    status: details.status || returnRequest.status,
+    label: details.label || RETURN_STATUS_LABELS[details.status || returnRequest.status]
+      || "Yêu cầu đổi trả được cập nhật",
+    note: String(details.note || "").trim().slice(0, 500),
+    internalNote: String(details.internalNote || "").trim().slice(0, 1000),
+    at,
+    ...actor,
+  };
+  returnRequest.timeline = Array.isArray(returnRequest.timeline) ? returnRequest.timeline : [];
+  returnRequest.timeline.push(event);
+  return event;
+}
+
+function notifyReturnChange(store, returnRequest, order, event) {
+  createNotification(store, {
+    audience: "customer",
+    userId: returnRequest.userId || order?.userId,
+    customerId: returnRequest.customerId || order?.customerId,
+    orderId: returnRequest.orderId,
+    type: "return_status",
+    title: `${returnRequest.id} · ${event.label}`,
+    message: event.note || event.label,
+    href: "/doi-tra",
+    createdAt: event.at,
+  });
+  createNotification(store, {
+    audience: "operations",
+    orderId: returnRequest.orderId,
+    returnId: returnRequest.id,
+    type: "return_status",
+    title: `${returnRequest.id} · ${event.label}`,
+    message: `${order?.customer?.name || "Khách hàng"}: ${event.note || event.label}`,
+    href: `/returns?open=${encodeURIComponent(returnRequest.id)}`,
+    createdAt: event.at,
+  });
+}
+
+function addInventoryMovement(store, details) {
+  store.data.inventoryMovements = store.data.inventoryMovements || [];
+  store.data.inventoryMovements.unshift({
+    id: store.nextId("inventoryMovements", "mov-"),
+    productId: details.product.id,
+    size: String(details.size || ""),
+    color: String(details.color || ""),
+    quantity: Number(details.quantity || 0),
+    reason: details.reason,
+    orderId: details.orderId || null,
+    returnId: details.returnId || null,
+    before: Number(details.before || 0),
+    after: Number(details.product.stock || 0),
+    actorId: details.actor?.id || null,
+    createdAt: details.at || new Date().toISOString(),
+  });
+  store.data.inventoryMovements = store.data.inventoryMovements.slice(0, 2000);
+}
+
+function changeReturnItemStock(store, returnRequest, item, quantity, details = {}) {
+  const product = store.data.products.find((entry) => entry.id === item.productId);
+  if (!product) return false;
+  const before = Number(product.stock || 0);
+  changeProductStock(product, quantity, details.size || item.size, details.color || item.color);
+  addInventoryMovement(store, {
+    product,
+    size: details.size || item.size,
+    color: details.color || item.color,
+    quantity,
+    reason: details.reason,
+    orderId: returnRequest.orderId,
+    returnId: returnRequest.id,
+    actor: details.actor,
+    before,
+  });
+  return true;
+}
+
+function exchangeAvailabilityError(store, returnRequest) {
+  for (const item of returnRequest.items || []) {
+    const product = store.data.products.find((entry) => entry.id === item.productId);
+    if (!product) return `Sản phẩm ${item.name} không còn tồn tại.`;
+    const desiredSize = String(item.desiredSize || "").trim();
+    const desiredColor = String(item.desiredColor || "").trim();
+    if (!desiredSize || !desiredColor) return `Cần chọn size và màu muốn đổi cho ${item.name}.`;
+    if (Array.isArray(product.sizes) && product.sizes.length && !product.sizes.includes(desiredSize)) {
+      return `Size muốn đổi của ${item.name} không hợp lệ.`;
+    }
+    if (Array.isArray(product.colors) && product.colors.length && !product.colors.includes(desiredColor)) {
+      return `Màu muốn đổi của ${item.name} không hợp lệ.`;
+    }
+    const variant = productVariant(product, desiredSize, desiredColor);
+    const available = variant ? Number(variant.stock || 0) : Number(product.stock || 0);
+    if (available < Number(item.quantity || 0)) {
+      return `${item.name} (${desiredColor}, size ${desiredSize}) không còn đủ tồn kho để đổi.`;
+    }
+  }
+  return null;
+}
+
+function reserveExchangeInventory(store, returnRequest, actor) {
+  if (returnRequest.exchangeReservedAt) return;
+  for (const item of returnRequest.items || []) {
+    changeReturnItemStock(store, returnRequest, item, -Number(item.quantity || 0), {
+      size: item.desiredSize,
+      color: item.desiredColor,
+      reason: `Giữ hàng cho yêu cầu đổi ${returnRequest.id}`,
+      actor,
+    });
+  }
+  returnRequest.exchangeReservedAt = new Date().toISOString();
+}
+
+function releaseExchangeInventory(store, returnRequest, actor) {
+  if (!returnRequest.exchangeReservedAt || returnRequest.exchangeReleasedAt || returnRequest.status === "completed") return;
+  for (const item of returnRequest.items || []) {
+    changeReturnItemStock(store, returnRequest, item, Number(item.quantity || 0), {
+      size: item.desiredSize,
+      color: item.desiredColor,
+      reason: `Hoàn giữ hàng do kết thúc yêu cầu đổi ${returnRequest.id}`,
+      actor,
+    });
+  }
+  returnRequest.exchangeReleasedAt = new Date().toISOString();
+}
+
+function restockReturnedItems(store, returnRequest, actor) {
+  if (returnRequest.stockRestockedAt) return;
+  for (const item of returnRequest.items || []) {
+    changeReturnItemStock(store, returnRequest, item, Number(item.quantity || 0), {
+      reason: `Nhập lại hàng hoàn từ yêu cầu ${returnRequest.id}`,
+      actor,
+    });
+  }
+  returnRequest.stockRestockedAt = new Date().toISOString();
+}
+
+function adjustOrderInventory(store, order, direction, reason, actor) {
+  store.data.inventoryMovements = store.data.inventoryMovements || [];
+  for (const line of order.items || []) {
+    const product = store.data.products.find((item) => item.id === line.productId);
+    if (!product) continue;
+    const quantity = Number(line.quantity || 0) * direction;
+    const before = Number(product.stock || 0);
+    changeProductStock(product, quantity, line.size, line.color);
+    store.data.inventoryMovements.unshift({
+      id: store.nextId("inventoryMovements", "mov-"),
+      productId: product.id,
+      size: String(line.size || ""),
+      color: String(line.color || ""),
+      quantity,
+      reason,
+      orderId: order.id,
+      before,
+      after: Number(product.stock || 0),
+      actorId: actor?.id || null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  store.data.inventoryMovements = store.data.inventoryMovements.slice(0, 2000);
+}
+
+function restoreOrderInventory(store, order, reason, actor) {
+  if (order.stockRestoredAt) return false;
+  adjustOrderInventory(store, order, 1, reason, actor);
+  order.stockRestoredAt = new Date().toISOString();
+  return true;
+}
+
+function validateOrderTransition(order, nextStatus, changes = {}) {
+  if (!ORDER_STATUS_LABELS[nextStatus]) return "Trạng thái đơn hàng không hợp lệ.";
+  const allowed = ALLOWED_ORDER_TRANSITIONS[order.status] || [];
+  if (!allowed.includes(nextStatus)) {
+    return `Không thể chuyển từ “${ORDER_STATUS_LABELS[order.status]}” sang “${ORDER_STATUS_LABELS[nextStatus]}”.`;
+  }
+  if (nextStatus === "confirmed" && order.paymentMethod === "bank" && order.paymentStatus !== "paid") {
+    return "Đơn chuyển khoản chỉ được xác nhận sau khi SePay ghi nhận đủ tiền.";
+  }
+  if (nextStatus === "shipping") {
+    const shipment = { ...(order.shipment || {}), ...(changes.shipment || {}) };
+    if (String(shipment.carrier || "").trim().length < 2 || String(shipment.trackingNumber || "").trim().length < 4) {
+      return "Cần nhập đơn vị vận chuyển và mã vận đơn trước khi bắt đầu giao.";
+    }
+  }
+  if (nextStatus === "delivery_failed" && String(changes.reason || "").trim().length < 5) {
+    return "Cần ghi rõ lý do giao hàng chưa thành công.";
+  }
+  if (nextStatus === "cancelled" && String(changes.reason || "").trim().length < 5) {
+    return "Cần nhập lý do hủy đơn hàng.";
+  }
+  return null;
+}
+
+function applyOrderCancellation(store, order, details = {}) {
+  const at = new Date().toISOString();
+  restoreOrderInventory(store, order, `Hoàn kho do hủy đơn ${order.id}`, details.actor);
+  restoreCouponUsage(store, order, at);
+  order.status = "cancelled";
+  order.cancelReason = String(details.reason || "Đơn hàng đã được hủy.").trim().slice(0, 500);
+  order.cancelledAt = at;
+  if (details.paymentStatus) {
+    order.paymentStatus = details.paymentStatus;
+  } else if (order.paymentStatus === "paid") {
+    order.paymentStatus = "refund_pending";
+  } else if (order.paymentStatus === "awaiting") {
+    order.paymentStatus = "cancelled";
+  } else if (order.paymentStatus === "pending") {
+    order.paymentStatus = "cancelled";
+  }
+  touchOrder(order, at);
+  const event = appendOrderEvent(order, {
+    status: "cancelled",
+    paymentStatus: order.paymentStatus,
+    label: ORDER_STATUS_LABELS.cancelled,
+    note: order.cancelReason,
+    internalNote: details.internalNote,
+    actor: details.actor,
+    source: details.source || "operations",
+    at,
+  });
+  notifyOrderChange(store, order, event, {
+    type: "order_cancelled",
+    message: order.paymentStatus === "refund_pending"
+      ? `${order.cancelReason} Khoản đã thanh toán đang chờ được hoàn.`
+      : order.cancelReason,
+  });
+  rebuildCustomerMetrics(store, order.customerId);
+  return event;
+}
+
+function applyOrderTransition(store, order, nextStatus, details = {}) {
+  if (nextStatus === "cancelled") return applyOrderCancellation(store, order, details);
+  const at = new Date().toISOString();
+  if (details.shipment) {
+    order.shipment = {
+      ...(order.shipment || {}),
+      carrier: String(details.shipment.carrier || order.shipment?.carrier || "").trim().slice(0, 120),
+      trackingNumber: String(details.shipment.trackingNumber || order.shipment?.trackingNumber || "").trim().slice(0, 120),
+      estimatedDeliveryAt: details.shipment.estimatedDeliveryAt || order.shipment?.estimatedDeliveryAt || null,
+    };
+  }
+  if (nextStatus === "ready_to_ship") order.readyToShipAt = at;
+  if (nextStatus === "shipping") {
+    order.shippedAt = order.shippedAt || at;
+    order.deliveryAttempts = Number(order.deliveryAttempts || 0) + 1;
+    if (order.shipment) order.shipment.lastHandedToCarrierAt = at;
+  }
+  if (nextStatus === "delivery_failed") {
+    order.lastDeliveryFailure = { reason: String(details.reason || "").trim().slice(0, 500), at };
+  }
+  if (nextStatus === "delivered") {
+    order.deliveredAt = at;
+    if (order.paymentMethod === "cod" && order.paymentStatus === "pending") {
+      order.paymentStatus = "paid";
+      order.paidAt = at;
+    }
+  }
+  order.status = nextStatus;
+  touchOrder(order, at);
+  const event = appendOrderEvent(order, {
+    status: nextStatus,
+    paymentStatus: order.paymentStatus,
+    label: ORDER_STATUS_LABELS[nextStatus],
+    note: details.reason || details.publicNote,
+    internalNote: details.internalNote,
+    actor: details.actor,
+    source: details.source || "operations",
+    at,
+  });
+  notifyOrderChange(store, order, event, {
+    message: details.publicNote || details.reason || ORDER_STATUS_LABELS[nextStatus],
+  });
+  rebuildCustomerMetrics(store, order.customerId);
+  return event;
+}
+
+function applyOrderPaymentPaid(store, order, details = {}) {
+  if (order.paymentStatus === "paid") return null;
+  const at = details.at || new Date().toISOString();
+  order.paymentStatus = "paid";
+  order.paidAt = at;
+  if (details.transaction) order.paymentTransaction = details.transaction;
+  const paymentEvent = appendOrderEvent(order, {
+    eventType: "payment",
+    status: order.status,
+    paymentStatus: "paid",
+    label: details.label || "Thanh toán thành công",
+    note: details.note || "Hệ thống đã ghi nhận đủ số tiền thanh toán.",
+    actor: details.actor,
+    source: details.source || "system",
+    at,
+  });
+  notifyOrderChange(store, order, paymentEvent, { type: "payment_paid", message: paymentEvent.note });
+  let finalEvent = paymentEvent;
+  if (order.status === "pending") {
+    order.status = "confirmed";
+    finalEvent = appendOrderEvent(order, {
+      status: "confirmed",
+      paymentStatus: "paid",
+      label: ORDER_STATUS_LABELS.confirmed,
+      note: "Đơn chuyển khoản được tự động xác nhận sau khi nhận đủ tiền.",
+      actor: details.actor,
+      source: details.source || "system",
+      at,
+    });
+    notifyOrderChange(store, order, finalEvent, {
+      type: "order_status",
+      message: "Đơn hàng đã được xác nhận và sẽ chuyển sang khâu đóng gói.",
+    });
+  }
+  touchOrder(order, at);
+  rebuildCustomerMetrics(store, order.customerId);
+  return finalEvent;
+}
+
 function createApp(options = {}) {
   const app = express();
   const dataFile = options.dataFile
@@ -218,6 +842,9 @@ function createApp(options = {}) {
     throw new Error("JWT_SECRET phải là chuỗi bí mật ngẫu nhiên có ít nhất 32 ký tự khi chạy production.");
   }
   enforceProductionIdentityPolicy(store, options.productionIdentity);
+  // Persist startup repairs and identity-policy updates as well as exposing them
+  // in memory. This keeps legacy payment reconciliation stable across restarts.
+  store.save();
   const jwtSecret = configuredJwtSecret || "novawear-local-development-secret-change-me";
   const exposeVerificationCode = options.exposeVerificationCode
     ?? String(process.env.EXPOSE_VERIFICATION_CODE || "false").toLowerCase() === "true";
@@ -256,6 +883,10 @@ function createApp(options = {}) {
   const authLockSeconds = asPositiveInt(process.env.AUTH_LOCK_SECONDS, 60);
   const operationsHandoffTtlSeconds = asPositiveInt(process.env.OPERATIONS_HANDOFF_TTL_SECONDS, 60);
   const guestCheckoutTokenTtlSeconds = asPositiveInt(process.env.GUEST_CHECKOUT_TOKEN_TTL_SECONDS, 900);
+  const orderPaymentExpirationSeconds = asPositiveInt(
+    options.orderPaymentExpirationSeconds || process.env.ORDER_PAYMENT_EXPIRATION_SECONDS,
+    1800,
+  );
   const checkoutRequestWindowSeconds = asPositiveInt(process.env.CHECKOUT_REQUEST_WINDOW_SECONDS, 900);
   const checkoutMaxCodeRequests = asPositiveInt(process.env.CHECKOUT_MAX_CODE_REQUESTS, 5);
   const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
@@ -270,7 +901,104 @@ function createApp(options = {}) {
   const oauthExchanges = new Map();
   const registrationLocks = new Set();
   const checkoutRequestLimits = new Map();
+  const publicRequestLimits = new Map();
+  let lastSecurityPruneAt = 0;
   const dummyPasswordHash = hashPassword("Invalid-password-value-2026");
+
+  function pruneTemporarySecurityState(now = Date.now()) {
+    if (now - lastSecurityPruneAt < 60 * 1000) return;
+    lastSecurityPruneAt = now;
+    for (const [key, value] of operationsHandoffs) if (value.expiresAt <= now) operationsHandoffs.delete(key);
+    for (const [key, value] of oauthStates) if (value.expiresAt <= now) oauthStates.delete(key);
+    for (const [key, value] of oauthExchanges) if (value.expiresAt <= now) oauthExchanges.delete(key);
+    for (const [key, value] of guestVerificationAttempts) if (value.expiresAt <= now) guestVerificationAttempts.delete(key);
+    for (const [key, expiresAt] of usedGuestCheckoutTokens) if (expiresAt <= now) usedGuestCheckoutTokens.delete(key);
+    for (const [key, timestamps] of checkoutRequestLimits) {
+      const recent = timestamps.filter((timestamp) => now - timestamp < checkoutRequestWindowSeconds * 1000);
+      if (recent.length) checkoutRequestLimits.set(key, recent);
+      else checkoutRequestLimits.delete(key);
+    }
+    for (const [key, value] of authAttempts) {
+      if (now - Number(value.updatedAt || 0) > 60 * 60 * 1000) authAttempts.delete(key);
+    }
+    for (const [key, value] of publicRequestLimits) if (value.resetAt <= now) publicRequestLimits.delete(key);
+  }
+
+  function notificationVisibleTo(notification, user) {
+    if (user.role === "admin") return notification.audience === "operations";
+    if (user.role === "staff") {
+      if (notification.audience !== "operations" || !user.employeeId) return false;
+      if (notification.returnId) {
+        const returnRequest = store.data.returns.find((item) => item.id === notification.returnId);
+        return !returnRequest?.assigneeId || returnRequest.assigneeId === user.employeeId;
+      }
+      if (notification.orderId) {
+        const order = store.data.orders.find((item) => item.id === notification.orderId);
+        return !order?.assigneeId || order.assigneeId === user.employeeId;
+      }
+      return true;
+    }
+    return notification.audience === "customer"
+      && (notification.userId === user.id || notification.customerId === user.customerId);
+  }
+
+  function notificationReadAt(notification, user) {
+    if (notification.audience === "operations") {
+      return notification.readBy?.find((entry) => entry.userId === user.id)?.at || null;
+    }
+    return notification.readAt || null;
+  }
+
+  function notificationForUser(notification, user) {
+    const { readBy: _readBy, userId: _userId, customerId: _customerId, ...safeNotification } = notification;
+    return { ...safeNotification, readAt: notificationReadAt(notification, user) };
+  }
+
+  function queueOrderStatusEmail(order, event) {
+    if (!order.customer?.email || typeof mailer.sendOrderStatusUpdate !== "function") return;
+    Promise.resolve(mailer.sendOrderStatusUpdate({
+      to: order.customer.email,
+      order,
+      event,
+      paymentLabel: PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus,
+    })).catch(() => {
+      store.audit("status_email_failed", "order", order.id, { name: "Hệ thống email" });
+      store.save();
+    });
+  }
+
+  function queueReturnStatusEmail(returnRequest, order, event) {
+    if (!order?.customer?.email || typeof mailer.sendReturnStatusUpdate !== "function") return;
+    Promise.resolve(mailer.sendReturnStatusUpdate({
+      to: order.customer.email,
+      order,
+      returnRequest,
+      event,
+    })).catch(() => {
+      store.audit("status_email_failed", "return", returnRequest.id, { name: "Hệ thống email" });
+      store.save();
+    });
+  }
+
+  function expireAwaitingPaymentOrders() {
+    const now = Date.now();
+    const expired = [];
+    for (const order of store.data.orders) {
+      if (order.paymentMethod !== "bank" || order.paymentStatus !== "awaiting" || order.status !== "pending") continue;
+      if (!order.paymentExpiresAt || new Date(order.paymentExpiresAt).getTime() > now) continue;
+      const event = applyOrderCancellation(store, order, {
+        actor: { name: "Hệ thống NOVAWEAR", role: "system" },
+        source: "system",
+        reason: "Đơn hàng tự động hủy vì đã hết thời gian chờ chuyển khoản.",
+        paymentStatus: "expired",
+      });
+      store.audit("payment_expired", "order", order.id, { name: "Hệ thống NOVAWEAR" });
+      queueOrderStatusEmail(order, event);
+      expired.push(order);
+    }
+    if (expired.length) store.save();
+    return expired;
+  }
 
   function temporaryKey(value) {
     return crypto.createHmac("sha256", jwtSecret).update(String(value || "")).digest("hex");
@@ -346,9 +1074,17 @@ function createApp(options = {}) {
     res.setHeader("X-Request-Id", req.requestId);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-site");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    if (req.path.startsWith("/api/auth") || req.path.startsWith("/api/checkout/verification")) {
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    if (req.path.startsWith("/api/auth")
+      || req.path.startsWith("/api/checkout/verification")
+      || req.path.startsWith("/api/orders/track/")
+      || req.path.startsWith("/api/payments/sepay/orders/")) {
       res.setHeader("Cache-Control", "no-store");
     }
     next();
@@ -366,7 +1102,7 @@ function createApp(options = {}) {
     credentials: true,
   }));
   app.use(express.json({ limit: requestBodyLimit }));
-  app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
+  app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 
   function optionalAuth(req, _res, next) {
     const authorization = req.headers.authorization || "";
@@ -414,6 +1150,13 @@ function createApp(options = {}) {
         res.status(403).json({ message: "Bạn không có quyền thực hiện thao tác này." });
         return;
       }
+      if (req.user.mustChangePassword) {
+        res.status(403).json({
+          message: "Bạn cần đổi mật khẩu tạm trước khi sử dụng chức năng này.",
+          code: "PASSWORD_CHANGE_REQUIRED",
+        });
+        return;
+      }
       next();
     };
   }
@@ -422,6 +1165,7 @@ function createApp(options = {}) {
     const key = `${req.ip}:${normalizeText(req.body?.email)}`;
     const current = authAttempts.get(key);
     const timestamp = Date.now();
+    pruneTemporarySecurityState(timestamp);
     if (current && current.blockedUntil > timestamp) {
       const seconds = Math.ceil((current.blockedUntil - timestamp) / 1000);
       res.status(429).json({ message: `Vui lòng thử lại sau ${seconds} giây.` });
@@ -431,6 +1175,50 @@ function createApp(options = {}) {
     next();
   }
 
+  function fixedWindowLimit(bucket, maxRequests, windowSeconds, identify = (req) => req.ip || "unknown") {
+    return (req, res, next) => {
+      const now = Date.now();
+      pruneTemporarySecurityState(now);
+      const key = `${bucket}:${String(identify(req) || "unknown")}`;
+      const current = publicRequestLimits.get(key);
+      const entry = !current || current.resetAt <= now
+        ? { count: 0, resetAt: now + windowSeconds * 1000 }
+        : current;
+      if (entry.count >= maxRequests) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+        res.setHeader("Retry-After", String(retryAfterSeconds));
+        return res.status(429).json({
+          message: `Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau ${retryAfterSeconds} giây.`,
+        });
+      }
+      entry.count += 1;
+      publicRequestLimits.set(key, entry);
+      if (publicRequestLimits.size > 5000) {
+        for (const [limitKey, value] of publicRequestLimits) {
+          if (value.resetAt <= now) publicRequestLimits.delete(limitKey);
+        }
+      }
+      next();
+    };
+  }
+
+  const limitEmailDelivery = fixedWindowLimit("email-delivery", 20, 15 * 60);
+  const limitOAuthStart = fixedWindowLimit("oauth-start", 30, 15 * 60);
+  const limitOrderTracking = fixedWindowLimit("order-tracking", 60, 15 * 60);
+  const limitPublicForms = fixedWindowLimit("public-forms", 20, 15 * 60);
+  const limitOrderCreation = fixedWindowLimit(
+    "order-creation",
+    12,
+    15 * 60,
+    (req) => req.user?.id || req.ip || "unknown",
+  );
+  const limitUploads = fixedWindowLimit(
+    "uploads",
+    30,
+    15 * 60,
+    (req) => req.user?.id || req.ip || "unknown",
+  );
+
   function recordAuthFailure(key) {
     if (!key) return;
     if (authAttempts.size > 5000) {
@@ -439,8 +1227,9 @@ function createApp(options = {}) {
         if (!attempt.blockedUntil || attempt.blockedUntil < now) authAttempts.delete(attemptKey);
       }
     }
-    const current = authAttempts.get(key) || { count: 0, blockedUntil: 0 };
+    const current = authAttempts.get(key) || { count: 0, blockedUntil: 0, updatedAt: 0 };
     current.count += 1;
+    current.updatedAt = Date.now();
     if (current.count >= authMaxAttempts) {
       current.blockedUntil = Date.now() + authLockSeconds * 1000;
       current.count = 0;
@@ -473,8 +1262,7 @@ function createApp(options = {}) {
     if (name.length < 2) return res.status(400).json({ message: "Họ tên cần có ít nhất 2 ký tự." });
     if (!emailPattern.test(email)) return res.status(400).json({ message: "Email chưa đúng định dạng." });
     if (!phonePattern.test(phone)) return res.status(400).json({ message: "Số điện thoại chưa đúng định dạng." });
-    if (password.length < 10 || password.length > 128
-      || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    if (!validPassword(password)) {
       return res.status(400).json({
         message: "Mật khẩu cần từ 10 đến 128 ký tự, gồm chữ hoa, chữ thường và số.",
       });
@@ -487,20 +1275,27 @@ function createApp(options = {}) {
     }
     registrationLocks.add(email);
 
-    const customerId = store.nextId("customers", "cus-");
+    const existingCustomer = store.data.customers
+      .find((item) => normalizeText(item.email) === email);
+    if (existingCustomer && store.data.users.some((item) => item.customerId === existingCustomer.id)) {
+      registrationLocks.delete(email);
+      return res.status(409).json({ message: "Hồ sơ khách hàng này đã được liên kết với một tài khoản." });
+    }
+    const customerId = existingCustomer?.id || store.nextId("customers", "cus-");
     const userId = store.nextId("users", "usr-");
     const createdAt = new Date().toISOString();
     const customer = {
+      ...(existingCustomer || {}),
       id: customerId,
       name,
       email,
       phone,
-      address: "",
-      tier: "Member",
-      totalSpent: 0,
-      orderCount: 0,
+      address: existingCustomer?.address || "",
+      tier: existingCustomer?.tier || "Member",
+      totalSpent: Number(existingCustomer?.totalSpent || 0),
+      orderCount: Number(existingCustomer?.orderCount || 0),
       status: "active",
-      createdAt,
+      createdAt: existingCustomer?.createdAt || createdAt,
     };
     const user = {
       id: userId,
@@ -537,7 +1332,8 @@ function createApp(options = {}) {
       }
     }
 
-    store.data.customers.push(customer);
+    if (existingCustomer) Object.assign(existingCustomer, customer);
+    else store.data.customers.push(customer);
     store.data.users.push(user);
     registrationLocks.delete(email);
     store.audit("create", "user", user.id, sanitizeUser(user));
@@ -606,10 +1402,9 @@ function createApp(options = {}) {
 
     if (!user) return res.status(400).json({ message: "Email hoặc mã xác minh không hợp lệ." });
     if (user.emailVerifiedAt && user.status === "active") {
-      return res.json({
-        message: "Tài khoản đã được xác minh.",
-        token: createToken(user, jwtSecret),
-        user: sanitizeUser(user),
+      return res.status(409).json({
+        message: "Tài khoản đã được xác minh. Vui lòng đăng nhập bằng mật khẩu.",
+        code: "ACCOUNT_ALREADY_VERIFIED",
       });
     }
     if (!/^\d{6}$/.test(code)) {
@@ -656,7 +1451,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post("/api/auth/resend-verification", rateLimitAuth, async (req, res) => {
+  app.post("/api/auth/resend-verification", limitEmailDelivery, rateLimitAuth, async (req, res) => {
     const email = normalizeText(req.body.email);
     const user = store.data.users.find((item) => normalizeText(item.email) === email);
 
@@ -710,7 +1505,7 @@ function createApp(options = {}) {
     ));
   });
 
-  app.post("/api/auth/password-reset/request", rateLimitAuth, async (req, res) => {
+  app.post("/api/auth/password-reset/request", limitEmailDelivery, rateLimitAuth, async (req, res) => {
     const email = normalizeText(req.body.email);
     const user = store.data.users.find((item) => normalizeText(item.email) === email);
     const response = {
@@ -767,10 +1562,12 @@ function createApp(options = {}) {
     if (!user || !/^\d{6}$/.test(code)) {
       return res.status(400).json({ message: "Email hoặc mã đặt lại mật khẩu không hợp lệ." });
     }
-    if (newPassword.length < 10 || newPassword.length > 128
-      || !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
+    const operationsPassword = ["admin", "staff"].includes(user?.role);
+    if (!validPassword(newPassword, operationsPassword ? { minLength: 12, requireSpecial: true } : undefined)) {
       return res.status(400).json({
-        message: "Mật khẩu mới cần từ 10 đến 128 ký tự, gồm chữ hoa, chữ thường và số.",
+        message: operationsPassword
+          ? "Mật khẩu nội bộ cần từ 12 đến 128 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt."
+          : "Mật khẩu mới cần từ 10 đến 128 ký tự, gồm chữ hoa, chữ thường và số.",
       });
     }
     if (!user.passwordResetExpiresAt || new Date(user.passwordResetExpiresAt).getTime() < Date.now()) {
@@ -797,6 +1594,7 @@ function createApp(options = {}) {
     }
 
     user.passwordHash = hashPassword(newPassword);
+    user.mustChangePassword = false;
     user.tokenVersion = Number(user.tokenVersion || 0) + 1;
     user.passwordResetCodeHash = null;
     user.passwordResetExpiresAt = null;
@@ -839,16 +1637,16 @@ function createApp(options = {}) {
     });
   });
 
-  app.post("/api/auth/register", rateLimitAuth, registerHandler);
+  app.post("/api/auth/register", limitEmailDelivery, rateLimitAuth, registerHandler);
   app.post("/api/auth/login", rateLimitAuth, loginHandler);
-  app.post("/api/createaccount", rateLimitAuth, registerHandler);
+  app.post("/api/createaccount", limitEmailDelivery, rateLimitAuth, registerHandler);
   app.post("/api/login", rateLimitAuth, loginHandler);
 
   app.get("/api/auth/oauth/config", (_req, res) => {
     return res.json({ data: oauthService.publicConfig() });
   });
 
-  app.get("/api/auth/oauth/:provider/start", rateLimitAuth, (req, res) => {
+  app.get("/api/auth/oauth/:provider/start", limitOAuthStart, rateLimitAuth, (req, res) => {
     const provider = String(req.params.provider || "").toLowerCase();
     if (!oauthService.isConfigured(provider)) {
       return res.status(503).json({ message: "Phương thức đăng nhập này chưa được cấu hình." });
@@ -886,52 +1684,114 @@ function createApp(options = {}) {
     if (req.query.error || !req.query.code) return fail("authorization_cancelled");
     try {
       const profile = await oauthService.exchange(provider, String(req.query.code), pending.verifier);
-      let user = store.data.users.find((item) => normalizeText(item.email) === normalizeText(profile.email));
+      const profileEmail = normalizeText(profile.email);
+      const profileId = String(profile.providerId || "").trim();
+      if (!profileId || !emailPattern.test(profileEmail)) return fail("provider_profile_invalid");
+
+      let user = store.data.users.find((item) => normalizeText(item.email) === profileEmail);
       if (user && user.role !== "customer") return fail("employee_account_not_supported");
-      if (user && user.status !== "active") return fail("account_locked");
 
       const providerField = provider === "google" ? "googleId" : "facebookId";
+      if (user?.[providerField] && user[providerField] !== profileId) {
+        return fail("provider_account_mismatch");
+      }
+      if (user?.status === "inactive") return fail("account_locked");
+
+      const providerVerifiedEmail = profile.emailVerified === true;
+      if (user && !providerVerifiedEmail && !user[providerField]) {
+        // Never attach an OAuth identity to an existing local account using
+        // an email address the provider did not explicitly verify.
+        return fail("provider_email_not_verified");
+      }
+
       const now = new Date().toISOString();
       if (!user) {
         const customerId = store.nextId("customers", "cus-");
         user = {
           id: store.nextId("users", "usr-"),
-          name: profile.name,
-          email: profile.email,
+          name: String(profile.name || profileEmail.split("@")[0]).trim().slice(0, 100),
+          email: profileEmail,
           phone: "",
-          avatar: profile.avatar,
+          avatar: String(profile.avatar || "").slice(0, 1000),
           role: "customer",
           customerId,
           employeeId: null,
-          status: "active",
-          emailVerifiedAt: now,
+          status: providerVerifiedEmail ? "active" : "pending",
+          emailVerifiedAt: providerVerifiedEmail ? now : null,
           tokenVersion: 0,
           passwordHash: hashPassword(crypto.randomBytes(48).toString("base64url")),
-          [providerField]: profile.providerId,
+          [providerField]: profileId,
           createdAt: now,
         };
-        store.data.customers.push({
+        const customer = {
           id: customerId,
-          name: profile.name,
-          email: profile.email,
+          name: user.name,
+          email: profileEmail,
           phone: "",
-          avatar: profile.avatar,
+          avatar: user.avatar,
           address: "",
           tier: "Member",
           totalSpent: 0,
           orderCount: 0,
           status: "active",
           createdAt: now,
-        });
-        store.data.users.push(user);
-      } else {
-        if (user[providerField] && user[providerField] !== profile.providerId) {
-          return fail("provider_account_mismatch");
+        };
+        if (!providerVerifiedEmail) {
+          const verificationCode = issueVerificationCode(user);
+          try {
+            await mailer.sendVerification({
+              to: user.email,
+              name: user.name,
+              code: verificationCode,
+              purpose: "account",
+            });
+          } catch (error) {
+            if (!exposeVerificationCode) return fail("email_delivery_unavailable");
+          }
         }
-        user[providerField] = profile.providerId;
-        user.emailVerifiedAt = user.emailVerifiedAt || now;
-        user.avatar = user.avatar || profile.avatar;
+        store.data.customers.push(customer);
+        store.data.users.push(user);
+        store.audit("create", "user", user.id, sanitizeUser(user));
+      } else {
+        user[providerField] = profileId;
+        user.avatar = user.avatar || String(profile.avatar || "").slice(0, 1000);
+        if (providerVerifiedEmail) {
+          user.emailVerifiedAt = user.emailVerifiedAt || now;
+          user.status = "active";
+        } else if (!user.emailVerifiedAt) {
+          const lastSentAt = new Date(user.verificationSentAt || 0).getTime();
+          if (Date.now() - lastSentAt >= otpResendSeconds * 1000) {
+            const previousVerification = {
+              verificationCodeHash: user.verificationCodeHash,
+              verificationExpiresAt: user.verificationExpiresAt,
+              verificationSentAt: user.verificationSentAt,
+              verificationAttempts: user.verificationAttempts,
+            };
+            const verificationCode = issueVerificationCode(user);
+            try {
+              await mailer.sendVerification({
+                to: user.email,
+                name: user.name,
+                code: verificationCode,
+                purpose: "account",
+              });
+            } catch (error) {
+              Object.assign(user, previousVerification);
+              if (!exposeVerificationCode) return fail("email_delivery_unavailable");
+            }
+          }
+        }
       }
+
+      if (!user.emailVerifiedAt || user.status !== "active") {
+        store.audit("oauth_verification_required", "user", user.id, { id: user.id, name: provider });
+        store.save();
+        const redirect = new URL(failureUrl);
+        redirect.searchParams.set("verifyEmail", user.email);
+        redirect.searchParams.set("oauthPending", "1");
+        return res.redirect(redirect.toString());
+      }
+
       store.audit("oauth_login", "user", user.id, { id: user.id, name: provider });
       store.save();
 
@@ -1045,20 +1905,34 @@ function createApp(options = {}) {
     if (!verifyPassword(currentPassword, user.passwordHash)) {
       return res.status(400).json({ message: "Mật khẩu hiện tại không đúng." });
     }
-    if (newPassword.length < 10 || newPassword.length > 128
-      || !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
+    const operationsPassword = ["admin", "staff"].includes(user.role);
+    if (!validPassword(newPassword, operationsPassword ? { minLength: 12, requireSpecial: true } : undefined)) {
       return res.status(400).json({
-        message: "Mật khẩu mới cần từ 10 đến 128 ký tự, gồm chữ hoa, chữ thường và số.",
+        message: operationsPassword
+          ? "Mật khẩu nội bộ cần từ 12 đến 128 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt."
+          : "Mật khẩu mới cần từ 10 đến 128 ký tự, gồm chữ hoa, chữ thường và số.",
       });
     }
     user.passwordHash = hashPassword(newPassword);
+    user.mustChangePassword = false;
     user.tokenVersion = Number(user.tokenVersion || 0) + 1;
     store.audit("update_password", "user", user.id, req.user);
     store.save();
     return res.json({
       message: "Đổi mật khẩu thành công.",
       token: createToken(user, jwtSecret),
+      user: sanitizeUser(user),
     });
+  });
+
+  app.post("/api/auth/logout", requireAuth, (req, res) => {
+    const user = store.data.users.find((item) => item.id === req.user.id);
+    if (user) {
+      user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+      store.audit("logout", "user", user.id, req.user);
+      store.save();
+    }
+    return res.json({ message: "Đã đăng xuất an toàn trên máy chủ." });
   });
 
   const upload = multer({
@@ -1079,10 +1953,16 @@ function createApp(options = {}) {
     return: process.env.CLOUDINARY_RETURN_FOLDER || "novawear/returns",
   };
 
-  app.post("/api/uploads/:kind", requireAuth, (req, res) => {
+  app.post("/api/uploads/:kind", requireAuth, limitUploads, (req, res) => {
     const kind = String(req.params.kind || "");
     if (!Object.hasOwn(uploadFolders, kind)) return notFound(res, "Loại ảnh");
-    if (kind === "product" && !["admin", "staff"].includes(req.user.role)) {
+    if (req.user.mustChangePassword) {
+      return res.status(403).json({
+        message: "Bạn cần đổi mật khẩu tạm trước khi tải ảnh.",
+        code: "PASSWORD_CHANGE_REQUIRED",
+      });
+    }
+    if (kind === "product" && req.user.role !== "admin") {
       return res.status(403).json({ message: "Bạn không có quyền tải ảnh sản phẩm." });
     }
     if (kind !== "product" && req.user.role !== "customer") {
@@ -1116,7 +1996,7 @@ function createApp(options = {}) {
 
   app.get("/api/categories", (_req, res) => {
     const categories = store.data.categories
-      .filter((item) => item.status !== "archived")
+      .filter((item) => !item.status || item.status === "active")
       .map((item) => {
         const activeProducts = store.data.products.filter(
           (product) => product.categoryId === item.id && product.status === "active",
@@ -1146,7 +2026,6 @@ function createApp(options = {}) {
       sale,
       sort = "featured",
       featured,
-      status = "active",
     } = req.query;
     const page = asPositiveInt(req.query.page, 1);
     const limit = Math.min(asPositiveInt(req.query.limit || req.query.pageSize, 12), 100);
@@ -1156,13 +2035,14 @@ function createApp(options = {}) {
     const colorText = normalizeText(color);
     const sizeText = normalizeText(size);
     const sales = orderSalesByProduct(store.data.orders);
-    let products = store.data.products.map((item) => ({
+    let products = store.data.products
+      .filter((item) => item.status === "active")
+      .map((item) => ({
       ...item,
       sold: sales.get(item.id) || 0,
       ...ratingStats(item.id, store.data.reviews),
     }));
 
-    if (status !== "all") products = products.filter((item) => item.status === status);
     if (featured === "true") products = products.filter((item) => item.featured);
     if (searchText) {
       products = products.filter((item) => (
@@ -1213,7 +2093,7 @@ function createApp(options = {}) {
     const product = store.data.products.find(
       (item) => item.id === req.params.identifier || item.slug === req.params.identifier,
     );
-    if (!product || product.status === "archived") return notFound(res, "Sản phẩm");
+    if (!product || product.status !== "active") return notFound(res, "Sản phẩm");
     const sales = orderSalesByProduct(store.data.orders);
     const productWithRating = { ...product, sold: sales.get(product.id) || 0, ...ratingStats(product.id, store.data.reviews) };
     const related = store.data.products
@@ -1230,7 +2110,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post("/api/products/:productId/reviews", requireAuth, (req, res) => {
+  app.post("/api/products/:productId/reviews", requireAuth, allowRoles("customer"), (req, res) => {
     const product = store.data.products.find((item) => item.id === req.params.productId);
     if (!product) return notFound(res, "Sản phẩm");
     const rating = Number(req.body.rating);
@@ -1275,7 +2155,7 @@ function createApp(options = {}) {
     return res.status(201).json({ message: "Cảm ơn bạn đã đánh giá.", data: review });
   });
 
-  app.get("/api/products/:productId/review-eligibility", requireAuth, (req, res) => {
+  app.get("/api/products/:productId/review-eligibility", requireAuth, allowRoles("customer"), (req, res) => {
     const product = store.data.products.find((item) => item.id === req.params.productId);
     if (!product) return notFound(res, "Sản phẩm");
     const reviewed = store.data.reviews.some((item) => item.productId === product.id && item.userId === req.user.id);
@@ -1290,8 +2170,19 @@ function createApp(options = {}) {
   app.get("/api/promotions", (_req, res) => {
     const now = new Date();
     const data = (store.data.coupons || [])
-      .filter((item) => item.active && new Date(item.expiresAt) >= now)
-      .map(({ code, type, value, minOrder, maxDiscount, expiresAt }) => ({ code, type, value, minOrder, maxDiscount, expiresAt }));
+      .filter((item) => !couponAvailabilityError(item, null, now))
+      .map(({ code, type, value, minOrder, maxDiscount, startsAt, expiresAt, usageLimit, usedCount }) => ({
+        code,
+        type,
+        value,
+        minOrder,
+        maxDiscount,
+        startsAt,
+        expiresAt,
+        remainingUses: Number(usageLimit || 0) > 0
+          ? Math.max(0, Number(usageLimit) - Number(usedCount || 0))
+          : null,
+      }));
     return res.json({ data });
   });
 
@@ -1306,20 +2197,26 @@ function createApp(options = {}) {
     return res.json({ data: article, related: published.filter((item) => item.id !== article.id).slice(0, 3) });
   });
 
-  app.post("/api/coupons/validate", (req, res) => {
+  app.post("/api/coupons/validate", limitPublicForms, (req, res) => {
     const code = String(req.body.code || "").trim().toUpperCase();
     const subtotal = asMoney(req.body.subtotal);
-    const coupon = store.data.coupons.find((item) => item.code === code && item.active);
-    if (!coupon || new Date(coupon.expiresAt) < new Date()) {
-      return res.status(404).json({ message: "Mã ưu đãi không tồn tại hoặc đã hết hạn." });
+    const coupon = store.data.coupons.find((item) => item.code === code);
+    const availabilityError = couponAvailabilityError(coupon, subtotal);
+    if (availabilityError) {
+      return res.status(availabilityError.status).json({
+        message: availabilityError.message,
+        code: availabilityError.code,
+      });
     }
-    if (subtotal < coupon.minOrder) {
-      return res.status(400).json({ message: `Đơn hàng cần tối thiểu ${coupon.minOrder.toLocaleString("vi-VN")}đ để dùng mã này.` });
-    }
-    let discount = 0;
-    if (coupon.type === "percent") discount = Math.min(Math.round(subtotal * coupon.value / 100), coupon.maxDiscount);
-    if (coupon.type === "fixed") discount = Math.min(coupon.value, coupon.maxDiscount || coupon.value);
-    return res.json({ data: { code: coupon.code, type: coupon.type, discount, shippingDiscount: coupon.type === "shipping" ? coupon.value : 0 } });
+    const benefit = couponBenefit(coupon, subtotal, 0);
+    return res.json({
+      data: {
+        code: coupon.code,
+        type: coupon.type,
+        discount: benefit.discount,
+        shippingDiscount: coupon.type === "shipping" ? asMoney(coupon.value) : 0,
+      },
+    });
   });
 
   app.post("/api/payments/sepay/webhook", (req, res) => {
@@ -1347,7 +2244,7 @@ function createApp(options = {}) {
 
     const searchableCode = normalizePaymentCode(`${req.body.code || ""} ${req.body.content || ""} ${req.body.description || ""}`);
     const order = store.data.orders.find((item) => {
-      if (item.paymentProvider !== "sepay" || item.paymentStatus === "paid") return false;
+      if (item.paymentProvider !== "sepay" || item.paymentStatus !== "awaiting" || item.status !== "pending") return false;
       if (asMoney(item.total) !== transferAmount) return false;
       const candidates = [item.paymentCode, item.trackingCode, item.id]
         .map(normalizePaymentCode)
@@ -1371,15 +2268,15 @@ function createApp(options = {}) {
     store.data.paymentTransactions = store.data.paymentTransactions.slice(0, 1000);
 
     if (order) {
-      order.paymentStatus = "paid";
-      order.paidAt = receivedAt;
-      order.updatedAt = receivedAt;
-      order.paymentTransaction = transaction;
-      if (order.status === "pending") {
-        order.status = "confirmed";
-        order.timeline.push({ status: "confirmed", label: ORDER_STATUS_LABELS.confirmed, at: receivedAt });
-      }
+      const event = applyOrderPaymentPaid(store, order, {
+        transaction,
+        at: receivedAt,
+        actor: { name: "SePay", role: "payment_provider" },
+        source: "sepay",
+        label: "Đã thanh toán qua SePay",
+      });
       store.audit("payment_confirmed", "order", order.id, { name: "SePay" });
+      if (event) queueOrderStatusEmail(order, event);
     } else {
       store.audit("payment_unmatched", "payment", transactionId, { name: "SePay" });
     }
@@ -1388,7 +2285,8 @@ function createApp(options = {}) {
     return res.status(200).json({ success: true, matched: Boolean(order), orderId: order?.id || null });
   });
 
-  app.get("/api/payments/sepay/orders/:id/status", async (req, res) => {
+  app.get("/api/payments/sepay/orders/:id/status", limitOrderTracking, async (req, res) => {
+    expireAwaitingPaymentOrders();
     const order = store.data.orders.find((item) => item.id === req.params.id);
     const trackingCode = normalizePaymentCode(req.query.trackingCode);
     if (!order || !trackingCode || trackingCode !== normalizePaymentCode(order.trackingCode)) {
@@ -1396,7 +2294,8 @@ function createApp(options = {}) {
     }
     if (sepayApiConfigured
       && order.paymentProvider === "sepay"
-      && order.paymentStatus !== "paid") {
+      && order.paymentStatus === "awaiting"
+      && order.status === "pending") {
       const now = Date.now();
       const lastCheckedAt = Number(order.sepayLastCheckedAt || 0);
       if (now - lastCheckedAt >= 2500) {
@@ -1431,20 +2330,16 @@ function createApp(options = {}) {
               };
               store.data.paymentTransactions.unshift(savedTransaction);
               store.data.paymentTransactions = store.data.paymentTransactions.slice(0, 1000);
-              order.paymentStatus = "paid";
-              order.paidAt = receivedAt;
-              order.updatedAt = receivedAt;
-              order.paymentTransaction = savedTransaction;
-              if (order.status === "pending") {
-                order.status = "confirmed";
-                order.timeline.push({
-                  status: "confirmed",
-                  label: ORDER_STATUS_LABELS.confirmed,
-                  at: receivedAt,
-                });
-              }
+              const event = applyOrderPaymentPaid(store, order, {
+                transaction: savedTransaction,
+                at: receivedAt,
+                actor: { name: "SePay API", role: "payment_provider" },
+                source: "sepay",
+                label: "Đã thanh toán qua SePay",
+              });
               store.audit("payment_confirmed", "order", order.id, { name: "SePay API" });
               store.save();
+              if (event) queueOrderStatusEmail(order, event);
             }
           }
         } catch (error) {
@@ -1464,7 +2359,8 @@ function createApp(options = {}) {
     });
   });
 
-  app.get("/api/payments/sepay/orders/:id/checkout", (req, res) => {
+  app.get("/api/payments/sepay/orders/:id/checkout", limitOrderTracking, (req, res) => {
+    expireAwaitingPaymentOrders();
     if (!sepayConfigured) {
       return res.status(503).json({ message: "Thanh toán chuyển khoản chưa được cấu hình." });
     }
@@ -1473,6 +2369,9 @@ function createApp(options = {}) {
     if (!order || order.paymentProvider !== "sepay"
       || !trackingCode || trackingCode !== normalizePaymentCode(order.trackingCode)) {
       return notFound(res, "Payment");
+    }
+    if (!["awaiting", "paid"].includes(order.paymentStatus)) {
+      return res.status(409).json({ message: "Đơn hàng không còn trong thời gian chờ thanh toán." });
     }
     const description = normalizePaymentCode(order.paymentCode || order.trackingCode);
     const query = new URLSearchParams({
@@ -1495,7 +2394,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post("/api/checkout/verification/request", rateLimitAuth, async (req, res) => {
+  app.post("/api/checkout/verification/request", limitEmailDelivery, rateLimitAuth, async (req, res) => {
     const email = normalizeText(req.body.email);
     const name = String(req.body.name || "Khách hàng").trim().slice(0, 100);
     if (!emailPattern.test(email)) {
@@ -1593,7 +2492,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.post("/api/orders", optionalAuth, async (req, res) => {
+  app.post("/api/orders", optionalAuth, limitOrderCreation, async (req, res) => {
     const customer = {
       name: String(req.body.customer?.name || "").trim(),
       email: normalizeText(req.body.customer?.email),
@@ -1608,6 +2507,10 @@ function createApp(options = {}) {
     if (!customer.email) {
       return res.status(400).json({ message: "Email nhận xác nhận đơn hàng là bắt buộc." });
     }
+    const checkoutRequestId = String(req.body.requestId || "").trim();
+    if (checkoutRequestId && !/^[A-Za-z0-9_-]{16,128}$/.test(checkoutRequestId)) {
+      return res.status(400).json({ message: "Mã yêu cầu đặt hàng không hợp lệ." });
+    }
     let guestCheckoutJti = null;
     if (!req.user) {
       try {
@@ -1620,7 +2523,19 @@ function createApp(options = {}) {
           || !safeTextEqual(normalizeText(checkoutPayload.sub), customer.email)) {
           throw new Error("Guest checkout token mismatch");
         }
-        if (!checkoutPayload.jti || usedGuestCheckoutTokens.has(checkoutPayload.jti)) {
+        if (!checkoutPayload.jti) {
+          throw new Error("Guest checkout token has no identifier");
+        }
+        const existingGuestOrder = store.data.orders
+          .find((item) => item.guestCheckoutJti === checkoutPayload.jti);
+        if (existingGuestOrder) {
+          return res.status(200).json({
+            message: "Yêu cầu đặt hàng này đã được xử lý trước đó.",
+            idempotent: true,
+            data: publicOrder(existingGuestOrder),
+          });
+        }
+        if (usedGuestCheckoutTokens.has(checkoutPayload.jti)) {
           throw new Error("Guest checkout token already used");
         }
         guestCheckoutJti = checkoutPayload.jti;
@@ -1630,8 +2545,26 @@ function createApp(options = {}) {
           code: "GUEST_EMAIL_VERIFICATION_REQUIRED",
         });
       }
+      if (store.data.users.some((item) => normalizeText(item.email) === customer.email)) {
+        return res.status(409).json({
+          message: "Email này đã có tài khoản. Vui lòng đăng nhập trước khi đặt hàng.",
+          code: "ACCOUNT_LOGIN_REQUIRED",
+        });
+      }
     } else if (req.user.role !== "customer") {
       return res.status(403).json({ message: "Tài khoản nội bộ không thể đặt hàng tại cửa hàng." });
+    }
+    if (req.user && checkoutRequestId) {
+      const existingOrder = store.data.orders.find((item) => (
+        item.userId === req.user.id && item.checkoutRequestId === checkoutRequestId
+      ));
+      if (existingOrder) {
+        return res.status(200).json({
+          message: "Yêu cầu đặt hàng này đã được xử lý trước đó.",
+          idempotent: true,
+          data: publicOrder(existingOrder),
+        });
+      }
     }
     if (!Array.isArray(req.body.items) || req.body.items.length === 0) {
       return res.status(400).json({ message: "Giỏ hàng đang trống." });
@@ -1674,18 +2607,22 @@ function createApp(options = {}) {
     let shippingFee = shippingMethod === "express" ? 60000 : (subtotal >= 699000 ? 0 : 30000);
     let discount = 0;
     let couponCode = "";
+    let appliedCoupon = null;
     if (req.body.couponCode) {
       const code = String(req.body.couponCode).trim().toUpperCase();
-      const coupon = store.data.coupons.find(
-        (item) => item.code === code && item.active && new Date(item.expiresAt) >= new Date(),
-      );
-      if (!coupon || subtotal < coupon.minOrder) {
-        return res.status(400).json({ message: "Mã ưu đãi không còn hợp lệ với đơn hàng này." });
+      const coupon = store.data.coupons.find((item) => item.code === code);
+      const availabilityError = couponAvailabilityError(coupon, subtotal);
+      if (availabilityError) {
+        return res.status(availabilityError.status).json({
+          message: availabilityError.message,
+          code: availabilityError.code,
+        });
       }
       couponCode = coupon.code;
-      if (coupon.type === "percent") discount = Math.min(Math.round(subtotal * coupon.value / 100), coupon.maxDiscount);
-      if (coupon.type === "fixed") discount = Math.min(coupon.value, coupon.maxDiscount || coupon.value);
-      if (coupon.type === "shipping") shippingFee = Math.max(0, shippingFee - coupon.value);
+      appliedCoupon = coupon;
+      const benefit = couponBenefit(coupon, subtotal, shippingFee);
+      discount = benefit.discount;
+      shippingFee = benefit.shippingFee;
     }
 
     const orderNumber = store.data.orders.reduce((max, item) => {
@@ -1694,7 +2631,7 @@ function createApp(options = {}) {
     }, 0) + 1;
     const year = new Date().getFullYear();
     const id = `ORD-${year}-${String(orderNumber).padStart(3, "0")}`;
-    const trackingCode = `NVA${String(year).slice(-2)}${String(orderNumber).padStart(4, "0")}`;
+    const trackingCode = createTrackingCode(store.data.orders, year);
     const createdAt = new Date().toISOString();
     const paymentMethod = ["cod", "bank"].includes(req.body.paymentMethod)
       ? req.body.paymentMethod
@@ -1740,24 +2677,42 @@ function createApp(options = {}) {
       discount,
       total: subtotal + shippingFee - discount,
       couponCode,
+      couponUsageCountedAt: appliedCoupon ? createdAt : null,
+      couponUsageRestoredAt: null,
       shippingMethod,
       paymentMethod,
       paymentProvider: paymentMethod === "bank" ? "sepay" : null,
       paymentCode: paymentMethod === "bank" ? trackingCode : null,
       paymentStatus: paymentMethod === "cod" ? "pending" : "awaiting",
+      paymentExpiresAt: paymentMethod === "bank"
+        ? new Date(Date.now() + orderPaymentExpirationSeconds * 1000).toISOString()
+        : null,
       status: "pending",
       note: String(req.body.note || "").trim().slice(0, 500),
+      checkoutRequestId: checkoutRequestId || null,
+      guestCheckoutJti,
       assigneeId: null,
-      timeline: [{ status: "pending", label: ORDER_STATUS_LABELS.pending, at: createdAt }],
+      shipment: { carrier: "", trackingNumber: "", estimatedDeliveryAt: null },
+      deliveryAttempts: 0,
+      version: 1,
+      timeline: [],
       createdAt,
       updatedAt: createdAt,
     };
 
-    for (const line of items) {
-      const product = store.data.products.find((item) => item.id === line.productId);
-      changeProductStock(product, -line.quantity, line.size, line.color);
-      product.sold += line.quantity;
-    }
+    const createdEvent = appendOrderEvent(order, {
+      status: "pending",
+      paymentStatus: order.paymentStatus,
+      label: ORDER_STATUS_LABELS.pending,
+      note: paymentMethod === "bank"
+        ? "Đơn hàng đã được tiếp nhận và đang chờ thanh toán chuyển khoản."
+        : "Đơn hàng đã được tiếp nhận và đang chờ xác nhận.",
+      actor: req.user || { name: customer.name, role: "customer" },
+      source: req.user ? "customer" : "guest",
+      at: createdAt,
+    });
+    adjustOrderInventory(store, order, -1, `Giữ hàng cho đơn ${order.id}`, req.user || { name: customer.name });
+    order.stockReservedAt = createdAt;
     if (guestCheckoutJti) {
       usedGuestCheckoutTokens.set(guestCheckoutJti, Date.now() + guestCheckoutTokenTtlSeconds * 1000);
       if (usedGuestCheckoutTokens.size > 5000) {
@@ -1767,7 +2722,15 @@ function createApp(options = {}) {
         }
       }
     }
+    if (appliedCoupon) {
+      appliedCoupon.usedCount = Number(appliedCoupon.usedCount || 0) + 1;
+    }
     store.data.orders.unshift(order);
+    notifyOrderChange(store, order, createdEvent, {
+      type: "order_created",
+      message: createdEvent.note,
+      operationsMessage: `${customer.name} vừa đặt ${items.length} sản phẩm, tổng ${order.total.toLocaleString("vi-VN")} ₫.`,
+    });
     store.audit("create", "order", order.id, req.user || { name: customer.name });
     store.save();
 
@@ -1792,18 +2755,67 @@ function createApp(options = {}) {
     return res.status(201).json({
       message: emailWarning || "Đặt hàng thành công. Email xác nhận đã được gửi tới bạn.",
       ...(emailWarning ? { warning: emailWarning } : {}),
-      data: order,
+      data: publicOrder(order),
     });
   });
 
-  app.get("/api/orders/my", requireAuth, (req, res) => {
+  app.get("/api/notifications", requireAuth, (req, res) => {
+    expireAwaitingPaymentOrders();
+    const limit = Math.min(asPositiveInt(req.query.limit, 30), 100);
+    const visible = store.data.notifications
+      .filter((item) => notificationVisibleTo(item, req.user))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const unreadCount = visible.filter((item) => !notificationReadAt(item, req.user)).length;
+    const data = (String(req.query.unreadOnly || "false") === "true"
+      ? visible.filter((item) => !notificationReadAt(item, req.user))
+      : visible).slice(0, limit).map((item) => notificationForUser(item, req.user));
+    return res.json({ data, unreadCount });
+  });
+
+  app.patch("/api/notifications/read-all", requireAuth, (req, res) => {
+    const readAt = new Date().toISOString();
+    let updated = 0;
+    store.data.notifications.forEach((item) => {
+      if (notificationVisibleTo(item, req.user) && !notificationReadAt(item, req.user)) {
+        if (item.audience === "operations") {
+          item.readBy = Array.isArray(item.readBy) ? item.readBy : [];
+          item.readBy.push({ userId: req.user.id, at: readAt });
+        } else {
+          item.readAt = readAt;
+        }
+        updated += 1;
+      }
+    });
+    if (updated) store.save();
+    return res.json({ message: "Đã đánh dấu tất cả thông báo là đã đọc.", updated });
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth, (req, res) => {
+    const notification = store.data.notifications.find((item) => item.id === req.params.id);
+    if (!notification || !notificationVisibleTo(notification, req.user)) return notFound(res, "Thông báo");
+    if (!notificationReadAt(notification, req.user)) {
+      const readAt = new Date().toISOString();
+      if (notification.audience === "operations") {
+        notification.readBy = Array.isArray(notification.readBy) ? notification.readBy : [];
+        notification.readBy.push({ userId: req.user.id, at: readAt });
+      } else {
+        notification.readAt = readAt;
+      }
+      store.save();
+    }
+    return res.json({ data: notificationForUser(notification, req.user) });
+  });
+
+  app.get("/api/orders/my", requireAuth, allowRoles("customer"), (req, res) => {
+    expireAwaitingPaymentOrders();
     const orders = store.data.orders
       .filter((item) => item.userId === req.user.id || item.customerId === req.user.customerId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    res.json({ data: orders });
+    res.json({ data: orders.map(publicOrder) });
   });
 
-  app.get("/api/orders/track/:trackingCode", (req, res) => {
+  app.get("/api/orders/track/:trackingCode", limitOrderTracking, (req, res) => {
+    expireAwaitingPaymentOrders();
     const phone = String(req.query.phone || "").replace(/\s/g, "");
     if (!phonePattern.test(phone)) {
       return res.status(400).json({ message: "Vui lòng nhập số điện thoại nhận hàng để tra cứu." });
@@ -1814,7 +2826,7 @@ function createApp(options = {}) {
     if (!order || order.customer.phone.replace(/\s/g, "") !== phone) {
       return notFound(res, "Đơn hàng");
     }
-    const { customer, ...safeOrder } = order;
+    const { customer, ...safeOrder } = publicOrder(order);
     return res.json({
       data: {
         ...safeOrder,
@@ -1823,53 +2835,61 @@ function createApp(options = {}) {
     });
   });
 
-  app.get("/api/orders/:id", requireAuth, (req, res) => {
+  app.get("/api/orders/:id", requireAuth, allowRoles("customer"), (req, res) => {
+    expireAwaitingPaymentOrders();
     const order = store.data.orders.find((item) => item.id === req.params.id);
     if (!order) return notFound(res, "Đơn hàng");
-    const isTeam = ["admin", "staff"].includes(req.user.role);
-    if (!isTeam && order.userId !== req.user.id && order.customerId !== req.user.customerId) {
+    if (order.userId !== req.user.id && order.customerId !== req.user.customerId) {
       return res.status(403).json({ message: "Bạn không thể xem đơn hàng này." });
     }
-    return res.json({ data: order });
+    return res.json({ data: publicOrder(order) });
   });
 
-  app.patch("/api/orders/:id/cancel", requireAuth, (req, res) => {
+  app.patch("/api/orders/:id/cancel", requireAuth, allowRoles("customer"), (req, res) => {
     const order = store.data.orders.find((item) => item.id === req.params.id);
     if (!order) return notFound(res, "Đơn hàng");
-    const isTeam = ["admin", "staff"].includes(req.user.role);
-    if (!isTeam && order.userId !== req.user.id && order.customerId !== req.user.customerId) {
+    if (order.userId !== req.user.id && order.customerId !== req.user.customerId) {
       return res.status(403).json({ message: "Bạn không thể hủy đơn hàng này." });
+    }
+    if (req.body.expectedVersion === undefined) {
+      return res.status(428).json({ message: "Thiếu phiên bản đơn hàng. Vui lòng tải lại trước khi hủy." });
+    }
+    if (Number(req.body.expectedVersion) !== Number(order.version || 1)) {
+      return res.status(409).json({ message: "Đơn hàng vừa được cập nhật ở nơi khác. Vui lòng tải lại trước khi hủy." });
     }
     if (!["pending", "confirmed"].includes(order.status)) {
       return res.status(409).json({ message: "Đơn hàng đã được xử lý nên không thể hủy trực tuyến." });
     }
-    order.status = "cancelled";
-    order.updatedAt = new Date().toISOString();
-    order.timeline.push({ status: "cancelled", label: ORDER_STATUS_LABELS.cancelled, at: order.updatedAt });
-    for (const line of order.items) {
-      const product = store.data.products.find((item) => item.id === line.productId);
-      if (product) {
-        changeProductStock(product, line.quantity, line.size, line.color);
-        product.sold = Math.max(0, product.sold - line.quantity);
-      }
-    }
-    rebuildCustomerMetrics(store, order.customerId);
+    const reason = String(req.body.reason || "").trim();
+    const transitionError = validateOrderTransition(order, "cancelled", { reason });
+    if (transitionError) return res.status(400).json({ message: transitionError });
+    const event = applyOrderCancellation(store, order, {
+      actor: req.user,
+      source: "customer",
+      reason,
+    });
     store.audit("cancel", "order", order.id, req.user);
     store.save();
-    return res.json({ message: "Đã hủy đơn hàng.", data: order });
+    queueOrderStatusEmail(order, event);
+    return res.json({
+      message: order.paymentStatus === "refund_pending"
+        ? "Đã hủy đơn. Khoản thanh toán đang chờ được hoàn."
+        : "Đã hủy đơn hàng và hoàn lại tồn kho.",
+      data: publicOrder(order),
+    });
   });
 
-  app.get("/api/returns/my", requireAuth, (req, res) => {
+  app.get("/api/returns/my", requireAuth, allowRoles("customer"), (req, res) => {
     const ownedOrders = new Set(store.data.orders
       .filter((order) => order.userId === req.user.id || order.customerId === req.user.customerId)
       .map((order) => order.id));
     const data = store.data.returns
       .filter((item) => ownedOrders.has(item.orderId))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return res.json({ data });
+    return res.json({ data: data.map(publicReturn) });
   });
 
-  app.post("/api/returns", requireAuth, (req, res) => {
+  app.post("/api/returns", requireAuth, allowRoles("customer"), (req, res) => {
     const order = store.data.orders.find((item) => item.id === req.body.orderId);
     if (!order) return notFound(res, "Đơn hàng");
     if (order.userId !== req.user.id && order.customerId !== req.user.customerId) {
@@ -1878,11 +2898,15 @@ function createApp(options = {}) {
     if (order.status !== "delivered") {
       return res.status(409).json({ message: "Chỉ đơn đã giao thành công mới có thể đổi hoặc trả." });
     }
+    if (!["paid", "partially_refunded"].includes(order.paymentStatus)) {
+      return res.status(409).json({ message: "Đơn hàng cần hoàn tất đối soát thanh toán trước khi tạo yêu cầu đổi trả." });
+    }
     const deliveredAt = order.timeline.find((item) => item.status === "delivered")?.at || order.updatedAt;
     if (Date.now() - new Date(deliveredAt).getTime() > 30 * 86400000) {
       return res.status(409).json({ message: "Đơn hàng đã quá thời hạn đổi trả 30 ngày." });
     }
-    if (store.data.returns.some((item) => item.orderId === order.id && !["rejected", "cancelled"].includes(item.status))) {
+    if (store.data.returns.some((item) => item.orderId === order.id
+      && (!["completed", "rejected", "cancelled"].includes(item.status) || item.refundStatus === "pending"))) {
       return res.status(409).json({ message: "Đơn hàng đã có yêu cầu đổi trả đang xử lý." });
     }
     const requestedItems = Array.isArray(req.body.items) ? req.body.items : [];
@@ -1890,56 +2914,124 @@ function createApp(options = {}) {
       const line = order.items.find((item) => item.productId === requested.productId
         && item.size === requested.size && item.color === requested.color);
       const quantity = asPositiveInt(requested.quantity);
-      return line && quantity <= line.quantity ? {
+      const alreadyRequested = store.data.returns
+        .filter((entry) => entry.orderId === order.id && !["rejected", "cancelled"].includes(entry.status))
+        .flatMap((entry) => entry.items || [])
+        .filter((entry) => entry.productId === requested.productId
+          && entry.size === requested.size && entry.color === requested.color)
+        .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+      return line && quantity <= Number(line.quantity || 0) - alreadyRequested ? {
         productId: line.productId, name: line.name, image: line.image,
         size: line.size, color: line.color, quantity, price: line.price,
-        desiredSize: String(requested.desiredSize || ""),
-        desiredColor: String(requested.desiredColor || ""),
+        desiredSize: String(requested.desiredSize || "").trim(),
+        desiredColor: String(requested.desiredColor || "").trim(),
       } : null;
     }).filter(Boolean);
     const reason = String(req.body.reason || "").trim();
-    if (!items.length || reason.length < 5) {
+    if (!items.length || items.length !== requestedItems.length || reason.length < 5) {
       return res.status(400).json({ message: "Vui lòng chọn sản phẩm và nhập lý do đổi trả." });
     }
+    const requestType = req.body.type === "exchange" ? "exchange" : "return";
+    if (requestType === "exchange") {
+      const invalidExchange = items.find((item) => !item.desiredSize || !item.desiredColor
+        || (item.desiredSize === item.size && item.desiredColor === item.color));
+      if (invalidExchange) {
+        return res.status(400).json({ message: "Sản phẩm đổi phải có size hoặc màu mới hợp lệ." });
+      }
+    }
     const createdAt = new Date().toISOString();
+    const grossRefund = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discountShare = Number(order.subtotal || 0) > 0
+      ? Math.round(Number(order.discount || 0) * (grossRefund / Number(order.subtotal)))
+      : 0;
     const returnRequest = {
       id: store.nextId("returns", "ret-"),
       orderId: order.id,
       customerId: order.customerId,
       userId: req.user.id,
-      type: req.body.type === "exchange" ? "exchange" : "return",
+      type: requestType,
       reason,
       note: String(req.body.note || "").slice(0, 500),
       proofImages: Array.isArray(req.body.proofImages)
         ? req.body.proofImages.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5)
         : [],
       items,
-      refundAmount: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      refundAmount: requestType === "return" ? Math.max(0, grossRefund - discountShare) : 0,
+      refundStatus: requestType === "return" ? "not_started" : "not_applicable",
       status: "requested",
       assigneeId: null,
-      timeline: [{ status: "requested", at: createdAt, note: "Khách hàng gửi yêu cầu." }],
+      version: 1,
+      timeline: [],
       createdAt,
       updatedAt: createdAt,
     };
+    const event = appendReturnEvent(returnRequest, {
+      status: "requested",
+      label: RETURN_STATUS_LABELS.requested,
+      note: `Khách hàng gửi yêu cầu ${requestType === "exchange" ? "đổi" : "trả"} sản phẩm: ${reason}`,
+      actor: req.user,
+      source: "customer",
+      at: createdAt,
+    });
     store.data.returns.unshift(returnRequest);
+    notifyReturnChange(store, returnRequest, order, event);
     store.audit("create", "return", returnRequest.id, req.user);
     store.save();
-    return res.status(201).json({ message: "Đã gửi yêu cầu đổi trả.", data: returnRequest });
+    queueReturnStatusEmail(returnRequest, order, event);
+    return res.status(201).json({ message: "Đã gửi yêu cầu đổi trả.", data: publicReturn(returnRequest) });
   });
 
-  app.post("/api/contact", (req, res) => {
-    const name = String(req.body.name || "").trim();
+  app.patch("/api/returns/:id/cancel", requireAuth, allowRoles("customer"), (req, res) => {
+    const returnRequest = store.data.returns.find((entry) => entry.id === req.params.id);
+    if (!returnRequest) return notFound(res, "Yêu cầu đổi trả");
+    const order = store.data.orders.find((entry) => entry.id === returnRequest.orderId);
+    if (!order || (order.userId !== req.user.id && order.customerId !== req.user.customerId)) {
+      return res.status(403).json({ message: "Bạn không thể hủy yêu cầu này." });
+    }
+    if (req.body.expectedVersion === undefined) {
+      return res.status(428).json({ message: "Thiếu phiên bản yêu cầu. Vui lòng tải lại trước khi hủy." });
+    }
+    if (Number(req.body.expectedVersion) !== Number(returnRequest.version || 1)) {
+      return res.status(409).json({ message: "Yêu cầu vừa được cập nhật. Vui lòng tải lại trước khi thao tác." });
+    }
+    if (returnRequest.status !== "requested") {
+      return res.status(409).json({ message: "Chỉ yêu cầu chưa được xử lý mới có thể hủy." });
+    }
+    const at = new Date().toISOString();
+    returnRequest.status = "cancelled";
+    touchReturn(returnRequest, at);
+    const event = appendReturnEvent(returnRequest, {
+      status: "cancelled",
+      note: String(req.body.reason || "Khách hàng không còn nhu cầu đổi trả.").trim(),
+      actor: req.user,
+      source: "customer",
+      at,
+    });
+    notifyReturnChange(store, returnRequest, order, event);
+    store.audit("cancel", "return", returnRequest.id, req.user);
+    store.save();
+    queueReturnStatusEmail(returnRequest, order, event);
+    return res.json({ message: "Đã hủy yêu cầu đổi trả.", data: publicReturn(returnRequest) });
+  });
+
+  app.post("/api/contact", limitPublicForms, (req, res) => {
+    const name = String(req.body.name || "").trim().slice(0, 100);
     const email = normalizeText(req.body.email);
+    const phone = String(req.body.phone || "").trim();
+    const subject = String(req.body.subject || "Yêu cầu hỗ trợ").trim().slice(0, 160);
     const message = String(req.body.message || "").trim();
-    if (name.length < 2 || !emailPattern.test(email) || message.length < 10) {
+    if (name.length < 2 || !emailPattern.test(email)
+      || (phone && !phonePattern.test(phone))
+      || subject.length < 2
+      || message.length < 10) {
       return res.status(400).json({ message: "Vui lòng nhập đầy đủ họ tên, email và nội dung." });
     }
     const contact = {
       id: store.nextId("contacts", "msg-"),
       name,
       email,
-      phone: String(req.body.phone || "").trim(),
-      subject: String(req.body.subject || "Yêu cầu hỗ trợ").trim(),
+      phone,
+      subject,
       message: message.slice(0, 2000),
       status: "new",
       createdAt: new Date().toISOString(),
@@ -1949,7 +3041,7 @@ function createApp(options = {}) {
     return res.status(201).json({ message: "NOVAWEAR đã nhận được lời nhắn của bạn." });
   });
 
-  app.post("/api/newsletter", (req, res) => {
+  app.post("/api/newsletter", limitPublicForms, (req, res) => {
     const email = normalizeText(req.body.email);
     if (!emailPattern.test(email)) return res.status(400).json({ message: "Email chưa đúng định dạng." });
     if (!store.data.subscribers.some((item) => item.email === email)) {
@@ -1962,22 +3054,24 @@ function createApp(options = {}) {
   const admin = express.Router();
   admin.use(requireAuth, allowRoles("admin", "staff"));
 
-  admin.get("/overview", (_req, res) => {
+  admin.get("/overview", allowRoles("admin"), (_req, res) => {
+    expireAwaitingPaymentOrders();
     const activeOrders = store.data.orders.filter(completedOrder);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateKey();
+    const revenueDate = (order) => localDateKey(order.deliveredAt || order.updatedAt || order.createdAt);
     const revenue = activeOrders.reduce((sum, item) => sum + item.total, 0);
     const todayRevenue = activeOrders
-      .filter((item) => item.createdAt.slice(0, 10) === today)
+      .filter((item) => revenueDate(item) === today)
       .reduce((sum, item) => sum + item.total, 0);
     const revenueByDay = Array.from({ length: 7 }, (_, index) => {
       const date = new Date();
       date.setDate(date.getDate() - (6 - index));
-      const key = date.toISOString().slice(0, 10);
+      const key = localDateKey(date);
       return {
         date: key,
-        label: date.toLocaleDateString("vi-VN", { weekday: "short" }),
+        label: date.toLocaleDateString("vi-VN", { weekday: "short", timeZone: appTimeZone }),
         value: activeOrders
-          .filter((item) => item.createdAt.slice(0, 10) === key)
+          .filter((item) => revenueDate(item) === key)
           .reduce((sum, item) => sum + item.total, 0),
       };
     });
@@ -2103,7 +3197,7 @@ function createApp(options = {}) {
     return res.status(201).json({ message: "Đã tạo sản phẩm.", data: product });
   });
 
-  admin.put("/products/:id", (req, res) => {
+  admin.put("/products/:id", allowRoles("admin"), (req, res) => {
     const product = store.data.products.find((item) => item.id === req.params.id);
     if (!product) return notFound(res, "Sản phẩm");
     const allowed = ["name", "sku", "categoryId", "price", "comparePrice", "saleEndsAt", "cost", "stock", "status", "featured", "badge", "audience", "image", "images", "colors", "sizes", "variants", "description", "longDescription", "materials", "care", "fit", "suitableFor", "modelInfo", "origin", "highlights", "featureDetails"];
@@ -2137,7 +3231,7 @@ function createApp(options = {}) {
     return res.json({ message: "Đã xóa sản phẩm." });
   });
 
-  admin.get("/news", (_req, res) => res.json({ data: store.data.news || [] }));
+  admin.get("/news", allowRoles("admin"), (_req, res) => res.json({ data: store.data.news || [] }));
   admin.post("/news", allowRoles("admin"), (req, res) => {
     const title = String(req.body.title || "").trim();
     if (title.length < 5) return res.status(400).json({ message: "Tiêu đề bài viết cần ít nhất 5 ký tự." });
@@ -2174,15 +3268,78 @@ function createApp(options = {}) {
     });
   });
 
-  admin.get("/coupons", (_req, res) => res.json({ data: store.data.coupons || [] }));
+  admin.get("/coupons", allowRoles("admin"), (_req, res) => res.json({ data: store.data.coupons || [] }));
   admin.post("/coupons", allowRoles("admin"), (req, res) => {
     const code = String(req.body.code || "").trim().toUpperCase();
     if (!/^[A-Z0-9_-]{3,30}$/.test(code)) return res.status(400).json({ message: "Mã ưu đãi chưa hợp lệ." });
     if ((store.data.coupons || []).some((item) => item.code === code)) return res.status(409).json({ message: "Mã ưu đãi đã tồn tại." });
-    const coupon = { code, type: ["percent", "fixed", "shipping"].includes(req.body.type) ? req.body.type : "percent", value: asMoney(req.body.value), minOrder: asMoney(req.body.minOrder), maxDiscount: asMoney(req.body.maxDiscount), active: req.body.active !== false, expiresAt: req.body.expiresAt || new Date(Date.now() + 30 * 86400000).toISOString() };
-    store.data.coupons = store.data.coupons || []; store.data.coupons.push(coupon); store.audit("create", "coupon", code, req.user); store.save(); return res.status(201).json({ message: "Đã thêm mã ưu đãi.", data: coupon });
+    const type = String(req.body.type || "percent");
+    const value = asMoney(req.body.value);
+    const usageLimit = Number(req.body.usageLimit || 0);
+    const startsAt = new Date(req.body.startsAt || Date.now());
+    const expiresAt = new Date(req.body.expiresAt || Date.now() + 30 * 86400000);
+    if (!["percent", "fixed", "shipping"].includes(type)
+      || value <= 0
+      || (type === "percent" && value > 100)
+      || !Number.isInteger(usageLimit)
+      || usageLimit < 0
+      || Number.isNaN(startsAt.getTime())
+      || Number.isNaN(expiresAt.getTime())
+      || startsAt >= expiresAt) {
+      return res.status(400).json({ message: "Giá trị, thời gian hoặc giới hạn sử dụng của mã ưu đãi chưa hợp lệ." });
+    }
+    const coupon = {
+      code,
+      type,
+      value,
+      minOrder: asMoney(req.body.minOrder),
+      maxDiscount: asMoney(req.body.maxDiscount),
+      active: req.body.active !== false,
+      startsAt: startsAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      usageLimit,
+      usedCount: 0,
+    };
+    store.data.coupons = store.data.coupons || [];
+    store.data.coupons.push(coupon);
+    store.audit("create", "coupon", code, req.user);
+    store.save();
+    return res.status(201).json({ message: "Đã thêm mã ưu đãi.", data: coupon });
   });
-  admin.put("/coupons/:code", allowRoles("admin"), (req, res) => { const coupon = (store.data.coupons || []).find((item) => item.code === req.params.code); if (!coupon) return notFound(res, "Mã ưu đãi"); ["type", "value", "minOrder", "maxDiscount", "active", "expiresAt"].forEach((field) => { if (req.body[field] !== undefined) coupon[field] = ["value", "minOrder", "maxDiscount"].includes(field) ? asMoney(req.body[field]) : req.body[field]; }); store.audit("update", "coupon", coupon.code, req.user); store.save(); return res.json({ message: "Đã cập nhật mã ưu đãi.", data: coupon }); });
+  admin.put("/coupons/:code", allowRoles("admin"), (req, res) => {
+    const coupon = (store.data.coupons || [])
+      .find((item) => item.code === String(req.params.code || "").toUpperCase());
+    if (!coupon) return notFound(res, "Mã ưu đãi");
+    const nextType = String(req.body.type ?? coupon.type);
+    const nextValue = asMoney(req.body.value ?? coupon.value);
+    const nextUsageLimit = Number(req.body.usageLimit ?? coupon.usageLimit ?? 0);
+    const nextStartsAt = new Date(req.body.startsAt ?? coupon.startsAt ?? 0);
+    const nextExpiresAt = new Date(req.body.expiresAt ?? coupon.expiresAt);
+    if (!["percent", "fixed", "shipping"].includes(nextType)
+      || nextValue <= 0
+      || (nextType === "percent" && nextValue > 100)
+      || !Number.isInteger(nextUsageLimit)
+      || nextUsageLimit < 0
+      || (nextUsageLimit > 0 && nextUsageLimit < Number(coupon.usedCount || 0))
+      || Number.isNaN(nextStartsAt.getTime())
+      || Number.isNaN(nextExpiresAt.getTime())
+      || nextStartsAt >= nextExpiresAt) {
+      return res.status(400).json({ message: "Giá trị, thời gian hoặc giới hạn sử dụng của mã ưu đãi chưa hợp lệ." });
+    }
+    Object.assign(coupon, {
+      type: nextType,
+      value: nextValue,
+      minOrder: asMoney(req.body.minOrder ?? coupon.minOrder),
+      maxDiscount: asMoney(req.body.maxDiscount ?? coupon.maxDiscount),
+      active: req.body.active === undefined ? coupon.active : Boolean(req.body.active),
+      startsAt: nextStartsAt.toISOString(),
+      expiresAt: nextExpiresAt.toISOString(),
+      usageLimit: nextUsageLimit,
+    });
+    store.audit("update", "coupon", coupon.code, req.user);
+    store.save();
+    return res.json({ message: "Đã cập nhật mã ưu đãi.", data: coupon });
+  });
   admin.delete("/coupons/:code", allowRoles("admin"), (req, res) => { const before = (store.data.coupons || []).length; store.data.coupons = (store.data.coupons || []).filter((item) => item.code !== req.params.code); if (store.data.coupons.length === before) return notFound(res, "Mã ưu đãi"); store.audit("delete", "coupon", req.params.code, req.user); store.save(); return res.json({ message: "Đã xóa mã ưu đãi." }); });
 
   admin.post("/categories", allowRoles("admin"), (req, res) => {
@@ -2231,9 +3388,16 @@ function createApp(options = {}) {
   });
 
   admin.get("/orders", (req, res) => {
+    expireAwaitingPaymentOrders();
     const search = normalizeText(req.query.search);
     const status = String(req.query.status || "all");
     let orders = [...store.data.orders];
+    if (req.user.role === "staff") {
+      if (!req.user.employeeId) {
+        return res.status(403).json({ message: "Tài khoản nhân viên chưa được liên kết hồ sơ làm việc." });
+      }
+      orders = orders.filter((item) => !item.assigneeId || item.assigneeId === req.user.employeeId);
+    }
     if (status !== "all") orders = orders.filter((item) => item.status === status);
     if (search) {
       orders = orders.filter((item) => normalizeText(`${item.id} ${item.trackingCode} ${item.customer.name} ${item.customer.phone}`).includes(search));
@@ -2243,48 +3407,172 @@ function createApp(options = {}) {
   });
 
   admin.get("/orders/:id", (req, res) => {
+    expireAwaitingPaymentOrders();
     const order = store.data.orders.find((item) => item.id === req.params.id);
     if (!order) return notFound(res, "Đơn hàng");
+    if (req.user.role === "staff"
+      && (!req.user.employeeId || (order.assigneeId && order.assigneeId !== req.user.employeeId))) {
+      return res.status(403).json({ message: "Đơn hàng đang được một nhân viên khác phụ trách." });
+    }
     return res.json({ data: order });
   });
 
   admin.patch("/orders/:id", (req, res) => {
     const order = store.data.orders.find((item) => item.id === req.params.id);
     if (!order) return notFound(res, "Đơn hàng");
-    const nextStatus = req.body.status;
-    if (nextStatus && nextStatus !== order.status) {
-      const allowed = ALLOWED_ORDER_TRANSITIONS[order.status] || [];
-      if (!allowed.includes(nextStatus) && req.user.role !== "admin") {
-        return res.status(409).json({ message: "Không thể chuyển sang trạng thái đã chọn." });
+    if (req.user.role === "staff") {
+      if (!req.user.employeeId) {
+        return res.status(403).json({ message: "Tài khoản nhân viên chưa được liên kết hồ sơ làm việc." });
       }
-      if (!ORDER_STATUS_LABELS[nextStatus]) return res.status(400).json({ message: "Trạng thái không hợp lệ." });
-      if (nextStatus === "cancelled" && order.status !== "cancelled") {
-        for (const line of order.items) {
-          const product = store.data.products.find((item) => item.id === line.productId);
-          if (product) {
-            changeProductStock(product, line.quantity, line.size, line.color);
-            product.sold = Math.max(0, product.sold - line.quantity);
-          }
-        }
+      if (order.assigneeId && order.assigneeId !== req.user.employeeId) {
+        return res.status(403).json({ message: "Đơn hàng đang được một nhân viên khác phụ trách." });
       }
-      order.status = nextStatus;
-      order.timeline.push({ status: nextStatus, label: ORDER_STATUS_LABELS[nextStatus], at: new Date().toISOString() });
-      if (nextStatus === "delivered" && order.paymentMethod === "cod") order.paymentStatus = "paid";
-      rebuildCustomerMetrics(store, order.customerId);
     }
-    if (req.body.paymentStatus && ["pending", "awaiting", "paid", "refunded", "failed"].includes(req.body.paymentStatus)) {
-      order.paymentStatus = req.body.paymentStatus;
-      rebuildCustomerMetrics(store, order.customerId);
+    if (req.body.expectedVersion === undefined) {
+      return res.status(428).json({ message: "Thiếu phiên bản đơn hàng. Vui lòng tải lại và thử lại." });
     }
+    if (Number(req.body.expectedVersion) !== Number(order.version || 1)) {
+      return res.status(409).json({ message: "Đơn hàng vừa được cập nhật ở nơi khác. Vui lòng tải lại dữ liệu." });
+    }
+    if (req.body.paymentStatus !== undefined) {
+      return res.status(400).json({ message: "Trạng thái thanh toán được cập nhật bởi SePay, giao hàng COD hoặc quy trình hoàn tiền." });
+    }
+
+    let assigneeChanged = false;
+    let nextAssigneeId = order.assigneeId
+      || (req.user.role === "staff" ? req.user.employeeId : null);
     if (req.body.assigneeId !== undefined) {
-      const assignee = store.data.employees.find((item) => item.id === req.body.assigneeId && item.status === "active");
-      order.assigneeId = assignee ? assignee.id : null;
+      const requestedAssigneeId = String(req.body.assigneeId || "").trim();
+      if (req.user.role === "staff" && requestedAssigneeId !== req.user.employeeId) {
+        return res.status(403).json({ message: "Nhân viên chỉ có thể nhận đơn cho chính mình." });
+      }
+      const assignee = requestedAssigneeId
+        ? store.data.employees.find((item) => item.id === requestedAssigneeId && item.status === "active")
+        : null;
+      if (requestedAssigneeId && !assignee) {
+        return res.status(400).json({ message: "Nhân viên được phân công không hợp lệ hoặc đã ngừng hoạt động." });
+      }
+      nextAssigneeId = assignee ? assignee.id : null;
+      assigneeChanged = nextAssigneeId !== (order.assigneeId || null);
     }
-    if (req.body.note !== undefined) order.internalNote = String(req.body.note).slice(0, 500);
-    order.updatedAt = new Date().toISOString();
+    const nextInternalNote = req.body.note !== undefined
+      ? String(req.body.note).slice(0, 500)
+      : String(order.internalNote || "");
+
+    const nextStatus = req.body.status;
+    let event = null;
+    if (nextStatus && nextStatus !== order.status) {
+      const changes = {
+        reason: String(req.body.reason || "").trim(),
+        publicNote: String(req.body.publicNote || "").trim(),
+        internalNote: String(req.body.internalNote || nextInternalNote || "").trim(),
+        shipment: req.body.shipment && typeof req.body.shipment === "object" ? req.body.shipment : null,
+      };
+      const transitionError = validateOrderTransition(order, nextStatus, changes);
+      if (transitionError) return res.status(409).json({ message: transitionError });
+      order.assigneeId = nextAssigneeId;
+      order.internalNote = nextInternalNote;
+      event = applyOrderTransition(store, order, nextStatus, {
+        ...changes,
+        actor: req.user,
+        source: "operations",
+      });
+    } else if (assigneeChanged || req.body.note !== undefined) {
+      order.assigneeId = nextAssigneeId;
+      order.internalNote = nextInternalNote;
+      const at = touchOrder(order);
+      const assignee = store.data.employees.find((item) => item.id === order.assigneeId);
+      event = appendOrderEvent(order, {
+        eventType: "assignment",
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        label: assignee ? `Đã phân công ${assignee.name}` : "Đã bỏ phân công xử lý",
+        internalNote: order.internalNote,
+        actor: req.user,
+        source: "operations",
+        at,
+      });
+    }
     store.audit("update", "order", order.id, req.user);
     store.save();
+    if (nextStatus && event) queueOrderStatusEmail(order, event);
     return res.json({ message: "Đã cập nhật đơn hàng.", data: order });
+  });
+
+  admin.patch("/orders/:id/refund", allowRoles("admin"), (req, res) => {
+    const order = store.data.orders.find((item) => item.id === req.params.id);
+    if (!order) return notFound(res, "Đơn hàng");
+    if (req.body.expectedVersion === undefined || Number(req.body.expectedVersion) !== Number(order.version || 1)) {
+      return res.status(409).json({ message: "Đơn hàng vừa được cập nhật. Vui lòng tải lại trước khi xác nhận hoàn tiền." });
+    }
+    if (order.paymentStatus !== "refund_pending") {
+      return res.status(409).json({ message: "Đơn hàng không ở trạng thái chờ hoàn tiền." });
+    }
+    if (order.status !== "cancelled") {
+      return res.status(409).json({ message: "Khoản hoàn do đổi trả phải được đối soát tại yêu cầu đổi trả tương ứng." });
+    }
+    const reason = String(req.body.reason || "").trim();
+    if (reason.length < 5) return res.status(400).json({ message: "Cần ghi lý do hoặc nội dung đối soát hoàn tiền." });
+    const at = touchOrder(order);
+    order.paymentStatus = "refunded";
+    order.refundedAt = at;
+    order.refundReference = String(req.body.reference || "").trim().slice(0, 160);
+    const event = appendOrderEvent(order, {
+      eventType: "payment",
+      status: order.status,
+      paymentStatus: "refunded",
+      label: PAYMENT_STATUS_LABELS.refunded,
+      note: "Khoản thanh toán đã được hoàn lại cho khách hàng.",
+      internalNote: reason,
+      actor: req.user,
+      source: "operations",
+      at,
+    });
+    notifyOrderChange(store, order, event, { type: "payment_refunded", message: event.note });
+    rebuildCustomerMetrics(store, order.customerId);
+    store.audit("refund_completed", "order", order.id, req.user);
+    store.save();
+    queueOrderStatusEmail(order, event);
+    return res.json({ message: "Đã xác nhận hoàn tiền cho khách hàng.", data: order });
+  });
+
+  admin.patch("/orders/:id/payment-reconcile", allowRoles("admin"), (req, res) => {
+    const order = store.data.orders.find((item) => item.id === req.params.id);
+    if (!order) return notFound(res, "Đơn hàng");
+    if (req.body.expectedVersion === undefined
+      || Number(req.body.expectedVersion) !== Number(order.version || 1)) {
+      return res.status(409).json({ message: "Đơn hàng vừa được cập nhật. Vui lòng tải lại trước khi đối soát." });
+    }
+    if (order.paymentStatus !== "review_required") {
+      return res.status(409).json({ message: "Đơn hàng không ở trạng thái cần đối soát thanh toán." });
+    }
+    const reference = String(req.body.reference || "").trim().slice(0, 160);
+    const reason = String(req.body.reason || "").trim().slice(0, 1000);
+    if (reference.length < 4 || reason.length < 5) {
+      return res.status(400).json({ message: "Cần nhập mã chứng từ và nội dung đối soát thanh toán." });
+    }
+    const at = touchOrder(order);
+    order.paymentStatus = "paid";
+    order.paidAt = order.paidAt || at;
+    order.paymentReconciledAt = at;
+    order.paymentReconciliation = { reference, reason, actorId: req.user.id };
+    const event = appendOrderEvent(order, {
+      eventType: "payment",
+      status: order.status,
+      paymentStatus: "paid",
+      label: "Đã đối soát thanh toán",
+      note: "Bộ phận tài chính đã xác nhận đơn hàng được thanh toán đầy đủ.",
+      internalNote: `${reason} · Chứng từ: ${reference}`,
+      actor: req.user,
+      source: "operations",
+      at,
+    });
+    notifyOrderChange(store, order, event, { type: "payment_paid", message: event.note });
+    rebuildCustomerMetrics(store, order.customerId);
+    store.audit("payment_reconciled", "order", order.id, req.user);
+    store.save();
+    queueOrderStatusEmail(order, event);
+    return res.json({ message: "Đã xác nhận đối soát thanh toán.", data: order });
   });
 
   admin.get("/customers", (req, res) => {
@@ -2311,6 +3599,12 @@ function createApp(options = {}) {
     if (customer.name.length < 2 || !phonePattern.test(customer.phone) || (customer.email && !emailPattern.test(customer.email))) {
       return res.status(400).json({ message: "Thông tin khách hàng chưa hợp lệ." });
     }
+    if (customer.email && (
+      store.data.customers.some((item) => normalizeText(item.email) === customer.email)
+      || store.data.users.some((item) => normalizeText(item.email) === customer.email)
+    )) {
+      return res.status(409).json({ message: "Email này đã được hồ sơ khác sử dụng." });
+    }
     store.data.customers.push(customer);
     store.audit("create", "customer", customer.id, req.user);
     store.save();
@@ -2320,18 +3614,56 @@ function createApp(options = {}) {
   admin.put("/customers/:id", (req, res) => {
     const customer = store.data.customers.find((item) => item.id === req.params.id);
     if (!customer) return notFound(res, "Khách hàng");
-    ["name", "email", "phone", "address", "tier", "status"].forEach((field) => {
+    const changesProtectedFields = req.user.role !== "admin" && (
+      (req.body.status !== undefined && String(req.body.status) !== String(customer.status))
+      || (req.body.tier !== undefined && String(req.body.tier) !== String(customer.tier))
+    );
+    if (changesProtectedFields) {
+      return res.status(403).json({ message: "Chỉ quản trị viên được thay đổi hạng hoặc khóa tài khoản khách hàng." });
+    }
+    const linkedUser = store.data.users.find((item) => item.customerId === customer.id) || null;
+    const nextName = String(req.body.name ?? customer.name).trim();
+    const nextEmail = normalizeText(req.body.email ?? customer.email);
+    const nextPhone = String(req.body.phone ?? customer.phone).trim();
+    const nextStatus = ["active", "inactive"].includes(String(req.body.status))
+      ? String(req.body.status)
+      : customer.status;
+    if (!nextName || !phonePattern.test(nextPhone) || (nextEmail && !emailPattern.test(nextEmail))) {
+      return res.status(400).json({ message: "Thông tin khách hàng chưa hợp lệ." });
+    }
+    if (linkedUser && nextEmail !== normalizeText(linkedUser.email)) {
+      return res.status(409).json({
+        message: "Email đăng nhập không thể đổi từ hồ sơ khách hàng vì cần xác minh lại quyền sở hữu email.",
+      });
+    }
+    const emailInUse = nextEmail && (
+      store.data.customers.some((item) => item.id !== customer.id && normalizeText(item.email) === nextEmail)
+      || store.data.users.some((item) => item.id !== linkedUser?.id && normalizeText(item.email) === nextEmail)
+    );
+    if (emailInUse) return res.status(409).json({ message: "Email này đã được hồ sơ khác sử dụng." });
+    const previousStatus = customer.status;
+    customer.name = nextName;
+    customer.email = nextEmail;
+    customer.phone = nextPhone;
+    customer.status = nextStatus;
+    ["address", "tier"].forEach((field) => {
       if (req.body[field] !== undefined) customer[field] = String(req.body[field]).trim();
     });
-    if (!customer.name || !phonePattern.test(customer.phone) || (customer.email && !emailPattern.test(customer.email))) {
-      return res.status(400).json({ message: "Thông tin khách hàng chưa hợp lệ." });
+    if (linkedUser) {
+      linkedUser.name = nextName;
+      linkedUser.phone = nextPhone;
+      if (nextStatus === "inactive") linkedUser.status = "inactive";
+      if (previousStatus === "inactive" && nextStatus === "active" && linkedUser.emailVerifiedAt) {
+        linkedUser.status = "active";
+      }
+      if (previousStatus !== nextStatus) linkedUser.tokenVersion = Number(linkedUser.tokenVersion || 0) + 1;
     }
     store.audit("update", "customer", customer.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật khách hàng.", data: customer });
   });
 
-  admin.get("/employees", (req, res) => {
+  admin.get("/employees", allowRoles("admin"), (req, res) => {
     const search = normalizeText(req.query.search);
     const department = String(req.query.department || "");
     let employees = [...store.data.employees];
@@ -2342,8 +3674,17 @@ function createApp(options = {}) {
 
   admin.post("/employees", allowRoles("admin"), (req, res) => {
     const email = normalizeText(req.body.email);
-    if (!emailPattern.test(email) || store.data.employees.some((item) => normalizeText(item.email) === email)) {
+    if (!emailPattern.test(email)
+      || store.data.employees.some((item) => normalizeText(item.email) === email)
+      || store.data.users.some((item) => normalizeText(item.email) === email)) {
       return res.status(409).json({ message: "Email nhân viên chưa hợp lệ hoặc đã tồn tại." });
+    }
+    const createAccount = req.body.createAccount === true;
+    const temporaryPassword = String(req.body.temporaryPassword || "Welcome@2026!");
+    if (createAccount && !validPassword(temporaryPassword, { minLength: 12, requireSpecial: true })) {
+      return res.status(400).json({
+        message: "Mật khẩu tạm cần từ 12 đến 128 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+      });
     }
     const employee = {
       id: store.nextId("employees", "emp-"),
@@ -2354,7 +3695,7 @@ function createApp(options = {}) {
       roleTitle: String(req.body.roleTitle || "Nhân viên"),
       department: String(req.body.department || "Bán hàng"),
       status: req.body.status || "active",
-      joinDate: req.body.joinDate || new Date().toISOString().slice(0, 10),
+      joinDate: req.body.joinDate || localDateKey(),
       shift: String(req.body.shift || "09:00 - 18:00"),
       performance: asMoney(req.body.performance || 80),
       address: String(req.body.address || ""),
@@ -2364,8 +3705,7 @@ function createApp(options = {}) {
       return res.status(400).json({ message: "Họ tên hoặc số điện thoại chưa hợp lệ." });
     }
     store.data.employees.push(employee);
-    if (req.body.createAccount) {
-      const temporaryPassword = String(req.body.temporaryPassword || "Welcome@123");
+    if (createAccount) {
       store.data.users.push({
         id: store.nextId("users", "usr-"),
         name: employee.name,
@@ -2376,6 +3716,7 @@ function createApp(options = {}) {
         customerId: null,
         status: "active",
         emailVerifiedAt: new Date().toISOString(),
+        mustChangePassword: true,
         tokenVersion: 0,
         passwordHash: hashPassword(temporaryPassword),
         createdAt: new Date().toISOString(),
@@ -2389,10 +3730,51 @@ function createApp(options = {}) {
   admin.put("/employees/:id", allowRoles("admin"), (req, res) => {
     const employee = store.data.employees.find((item) => item.id === req.params.id);
     if (!employee) return notFound(res, "Nhân viên");
-    ["name", "email", "phone", "roleTitle", "department", "status", "joinDate", "shift", "performance", "address", "avatar"].forEach((field) => {
-      if (req.body[field] !== undefined) employee[field] = req.body[field];
+    const linkedUser = store.data.users.find((item) => item.employeeId === employee.id) || null;
+    const nextName = String(req.body.name ?? employee.name).trim();
+    const nextEmail = normalizeText(req.body.email ?? employee.email);
+    const nextPhone = String(req.body.phone ?? employee.phone).trim();
+    const nextStatus = ["active", "on_leave", "inactive"].includes(String(req.body.status))
+      ? String(req.body.status)
+      : employee.status;
+    if (nextName.length < 2 || !emailPattern.test(nextEmail) || !phonePattern.test(nextPhone)) {
+      return res.status(400).json({ message: "Thông tin nhân viên chưa hợp lệ." });
+    }
+    const emailInUse = store.data.employees.some((item) => item.id !== employee.id && normalizeText(item.email) === nextEmail)
+      || store.data.users.some((item) => item.id !== linkedUser?.id && normalizeText(item.email) === nextEmail);
+    if (emailInUse) return res.status(409).json({ message: "Email này đã được tài khoản khác sử dụng." });
+    if (linkedUser?.id === req.user.id && nextStatus === "inactive") {
+      return res.status(409).json({ message: "Không thể tự khóa hồ sơ đang đăng nhập." });
+    }
+    const activeAdmins = store.data.users.filter((item) => (
+      item.role === "admin" && item.status === "active" && item.emailVerifiedAt
+    )).length;
+    if (linkedUser?.role === "admin" && linkedUser.status === "active"
+      && nextStatus === "inactive" && activeAdmins <= 1) {
+      return res.status(409).json({ message: "Hệ thống phải luôn còn ít nhất một quản trị viên hoạt động." });
+    }
+
+    const previousEmail = normalizeText(employee.email);
+    const previousStatus = employee.status;
+    ["roleTitle", "department", "joinDate", "shift", "address", "avatar"].forEach((field) => {
+      if (req.body[field] !== undefined) employee[field] = String(req.body[field]);
     });
+    employee.name = nextName;
+    employee.email = nextEmail;
+    employee.phone = nextPhone;
+    employee.status = nextStatus;
+    if (req.body.performance !== undefined) employee.performance = req.body.performance;
     employee.performance = Math.min(100, Math.max(0, asMoney(employee.performance)));
+    if (linkedUser) {
+      linkedUser.name = nextName;
+      linkedUser.email = nextEmail;
+      linkedUser.phone = nextPhone;
+      if (nextStatus === "inactive") linkedUser.status = "inactive";
+      if (previousStatus === "inactive" && nextStatus !== "inactive") linkedUser.status = "active";
+      if (previousEmail !== nextEmail || previousStatus !== nextStatus) {
+        linkedUser.tokenVersion = Number(linkedUser.tokenVersion || 0) + 1;
+      }
+    }
     store.audit("update", "employee", employee.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật nhân viên.", data: employee });
@@ -2401,9 +3783,21 @@ function createApp(options = {}) {
   admin.delete("/employees/:id", allowRoles("admin"), (req, res) => {
     const employee = store.data.employees.find((item) => item.id === req.params.id);
     if (!employee) return notFound(res, "Nhân viên");
-    employee.status = "inactive";
     const user = store.data.users.find((item) => item.employeeId === employee.id);
-    if (user) user.status = "inactive";
+    if (user?.id === req.user.id) {
+      return res.status(409).json({ message: "Không thể tự khóa tài khoản đang đăng nhập." });
+    }
+    const activeAdmins = store.data.users.filter((item) => (
+      item.role === "admin" && item.status === "active" && item.emailVerifiedAt
+    )).length;
+    if (user?.role === "admin" && user.status === "active" && activeAdmins <= 1) {
+      return res.status(409).json({ message: "Hệ thống phải luôn còn ít nhất một quản trị viên hoạt động." });
+    }
+    employee.status = "inactive";
+    if (user) {
+      user.status = "inactive";
+      user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+    }
     store.audit("deactivate", "employee", employee.id, req.user);
     store.save();
     return res.json({ message: "Đã ngừng hoạt động tài khoản nhân viên.", data: employee });
@@ -2416,26 +3810,51 @@ function createApp(options = {}) {
   admin.patch("/users/:id", allowRoles("admin"), (req, res) => {
     const user = store.data.users.find((item) => item.id === req.params.id);
     if (!user) return notFound(res, "Tài khoản");
-    let securityChanged = false;
-    if (req.body.status && ["active", "inactive", "pending"].includes(req.body.status) && user.status !== req.body.status) {
-      user.status = req.body.status;
-      securityChanged = true;
+    if (req.body.verified !== undefined) {
+      return res.status(400).json({
+        message: "Trạng thái xác minh chỉ được thay đổi bằng mã OTP hoặc nhà cung cấp đăng nhập đã xác thực.",
+      });
     }
-    if (req.body.role && ["admin", "staff", "customer"].includes(req.body.role) && user.role !== req.body.role) {
-      user.role = req.body.role;
-      securityChanged = true;
+
+    const nextStatus = req.body.status && ["active", "inactive", "pending"].includes(req.body.status)
+      ? req.body.status
+      : user.status;
+    const nextRole = req.body.role && ["admin", "staff", "customer"].includes(req.body.role)
+      ? req.body.role
+      : user.role;
+    const securityChanged = nextStatus !== user.status || nextRole !== user.role;
+    if (user.id === req.user.id && securityChanged) {
+      return res.status(409).json({ message: "Không thể tự đổi quyền hoặc tự khóa tài khoản đang đăng nhập." });
     }
-    if (req.body.verified === true && !user.emailVerifiedAt) {
-      user.emailVerifiedAt = new Date().toISOString();
-      if (user.status === "pending") user.status = "active";
-      securityChanged = true;
+    if (nextRole !== user.role) {
+      const validOperationsRoleChange = Boolean(user.employeeId)
+        && ["admin", "staff"].includes(user.role)
+        && ["admin", "staff"].includes(nextRole);
+      if (!validOperationsRoleChange) {
+        return res.status(400).json({
+          message: "Tài khoản khách hàng không thể đổi thành tài khoản nội bộ. Hãy tạo hồ sơ nhân viên riêng.",
+        });
+      }
     }
-    if (req.body.verified === false && user.emailVerifiedAt) {
-      user.emailVerifiedAt = null;
-      user.status = "pending";
-      securityChanged = true;
+    const activeAdmins = store.data.users.filter((item) => (
+      item.role === "admin" && item.status === "active" && item.emailVerifiedAt
+    )).length;
+    const removesActiveAdmin = user.role === "admin"
+      && user.status === "active"
+      && user.emailVerifiedAt
+      && (nextRole !== "admin" || nextStatus !== "active");
+    if (removesActiveAdmin && activeAdmins <= 1) {
+      return res.status(409).json({ message: "Hệ thống phải luôn còn ít nhất một quản trị viên hoạt động." });
     }
-    if (securityChanged) user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+
+    user.status = nextStatus;
+    user.role = nextRole;
+    if (securityChanged) {
+      user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+      const employee = store.data.employees.find((item) => item.id === user.employeeId);
+      if (employee && nextStatus === "inactive") employee.status = "inactive";
+      if (employee && nextStatus === "active" && employee.status === "inactive") employee.status = "active";
+    }
     store.audit("update", "user", user.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật tài khoản.", data: sanitizeUser(user) });
@@ -2464,7 +3883,7 @@ function createApp(options = {}) {
     });
   });
 
-  admin.post("/inventory/adjust", (req, res) => {
+  admin.post("/inventory/adjust", allowRoles("admin"), (req, res) => {
     const product = store.data.products.find((item) => item.id === req.body.productId);
     if (!product) return notFound(res, "Sản phẩm");
     const quantity = Number.parseInt(req.body.quantity, 10);
@@ -2514,7 +3933,7 @@ function createApp(options = {}) {
     res.json({ data });
   });
 
-  admin.post("/purchase-orders", (req, res) => {
+  admin.post("/purchase-orders", allowRoles("admin"), (req, res) => {
     const supplier = String(req.body.supplier || "").trim();
     if (!supplier || !Array.isArray(req.body.items) || !req.body.items.length) {
       return res.status(400).json({ message: "Nhà cung cấp và danh sách nhập hàng là bắt buộc." });
@@ -2540,7 +3959,7 @@ function createApp(options = {}) {
     return res.status(201).json({ message: "Đã tạo phiếu nhập hàng.", data: purchaseOrder });
   });
 
-  admin.patch("/purchase-orders/:id/receive", (req, res) => {
+  admin.patch("/purchase-orders/:id/receive", allowRoles("admin"), (req, res) => {
     const purchaseOrder = store.data.purchaseOrders.find((item) => item.id === req.params.id);
     if (!purchaseOrder) return notFound(res, "Phiếu nhập");
     if (purchaseOrder.status === "received") return res.status(409).json({ message: "Phiếu này đã được nhập kho." });
@@ -2559,21 +3978,40 @@ function createApp(options = {}) {
     return res.json({ message: "Đã nhập hàng vào kho.", data: purchaseOrder });
   });
 
-  admin.get("/contacts", (_req, res) => {
-    res.json({ data: [...store.data.contacts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) });
+  admin.get("/contacts", (req, res) => {
+    let contacts = [...store.data.contacts];
+    if (req.user.role === "staff") {
+      contacts = contacts.filter((item) => !item.assigneeId || item.assigneeId === req.user.id);
+    }
+    res.json({ data: contacts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) });
   });
 
   admin.patch("/contacts/:id", (req, res) => {
     const contact = store.data.contacts.find((item) => item.id === req.params.id);
     if (!contact) return notFound(res, "Yêu cầu hỗ trợ");
-    if (["new", "in_progress", "resolved"].includes(req.body.status)) contact.status = req.body.status;
+    if (req.user.role === "staff" && contact.assigneeId && contact.assigneeId !== req.user.id) {
+      return res.status(403).json({ message: "Yêu cầu hỗ trợ đang được một nhân viên khác phụ trách." });
+    }
+    if (!["new", "in_progress", "resolved"].includes(req.body.status)) {
+      return res.status(400).json({ message: "Trạng thái yêu cầu hỗ trợ không hợp lệ." });
+    }
+    contact.status = req.body.status;
     contact.assigneeId = req.user.id;
+    contact.updatedAt = new Date().toISOString();
+    store.audit("update", "contact", contact.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật yêu cầu hỗ trợ.", data: contact });
   });
 
-  admin.get("/returns", (_req, res) => {
-    const data = store.data.returns.map((item) => ({
+  admin.get("/returns", (req, res) => {
+    let returns = [...store.data.returns];
+    if (req.user.role === "staff") {
+      if (!req.user.employeeId) {
+        return res.status(403).json({ message: "Tài khoản nhân viên chưa được liên kết hồ sơ làm việc." });
+      }
+      returns = returns.filter((item) => !item.assigneeId || item.assigneeId === req.user.employeeId);
+    }
+    const data = returns.map((item) => ({
       ...item,
       order: store.data.orders.find((order) => order.id === item.orderId) || null,
       assignee: store.data.employees.find((employee) => employee.id === item.assigneeId) || null,
@@ -2582,40 +4020,205 @@ function createApp(options = {}) {
   });
 
   admin.patch("/returns/:id", (req, res) => {
-    const item = store.data.returns.find((entry) => entry.id === req.params.id);
-    if (!item) return notFound(res, "Yêu cầu đổi trả");
-    const transitions = {
-      requested: ["approved", "rejected"], approved: ["receiving", "rejected"],
-      receiving: ["completed"], completed: [], rejected: [],
-    };
-    const nextStatus = String(req.body.status || item.status);
-    if (!transitions[nextStatus]) return res.status(400).json({ message: "Trạng thái không hợp lệ." });
-    if (nextStatus !== item.status && !(transitions[item.status] || []).includes(nextStatus) && req.user.role !== "admin") {
-      return res.status(409).json({ message: "Không thể chuyển sang trạng thái đã chọn." });
-    }
-    if (nextStatus === "completed" && item.status !== "completed") {
-      item.items.forEach((line) => {
-        const product = store.data.products.find((entry) => entry.id === line.productId);
-        if (product) changeProductStock(product, line.quantity, line.size, line.color);
-      });
-      if (item.type === "return") {
-        const order = store.data.orders.find((entry) => entry.id === item.orderId);
-        if (order) {
-          order.paymentStatus = "refunded";
-          order.refundAmount = item.refundAmount;
-          rebuildCustomerMetrics(store, order.customerId);
-        }
+    const returnRequest = store.data.returns.find((entry) => entry.id === req.params.id);
+    if (!returnRequest) return notFound(res, "Yêu cầu đổi trả");
+    if (req.user.role === "staff") {
+      if (!req.user.employeeId) {
+        return res.status(403).json({ message: "Tài khoản nhân viên chưa được liên kết hồ sơ làm việc." });
       }
-      item.completedAt = new Date().toISOString();
+      if (returnRequest.assigneeId && returnRequest.assigneeId !== req.user.employeeId) {
+        return res.status(403).json({ message: "Yêu cầu đang được một nhân viên khác phụ trách." });
+      }
     }
-    item.status = nextStatus;
-    item.assigneeId = req.body.assigneeId || item.assigneeId || req.user.employeeId || null;
-    item.internalNote = req.body.internalNote !== undefined ? String(req.body.internalNote).slice(0, 1000) : item.internalNote;
-    item.updatedAt = new Date().toISOString();
-    item.timeline.push({ status: nextStatus, at: item.updatedAt, note: item.internalNote || "" });
-    store.audit("update", "return", item.id, req.user);
+    let nextAssigneeId = returnRequest.assigneeId
+      || (req.user.role === "staff" ? req.user.employeeId : null);
+    if (req.body.assigneeId !== undefined) {
+      const requestedAssigneeId = String(req.body.assigneeId || "").trim();
+      if (req.user.role === "staff" && requestedAssigneeId !== req.user.employeeId) {
+        return res.status(403).json({ message: "Nhân viên chỉ có thể nhận yêu cầu cho chính mình." });
+      }
+      const assignee = requestedAssigneeId
+        ? store.data.employees.find((item) => item.id === requestedAssigneeId && item.status === "active")
+        : null;
+      if (requestedAssigneeId && !assignee) {
+        return res.status(400).json({ message: "Nhân viên được phân công không hợp lệ hoặc đã ngừng hoạt động." });
+      }
+      nextAssigneeId = assignee ? assignee.id : null;
+    }
+    if (req.body.expectedVersion === undefined) {
+      return res.status(428).json({ message: "Thiếu phiên bản yêu cầu. Vui lòng tải lại và thử lại." });
+    }
+    if (Number(req.body.expectedVersion) !== Number(returnRequest.version || 1)) {
+      return res.status(409).json({ message: "Yêu cầu vừa được cập nhật ở nơi khác. Vui lòng tải lại dữ liệu." });
+    }
+    const nextStatus = String(req.body.status || returnRequest.status);
+    if (!RETURN_STATUS_LABELS[nextStatus]) return res.status(400).json({ message: "Trạng thái không hợp lệ." });
+    if (nextStatus === returnRequest.status) {
+      return res.status(400).json({ message: "Vui lòng chọn bước xử lý tiếp theo." });
+    }
+    if (!(ALLOWED_RETURN_TRANSITIONS[returnRequest.status] || []).includes(nextStatus)) {
+      return res.status(409).json({
+        message: `Không thể chuyển từ “${RETURN_STATUS_LABELS[returnRequest.status]}” sang “${RETURN_STATUS_LABELS[nextStatus]}”.`,
+      });
+    }
+    const publicNote = String(req.body.publicNote || "").trim().slice(0, 500);
+    const internalNote = String(req.body.internalNote || "").trim().slice(0, 1000);
+    if (["approved", "rejected"].includes(nextStatus) && publicNote.length < 5) {
+      return res.status(400).json({ message: "Cần nhập nội dung phản hồi rõ ràng cho khách hàng." });
+    }
+    if (returnRequest.status === "inspecting" && ["completed", "rejected"].includes(nextStatus)
+      && internalNote.length < 5) {
+      return res.status(400).json({ message: "Cần ghi kết quả kiểm tra sản phẩm trước khi kết thúc yêu cầu." });
+    }
+    if (nextStatus === "completed" && returnRequest.type === "exchange") {
+      const carrier = String(req.body.exchangeShipment?.carrier || "").trim();
+      const trackingNumber = String(req.body.exchangeShipment?.trackingNumber || "").trim();
+      if (carrier.length < 2 || trackingNumber.length < 4) {
+        return res.status(400).json({ message: "Cần nhập đơn vị vận chuyển và mã vận đơn của sản phẩm đổi." });
+      }
+    }
+    if (nextStatus === "completed"
+      && !["restock", "quality_hold", "damaged"].includes(req.body.inventoryDisposition)) {
+      return res.status(400).json({ message: "Cần chọn cách xử lý tồn kho sau khi kiểm tra sản phẩm." });
+    }
+    if (nextStatus === "approved" && returnRequest.type === "exchange") {
+      const availabilityError = exchangeAvailabilityError(store, returnRequest);
+      if (availabilityError) return res.status(409).json({ message: availabilityError });
+    }
+
+    const order = store.data.orders.find((entry) => entry.id === returnRequest.orderId);
+    const at = new Date().toISOString();
+    if (nextStatus === "approved" && returnRequest.type === "exchange") {
+      reserveExchangeInventory(store, returnRequest, req.user);
+    }
+    if (nextStatus === "rejected") {
+      releaseExchangeInventory(store, returnRequest, req.user);
+      returnRequest.rejectedAt = at;
+      returnRequest.rejectionReason = publicNote;
+    }
+    if (nextStatus === "receiving") {
+      returnRequest.receivingAt = at;
+      returnRequest.returnShipment = {
+        carrier: String(req.body.returnShipment?.carrier || returnRequest.returnShipment?.carrier || "").trim().slice(0, 120),
+        trackingNumber: String(req.body.returnShipment?.trackingNumber
+          || returnRequest.returnShipment?.trackingNumber || "").trim().slice(0, 120),
+      };
+    }
+    if (nextStatus === "inspecting") returnRequest.inspectionStartedAt = at;
+    if (nextStatus === "completed") {
+      returnRequest.completedAt = at;
+      returnRequest.inspectionResult = internalNote;
+      returnRequest.inventoryDisposition = req.body.inventoryDisposition;
+      returnRequest.inventoryDispositionAt = at;
+      if (returnRequest.inventoryDisposition === "restock") {
+        restockReturnedItems(store, returnRequest, req.user);
+      }
+      if (returnRequest.type === "exchange") {
+        returnRequest.exchangeShipment = {
+          carrier: String(req.body.exchangeShipment?.carrier || "").trim().slice(0, 120),
+          trackingNumber: String(req.body.exchangeShipment?.trackingNumber || "").trim().slice(0, 120),
+        };
+      } else if (order?.paymentStatus === "paid" || order?.paymentStatus === "partially_refunded") {
+        returnRequest.refundStatus = "pending";
+        order.paymentStatus = "refund_pending";
+        order.refundAmount = Number(returnRequest.refundAmount || 0);
+        const orderAt = touchOrder(order, at);
+        const paymentEvent = appendOrderEvent(order, {
+          eventType: "payment",
+          status: order.status,
+          paymentStatus: "refund_pending",
+          label: PAYMENT_STATUS_LABELS.refund_pending,
+          note: `Yêu cầu ${returnRequest.id} đã kiểm tra xong và đang chờ hoàn ${Number(returnRequest.refundAmount || 0).toLocaleString("vi-VN")} ₫.`,
+          actor: req.user,
+          source: "operations",
+          at: orderAt,
+        });
+        notifyOrderChange(store, order, paymentEvent, { type: "refund_pending", message: paymentEvent.note });
+        queueOrderStatusEmail(order, paymentEvent);
+      } else {
+        returnRequest.refundStatus = "not_required";
+      }
+    }
+
+    returnRequest.status = nextStatus;
+    returnRequest.assigneeId = nextAssigneeId;
+    returnRequest.internalNote = internalNote || returnRequest.internalNote || "";
+    const eventAt = touchReturn(returnRequest, at);
+    const event = appendReturnEvent(returnRequest, {
+      status: nextStatus,
+      label: RETURN_STATUS_LABELS[nextStatus],
+      note: publicNote || RETURN_STATUS_LABELS[nextStatus],
+      internalNote,
+      actor: req.user,
+      source: "operations",
+      at: eventAt,
+    });
+    notifyReturnChange(store, returnRequest, order, event);
+    store.audit("update", "return", returnRequest.id, req.user);
     store.save();
-    return res.json({ message: "Đã cập nhật yêu cầu đổi trả.", data: item });
+    queueReturnStatusEmail(returnRequest, order, event);
+    return res.json({ message: "Đã cập nhật yêu cầu đổi trả.", data: returnRequest });
+  });
+
+  admin.patch("/returns/:id/refund", allowRoles("admin"), (req, res) => {
+    const returnRequest = store.data.returns.find((entry) => entry.id === req.params.id);
+    if (!returnRequest) return notFound(res, "Yêu cầu đổi trả");
+    if (req.body.expectedVersion === undefined
+      || Number(req.body.expectedVersion) !== Number(returnRequest.version || 1)) {
+      return res.status(409).json({ message: "Yêu cầu vừa được cập nhật. Vui lòng tải lại trước khi hoàn tiền." });
+    }
+    if (returnRequest.status !== "completed" || returnRequest.type !== "return"
+      || returnRequest.refundStatus !== "pending") {
+      return res.status(409).json({ message: "Yêu cầu này chưa đủ điều kiện xác nhận hoàn tiền." });
+    }
+    const reference = String(req.body.reference || "").trim().slice(0, 160);
+    const internalNote = String(req.body.internalNote || "").trim().slice(0, 1000);
+    if (reference.length < 4 || internalNote.length < 5) {
+      return res.status(400).json({ message: "Cần nhập mã giao dịch và nội dung đối soát hoàn tiền." });
+    }
+    const order = store.data.orders.find((entry) => entry.id === returnRequest.orderId);
+    if (!order) return notFound(res, "Đơn hàng");
+    const at = new Date().toISOString();
+    returnRequest.refundStatus = "refunded";
+    returnRequest.refundedAt = at;
+    returnRequest.refundReference = reference;
+    returnRequest.refundNote = internalNote;
+    const eventAt = touchReturn(returnRequest, at);
+    const event = appendReturnEvent(returnRequest, {
+      status: "completed",
+      label: "Đã hoàn tiền",
+      note: `Đã hoàn ${Number(returnRequest.refundAmount || 0).toLocaleString("vi-VN")} ₫ cho khách hàng.`,
+      internalNote,
+      actor: req.user,
+      source: "operations",
+      at: eventAt,
+    });
+    const refundedAmount = store.data.returns
+      .filter((entry) => entry.orderId === order.id && entry.refundStatus === "refunded")
+      .reduce((sum, entry) => sum + Number(entry.refundAmount || 0), 0);
+    order.refundedAmount = refundedAmount;
+    const refundableProductTotal = Math.max(0, Number(order.subtotal || 0) - Number(order.discount || 0));
+    order.paymentStatus = refundedAmount >= refundableProductTotal ? "refunded" : "partially_refunded";
+    const orderAt = touchOrder(order, at);
+    const paymentEvent = appendOrderEvent(order, {
+      eventType: "payment",
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      label: PAYMENT_STATUS_LABELS[order.paymentStatus],
+      note: event.note,
+      internalNote: `${internalNote} · Mã đối soát: ${reference}`,
+      actor: req.user,
+      source: "operations",
+      at: orderAt,
+    });
+    notifyOrderChange(store, order, paymentEvent, { type: "payment_refunded", message: paymentEvent.note });
+    notifyReturnChange(store, returnRequest, order, event);
+    rebuildCustomerMetrics(store, order.customerId);
+    store.audit("refund_completed", "return", returnRequest.id, req.user);
+    store.save();
+    queueOrderStatusEmail(order, paymentEvent);
+    queueReturnStatusEmail(returnRequest, order, event);
+    return res.json({ message: "Đã đối soát và xác nhận hoàn tiền.", data: returnRequest, order });
   });
 
   admin.get("/tasks", allowRoles("admin"), (_req, res) => {
@@ -2664,7 +4267,7 @@ function createApp(options = {}) {
     return res.json({ message: "Đã xóa công việc." });
   });
 
-  admin.get("/suppliers", (_req, res) => res.json({ data: store.data.suppliers }));
+  admin.get("/suppliers", allowRoles("admin"), (_req, res) => res.json({ data: store.data.suppliers }));
   admin.post("/suppliers", allowRoles("admin"), (req, res) => {
     const name = String(req.body.name || "").trim();
     if (name.length < 2) return res.status(400).json({ message: "Tên nhà cung cấp chưa hợp lệ." });
@@ -2704,7 +4307,7 @@ function createApp(options = {}) {
   staff.get("/workspace", (req, res) => {
     const employee = store.data.employees.find((item) => item.id === req.user.employeeId);
     if (!employee) return notFound(res, "Hồ sơ nhân viên");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateKey();
     const attendance = store.data.attendance.find((item) => item.employeeId === employee.id && item.date === today) || null;
     const tasks = store.data.tasks
       .filter((item) => item.employeeId === employee.id)
@@ -2732,8 +4335,13 @@ function createApp(options = {}) {
   staff.post("/attendance", (req, res) => {
     const employee = store.data.employees.find((item) => item.id === req.user.employeeId);
     if (!employee) return notFound(res, "Hồ sơ nhân viên");
-    const today = new Date().toISOString().slice(0, 10);
-    const time = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const today = localDateKey();
+    const time = new Date().toLocaleTimeString("vi-VN", {
+      timeZone: appTimeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
     let attendance = store.data.attendance.find((item) => item.employeeId === employee.id && item.date === today);
     const action = req.body.action;
     if (action === "check_in") {
@@ -2771,14 +4379,28 @@ function createApp(options = {}) {
 
   app.use("/api/staff", staff);
 
-  app.get("/api/getallsp", (_req, res) => res.json(store.data.products));
+  app.get("/api/getallsp", (_req, res) => res.json(
+    store.data.products
+      .filter((item) => item.status === "active")
+      .map((item) => publicProduct(item, store.data.categories)),
+  ));
   app.get("/api/getsp/:id", (req, res) => {
-    const product = store.data.products.find((item) => item.id === req.params.id || item.id.endsWith(String(req.params.id)));
-    res.json(product ? [product] : []);
+    const product = store.data.products.find((item) => (
+      item.status === "active"
+      && (item.id === req.params.id || item.id.endsWith(String(req.params.id)))
+    ));
+    res.json(product ? [publicProduct(product, store.data.categories)] : []);
   });
-  app.get("/api/getalldm", (_req, res) => res.json(store.data.categories));
-  app.get("/api/getalldonhang", requireAuth, allowRoles("admin", "staff"), (_req, res) => res.json(store.data.orders));
-  app.get("/api/getallnv", requireAuth, allowRoles("admin", "staff"), (_req, res) => res.json(store.data.employees));
+  app.get("/api/getalldm", (_req, res) => res.json(
+    store.data.categories.filter((item) => !item.status || item.status === "active"),
+  ));
+  app.get("/api/getalldonhang", requireAuth, allowRoles("admin", "staff"), (req, res) => {
+    const orders = req.user.role === "staff"
+      ? store.data.orders.filter((item) => !item.assigneeId || item.assigneeId === req.user.employeeId)
+      : store.data.orders;
+    return res.json(orders);
+  });
+  app.get("/api/getallnv", requireAuth, allowRoles("admin"), (_req, res) => res.json(store.data.employees));
 
   app.use((req, res) => {
     res.status(404).json({ message: "Đường dẫn API không tồn tại.", path: req.path });

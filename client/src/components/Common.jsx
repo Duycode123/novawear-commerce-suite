@@ -8,9 +8,9 @@ export function Logo({ inverted = false }) {
   return (
     <Link className={`brand-logo ${inverted ? "brand-logo--inverted" : ""}`} to="/" aria-label="NOVAWEAR - Trang chủ">
       <span className="brand-logo__mark" aria-hidden="true">
-        <svg viewBox="0 0 44 34" role="presentation">
-          <path d="M3 30V4h7.5l20 17V4H38v26h-7.5l-20-17v17H3Z" />
-          <path className="brand-logo__cut" d="M38 4h3v26h-3z" />
+        <svg viewBox="0 0 48 36" role="presentation">
+          <path d="M3 33V3h8.4l25.2 20.1V3H45v30h-8.4L11.4 12.9V33H3Z" />
+          <path className="brand-logo__cut" d="M15.2 3h7.4L45 20.8v7.4L15.2 4.5V3Z" />
         </svg>
       </span>
       <span className="brand-logo__name"><strong>NOVA</strong><span>WEAR</span></span>

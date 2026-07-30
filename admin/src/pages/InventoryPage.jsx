@@ -5,7 +5,7 @@ import { useAdmin } from "../context/AdminContext";
 import { Empty, ErrorPanel, Loading, Modal, PageHeader, ProductImage } from "../components/Ui";
 
 export default function InventoryPage() {
-  const { notify } = useAdmin();
+  const { notify, user } = useAdmin();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -93,7 +93,7 @@ export default function InventoryPage() {
                     <td><span className={`inventory-level inventory-level--${item.status}`}>{item.status === "healthy" ? "An toàn" : item.status === "low" ? "Sắp hết" : "Hết hàng"}</span></td>
                     <td>{formatMoney(item.cost)}</td>
                     <td><strong>{formatMoney(item.retailValue)}</strong></td>
-                    <td><button className="ops-link-button" type="button" onClick={() => setSelected(item)}>Điều chỉnh</button></td>
+                    <td>{user?.role === "admin" ? <button className="ops-link-button" type="button" onClick={() => setSelected(item)}>Điều chỉnh</button> : <span className="ops-muted">Chỉ xem</span>}</td>
                   </tr>
                 ))}
               </tbody>

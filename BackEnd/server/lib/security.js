@@ -26,6 +26,16 @@ function sanitizeUser(user) {
     verificationExpiresAt,
     verificationAttempts,
     verificationSentAt,
+    passwordResetCodeHash,
+    passwordResetExpiresAt,
+    passwordResetAttempts,
+    passwordResetSentAt,
+    tokenVersion,
+    googleId,
+    facebookId,
+    bootstrapManaged,
+    bootstrapPasswordVersion,
+    demoAccountDisabledAt,
     ...safeUser
   } = user;
   return {

@@ -29,12 +29,37 @@ export const resolveAsset = (src) => {
 };
 
 export const ORDER_STATUS = {
-  pending: { label: "Chờ xác nhận", tone: "amber" },
+  pending: { label: "Đã tiếp nhận", tone: "amber" },
   confirmed: { label: "Đã xác nhận", tone: "blue" },
   packing: { label: "Đang đóng gói", tone: "purple" },
+  ready_to_ship: { label: "Chờ bàn giao", tone: "amber" },
   shipping: { label: "Đang giao", tone: "blue" },
-  delivered: { label: "Đã giao", tone: "green" },
+  delivery_failed: { label: "Giao chưa thành công", tone: "red" },
+  delivered: { label: "Giao thành công", tone: "green" },
   cancelled: { label: "Đã hủy", tone: "red" },
+};
+
+export const PAYMENT_STATUS = {
+  pending: { label: "Chờ thu COD", tone: "amber" },
+  awaiting: { label: "Chờ chuyển khoản", tone: "amber" },
+  paid: { label: "Đã thanh toán", tone: "green" },
+  refund_pending: { label: "Chờ hoàn tiền", tone: "purple" },
+  refunded: { label: "Đã hoàn tiền", tone: "blue" },
+  partially_refunded: { label: "Hoàn tiền một phần", tone: "blue" },
+  expired: { label: "Hết hạn thanh toán", tone: "red" },
+  failed: { label: "Thanh toán thất bại", tone: "red" },
+  cancelled: { label: "Đã hủy thanh toán", tone: "neutral" },
+  review_required: { label: "Cần đối soát thanh toán", tone: "red" },
+};
+
+export const RETURN_STATUS = {
+  requested: { label: "Đã tiếp nhận", tone: "amber" },
+  approved: { label: "Đã chấp thuận", tone: "blue" },
+  receiving: { label: "Đang nhận hàng hoàn", tone: "purple" },
+  inspecting: { label: "Đang kiểm tra", tone: "amber" },
+  completed: { label: "Đã hoàn tất", tone: "green" },
+  rejected: { label: "Đã từ chối", tone: "red" },
+  cancelled: { label: "Khách đã hủy", tone: "neutral" },
 };
 
 export const EMPLOYEE_STATUS = {

@@ -141,6 +141,46 @@ function createMailer(options = {}) {
         `),
       });
     },
+    async sendOrderStatusUpdate({ to, order, event, paymentLabel }) {
+      const statusLabel = event?.label || order.status || "Đơn hàng được cập nhật";
+      const note = event?.note || "NOVAWEAR vừa cập nhật thông tin đơn hàng của bạn.";
+      return send({
+        to,
+        subject: `${order.id} · ${statusLabel}`,
+        text: `Đơn ${order.id}: ${statusLabel}. ${note} Thanh toán: ${paymentLabel || order.paymentStatus}. Mã tra cứu: ${order.trackingCode}.`,
+        html: emailShell(`Cập nhật đơn ${order.id}`, `
+          <p style="margin:0 0 18px;color:#525c60;line-height:1.7">Xin chào ${escapeHtml(order.customer?.name || "bạn")}, NOVAWEAR vừa cập nhật đơn hàng của bạn.</p>
+          <div style="padding:20px;background:#f3f1eb;line-height:1.8">
+            <b style="font-size:17px">${escapeHtml(statusLabel)}</b><br>
+            <span>${escapeHtml(note)}</span><br>
+            <span style="font-size:13px;color:#6b7375">Thanh toán: ${escapeHtml(paymentLabel || order.paymentStatus)} · Mã tra cứu: ${escapeHtml(order.trackingCode)}</span>
+          </div>
+          ${order.shipment?.trackingNumber ? `<p style="margin:20px 0 0;color:#525c60;line-height:1.7">Vận chuyển: ${escapeHtml(order.shipment.carrier)} · Mã vận đơn: <b>${escapeHtml(order.shipment.trackingNumber)}</b></p>` : ""}
+          <p style="margin:24px 0 0"><a href="${escapeHtml(`${frontendBaseUrl}/tra-cuu`)}" style="display:inline-block;padding:12px 18px;background:#101820;color:#fff;text-decoration:none">Theo dõi đơn hàng</a></p>
+          <p style="color:#6b7375;font-size:13px;line-height:1.7">Nếu cập nhật này không đúng với giao dịch của bạn, hãy liên hệ NOVAWEAR ngay.</p>
+        `),
+      });
+    },
+    async sendReturnStatusUpdate({ to, order, returnRequest, event }) {
+      const typeLabel = returnRequest.type === "exchange" ? "đổi sản phẩm" : "trả sản phẩm";
+      const refundLine = returnRequest.type === "return" && returnRequest.refundAmount
+        ? `<p style="margin:18px 0 0;color:#525c60">Số tiền dự kiến hoàn: <b>${money(returnRequest.refundAmount)}</b></p>`
+        : "";
+      return send({
+        to,
+        subject: `${returnRequest.id} · ${event?.label || "Cập nhật đổi trả"}`,
+        text: `Yêu cầu ${typeLabel} ${returnRequest.id} của đơn ${order.id}: ${event?.label || returnRequest.status}. ${event?.note || ""}`,
+        html: emailShell(`Cập nhật yêu cầu ${returnRequest.id}`, `
+          <p style="margin:0 0 18px;color:#525c60;line-height:1.7">Yêu cầu ${escapeHtml(typeLabel)} của đơn <b>${escapeHtml(order.id)}</b> vừa được cập nhật.</p>
+          <div style="padding:20px;background:#f3f1eb;line-height:1.8">
+            <b style="font-size:17px">${escapeHtml(event?.label || returnRequest.status)}</b><br>
+            <span>${escapeHtml(event?.note || "NOVAWEAR đang xử lý yêu cầu của bạn.")}</span>
+          </div>
+          ${refundLine}
+          <p style="margin:24px 0 0"><a href="${escapeHtml(`${frontendBaseUrl}/doi-tra`)}" style="display:inline-block;padding:12px 18px;background:#101820;color:#fff;text-decoration:none">Xem yêu cầu đổi trả</a></p>
+        `),
+      });
+    },
   };
 }
 

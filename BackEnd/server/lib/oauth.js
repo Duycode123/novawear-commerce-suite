@@ -99,6 +99,7 @@ function createOAuthService(options = {}) {
     return {
       providerId: String(profile.sub),
       email: String(profile.email).toLowerCase(),
+      emailVerified: true,
       name: String(profile.name || profile.email.split("@")[0]),
       avatar: String(profile.picture || ""),
     };
@@ -128,6 +129,10 @@ function createOAuthService(options = {}) {
     return {
       providerId: String(profile.id),
       email: String(profile.email).toLowerCase(),
+      // Facebook's basic profile response does not provide a trustworthy
+      // email-verification claim. NOVAWEAR confirms ownership by email OTP
+      // before activating a new account from this provider.
+      emailVerified: false,
       name: String(profile.name || profile.email.split("@")[0]),
       avatar: String(profile.picture?.data?.url || ""),
     };

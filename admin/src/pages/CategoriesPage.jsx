@@ -117,7 +117,7 @@ export default function CategoriesPage() {
               <h2>{category.name}</h2>
               <p>{category.description}</p>
               <div><strong>{category.productCount}</strong><span>sản phẩm</span></div>
-              <footer><button type="button" onClick={() => open(category)}>Chỉnh sửa →</button>{user.role === "admin" && !category.productCount && <button type="button" className="danger" onClick={() => remove(category)}>Xóa</button>}</footer>
+              <footer>{user.role === "admin" ? <><button type="button" onClick={() => open(category)}>Chỉnh sửa →</button>{!category.productCount && <button type="button" className="danger" onClick={() => remove(category)}>Xóa</button>}</> : <span>Chỉ xem</span>}</footer>
             </article>
           ))}
         </section>
