@@ -280,19 +280,19 @@ export default function HomePage() {
           {content.men.length > 0 && (
             <div>
               <header><span>NAM / MUA NHIỀU NHẤT</span><Link to="/cua-hang?audience=men&sort=popular">Xem đồ nam ↗</Link></header>
-              <div>{content.men.slice(0, 2).map((product) => <div className="home-v4-popular-item" key={product.id}><ProductCard product={product} compact /><p>Đã bán {product.sold} sản phẩm</p></div>)}</div>
+              <div>{content.men.slice(0, 4).map((product) => <div className="home-v4-popular-item" key={product.id}><ProductCard product={product} compact /><p>Đã bán {product.sold} sản phẩm</p></div>)}</div>
             </div>
           )}
           {content.unisex.length > 0 && (
             <div>
               <header><span>UNISEX / MUA NHIỀU NHẤT</span><Link to="/cua-hang?sort=popular">Xem sản phẩm ↗</Link></header>
-              <div>{content.unisex.slice(0, 2).map((product) => <div className="home-v4-popular-item" key={product.id}><ProductCard product={product} compact /><p>Đã bán {product.sold} sản phẩm</p></div>)}</div>
+              <div>{content.unisex.slice(0, 4).map((product) => <div className="home-v4-popular-item" key={product.id}><ProductCard product={product} compact /><p>Đã bán {product.sold} sản phẩm</p></div>)}</div>
             </div>
           )}
           {content.women.length > 0 && (
             <div>
               <header><span>NỮ / MUA NHIỀU NHẤT</span><Link to="/cua-hang?audience=women&sort=popular">Xem đồ nữ ↗</Link></header>
-              <div>{content.women.slice(0, 2).map((product) => <div className="home-v4-popular-item" key={product.id}><ProductCard product={product} compact /><p>Đã bán {product.sold} sản phẩm</p></div>)}</div>
+              <div>{content.women.slice(0, 4).map((product) => <div className="home-v4-popular-item" key={product.id}><ProductCard product={product} compact /><p>Đã bán {product.sold} sản phẩm</p></div>)}</div>
             </div>
           )}
         </section>
