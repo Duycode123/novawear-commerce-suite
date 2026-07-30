@@ -1088,6 +1088,48 @@ p {
   overflow-x: auto;
 }
 
+.ops-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 15px;
+  border-top: 1px solid var(--ops-line);
+  background: var(--ops-paper);
+}
+
+.ops-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ops-pagination button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--ops-line);
+  border-radius: 7px;
+  color: var(--ops-ink);
+  background: var(--ops-paper);
+  font-size: 0.58rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.ops-pagination button:hover:not(:disabled),
+.ops-pagination button.is-active {
+  border-color: var(--ops-ink);
+  color: var(--ops-paper);
+  background: var(--ops-ink);
+}
+
+.ops-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
 .ops-table {
   width: 100%;
   min-width: 850px;
@@ -3881,6 +3923,16 @@ p {
 
   .ops-list-toolbar > span {
     align-self: center;
+  }
+
+  .ops-pagination {
+    flex-wrap: wrap;
+  }
+
+  .ops-pagination > div {
+    order: 3;
+    width: 100%;
+    justify-content: center;
   }
 
   .ops-modal-backdrop {

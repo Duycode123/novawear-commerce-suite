@@ -34,6 +34,8 @@ const emptyProduct = {
   featureDetailsText: "",
 };
 
+const PRODUCT_PAGE_SIZE = 24;
+
 function formFromProduct(product) {
   if (!product) return emptyProduct;
   return {
@@ -56,6 +58,9 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 });
+  const [summary, setSummary] = useState({ active: 0, draft: 0, totalStock: 0, inventoryValue: 0 });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyProduct);
@@ -71,18 +76,28 @@ export default function ProductsPage() {
       if (search) query.set("search", search);
       if (categoryId) query.set("categoryId", categoryId);
       if (status !== "all") query.set("status", status);
+      query.set("page", String(page));
+      query.set("limit", String(PRODUCT_PAGE_SIZE));
       const [productResult, categoryResult] = await Promise.all([
         api.get(`/admin/products?${query.toString()}`),
         api.get("/admin/categories"),
       ]);
       setProducts(productResult.data);
+      setPagination(productResult.pagination || { page: 1, total: productResult.data.length, totalPages: 1 });
+      setSummary(productResult.summary || {
+        active: productResult.data.filter((item) => item.status === "active").length,
+        draft: productResult.data.filter((item) => item.status === "draft").length,
+        totalStock: productResult.data.reduce((sum, item) => sum + Number(item.stock || 0), 0),
+        inventoryValue: productResult.data.reduce((sum, item) => sum + Number(item.cost || 0) * Number(item.stock || 0), 0),
+      });
+      if (productResult.pagination?.page && productResult.pagination.page !== page) setPage(productResult.pagination.page);
       setCategories(categoryResult.data);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setLoading(false);
     }
-  }, [search, categoryId, status]);
+  }, [search, categoryId, status, page]);
 
   useEffect(() => {
     const timer = window.setTimeout(load, 220);
@@ -95,7 +110,13 @@ export default function ProductsPage() {
       .catch(() => setUploadsEnabled(false));
   }, []);
 
-  const inventoryValue = useMemo(() => products.reduce((sum, item) => sum + item.cost * item.stock, 0), [products]);
+  const pageNumbers = useMemo(() => {
+    const totalPages = Math.max(1, Number(pagination.totalPages || 1));
+    let start = Math.max(1, Number(pagination.page || 1) - 2);
+    const end = Math.min(totalPages, start + 4);
+    start = Math.max(1, end - 4);
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  }, [pagination.page, pagination.totalPages]);
 
   const openForm = (product = null) => {
     setFormOpen(true);
@@ -189,18 +210,18 @@ export default function ProductsPage() {
       />
 
       <section className="ops-mini-stats">
-        <div><span>Đang hiển thị</span><strong>{products.filter((item) => item.status === "active").length}</strong></div>
-        <div><span>Bản nháp</span><strong>{products.filter((item) => item.status === "draft").length}</strong></div>
-        <div><span>Tổng tồn</span><strong>{products.reduce((sum, item) => sum + item.stock, 0)}</strong></div>
-        <div><span>Giá trị vốn</span><strong>{formatMoney(inventoryValue)}</strong></div>
+        <div><span>Đang bán</span><strong>{Number(summary.active || 0).toLocaleString("vi-VN")}</strong></div>
+        <div><span>Bản nháp</span><strong>{Number(summary.draft || 0).toLocaleString("vi-VN")}</strong></div>
+        <div><span>Tổng tồn</span><strong>{Number(summary.totalStock || 0).toLocaleString("vi-VN")}</strong></div>
+        <div><span>Giá trị vốn</span><strong>{formatMoney(summary.inventoryValue || 0)}</strong></div>
       </section>
 
       <section className="ops-panel ops-list-panel">
         <div className="ops-list-toolbar">
-          <div className="ops-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên hoặc SKU..." /></div>
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Tất cả danh mục</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Tất cả trạng thái</option><option value="active">Đang bán</option><option value="draft">Bản nháp</option><option value="archived">Lưu trữ</option></select>
-          <span>{products.length} sản phẩm</span>
+          <div className="ops-search"><span>⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Tìm tên hoặc SKU..." /></div>
+          <select value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setPage(1); }}><option value="">Tất cả danh mục</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select>
+          <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">Tất cả trạng thái</option><option value="active">Đang bán</option><option value="draft">Bản nháp</option><option value="archived">Lưu trữ</option></select>
+          <span>{Number(pagination.total || 0).toLocaleString("vi-VN")} sản phẩm</span>
         </div>
         {loading && <Loading rows={6} />}
         {error && <ErrorPanel message={error} onRetry={load} />}
@@ -224,6 +245,17 @@ export default function ProductsPage() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && !error && pagination.totalPages > 1 && (
+          <nav className="ops-pagination" aria-label="Phân trang sản phẩm">
+            <button type="button" disabled={pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>← Trước</button>
+            <div>
+              {pageNumbers.map((pageNumber) => (
+                <button type="button" className={pagination.page === pageNumber ? "is-active" : ""} onClick={() => setPage(pageNumber)} key={pageNumber}>{pageNumber}</button>
+              ))}
+            </div>
+            <button type="button" disabled={pagination.page >= pagination.totalPages} onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}>Sau →</button>
+          </nav>
         )}
         {!loading && !error && !products.length && <Empty title="Chưa có sản phẩm" copy="Thêm sản phẩm đầu tiên hoặc thay đổi bộ lọc." />}
       </section>

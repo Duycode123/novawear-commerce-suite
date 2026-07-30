@@ -682,6 +682,20 @@ test("admin can manage catalog, inventory and purchase receiving", async () => {
   const token = await loginAs("admin@novawear.vn", "Admin@123", "admin");
   const auth = { Authorization: `Bearer ${token}` };
 
+  const firstPage = await request("/admin/products?page=1&limit=5", { headers: auth });
+  assert.equal(firstPage.response.status, 200);
+  assert.equal(firstPage.body.data.length, 5);
+  assert.equal(firstPage.body.pagination.page, 1);
+  assert.equal(firstPage.body.pagination.limit, 5);
+  assert.ok(firstPage.body.pagination.total >= 5);
+  assert.ok(firstPage.body.pagination.totalPages > 1);
+  assert.equal(firstPage.body.summary.total, firstPage.body.pagination.total);
+  assert.ok(firstPage.body.summary.totalStock > 0);
+
+  const unpaginated = await request("/admin/products?status=active", { headers: auth });
+  assert.equal(unpaginated.response.status, 200);
+  assert.equal(unpaginated.body.data.length, unpaginated.body.pagination.total);
+
   const created = await request("/admin/products", {
     method: "POST",
     headers: auth,

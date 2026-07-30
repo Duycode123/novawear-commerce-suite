@@ -2017,11 +2017,36 @@ function createApp(options = {}) {
     const search = normalizeText(req.query.search);
     const categoryId = String(req.query.categoryId || "");
     const status = String(req.query.status || "all");
-    let items = [...store.data.products];
+    const page = asPositiveInt(req.query.page, 1);
+    const requestedLimit = req.query.limit || req.query.pageSize;
+    const limit = Math.min(asPositiveInt(requestedLimit, 24), 100);
+    const sales = orderSalesByProduct(store.data.orders);
+    let items = store.data.products.map((item) => ({
+      ...item,
+      sold: sales.get(item.id) || 0,
+      category: store.data.categories.find((cat) => cat.id === item.categoryId) || null,
+    }));
     if (search) items = items.filter((item) => normalizeText(`${item.name} ${item.sku}`).includes(search));
     if (categoryId) items = items.filter((item) => item.categoryId === categoryId);
     if (status !== "all") items = items.filter((item) => item.status === status);
-    res.json({ data: items.map((item) => ({ ...item, category: store.data.categories.find((cat) => cat.id === item.categoryId) || null })) });
+    const total = items.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const paginated = requestedLimit !== undefined || req.query.page !== undefined;
+    const data = paginated ? items.slice((safePage - 1) * limit, safePage * limit) : items;
+    const allProducts = store.data.products;
+    res.json({
+      data,
+      pagination: { page: safePage, limit: paginated ? limit : total || limit, total, totalPages: paginated ? totalPages : 1 },
+      summary: {
+        total: allProducts.length,
+        active: allProducts.filter((item) => item.status === "active").length,
+        draft: allProducts.filter((item) => item.status === "draft").length,
+        archived: allProducts.filter((item) => item.status === "archived").length,
+        totalStock: allProducts.reduce((sum, item) => sum + asMoney(item.stock), 0),
+        inventoryValue: allProducts.reduce((sum, item) => sum + asMoney(item.cost) * asMoney(item.stock), 0),
+      },
+    });
   });
 
   admin.post("/products", allowRoles("admin"), (req, res) => {
