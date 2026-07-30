@@ -1,18 +1,154 @@
-const CATALOG_VERSION = 2;
-const MIN_PRODUCTS_PER_CATEGORY = 10;
+const CATALOG_VERSION = 3;
+const PRODUCTS_PER_CATEGORY = 4;
 
-const SERIES = [
-  "Essential",
-  "Daily",
-  "Air",
-  "Motion",
-  "Studio",
-  "Weekend",
-  "Core",
-  "Flex",
-  "Soft",
-  "Signature",
-];
+// Four distinct, realistic products for each garment profile. Images remain
+// replaceable from Admin; names and copy describe the actual product type.
+const PRODUCT_VARIANTS = {
+  tee: [
+    ["Everyday Cotton", "Áo cổ tròn cotton compact, bề mặt mịn và độ dày vừa phải để mặc hằng ngày."],
+    ["Airy Cotton", "Áo thun nhẹ và thoáng hơn, phù hợp thời tiết nóng hoặc lịch trình di chuyển nhiều."],
+    ["Relaxed Heavyweight", "Áo thun vải dày, phom rộng vừa và vai hạ nhẹ để mặc độc lập."],
+    ["Stretch Motion", "Áo thun co giãn nhẹ, giữ phom khi vận động và hạn chế cảm giác bó ở vai."],
+  ],
+  polo: [
+    ["Piqué Essential", "Áo polo dệt piqué thoáng khí, cổ đứng gọn và phù hợp phong cách smart-casual."],
+    ["Air Knit", "Áo polo dệt nhẹ với cấu trúc thoáng, ưu tiên cảm giác mát trong ngày dài."],
+    ["Interlock Premium", "Áo polo bề mặt interlock mịn, đứng phom và có vẻ ngoài chỉn chu hơn."],
+    ["Motion Stretch", "Áo polo co giãn, nách và vai có khoảng cử động phù hợp hoạt động thường ngày."],
+  ],
+  shirt: [
+    ["Oxford Daily", "Áo sơ mi Oxford đứng phom vừa phải, dễ phối quần âu, kaki hoặc denim."],
+    ["Linen Air", "Áo sơ mi linen pha thoáng mát, bề mặt tự nhiên và phù hợp thời tiết ấm."],
+    ["Easy-Care Twill", "Áo sơ mi twill ít nhăn, giữ vẻ gọn gàng trong lịch trình làm việc dài."],
+    ["Relaxed Weekend", "Áo sơ mi phom relaxed, vạt cân đối để mặc ngoài áo thun hoặc mặc độc lập."],
+  ],
+  blouse: [
+    ["Soft Drape", "Áo blouse cổ tròn bằng vải rủ nhẹ, đường cắt gọn và phù hợp môi trường công sở."],
+    ["Bow Collar", "Áo blouse cổ nơ mềm, tạo điểm nhấn nữ tính nhưng vẫn dễ phối đồ hằng ngày."],
+    ["Minimal Shell", "Áo kiểu không tay phom suông, bề mặt mịn và thuận tiện mặc cùng blazer."],
+    ["Airy Pleat", "Áo kiểu xếp ly nhẹ ở thân trước, tạo độ rủ và khoảng cử động thoải mái."],
+  ],
+  jacket: [
+    ["Windflow", "Áo khoác cản gió nhẹ có khóa kéo và lớp lót thoáng cho nhu cầu di chuyển hằng ngày."],
+    ["Coach Daily", "Áo khoác cổ bẻ phom gọn, lớp ngoài nhẹ và dễ phối theo phong cách tối giản."],
+    ["Bomber City", "Áo bomber bo gấu, vai thoải mái và có túi khóa kéo để dùng trong đô thị."],
+    ["Packable Light", "Áo khoác mỏng có thể gấp gọn, phù hợp mang theo khi du lịch hoặc đổi thời tiết."],
+  ],
+  hoodie: [
+    ["Loopback Essential", "Áo hoodie French terry mặt trong vòng sợi, ấm vừa và thoáng hơn nỉ chải."],
+    ["Zip Daily", "Áo hoodie khóa kéo toàn thân, dễ mặc nhiều lớp và điều chỉnh theo nhiệt độ."],
+    ["Relaxed Studio", "Áo hoodie phom relaxed với vai hạ nhẹ, ưu tiên sự thoải mái khi mặc lâu."],
+    ["Lightweight Travel", "Áo hoodie nhẹ, gọn khi xếp hành lý và phù hợp không gian điều hòa."],
+  ],
+  jeans: [
+    ["Straight Indigo", "Quần jeans ống đứng màu indigo, cạp vừa và có độ co giãn nhẹ khi ngồi."],
+    ["Slim Stretch", "Quần jeans dáng slim gọn từ đùi tới gấu nhưng vẫn đủ co giãn để di chuyển."],
+    ["Relaxed Wash", "Quần jeans phom relaxed, wash tiết chế và tạo khoảng thoải mái ở phần đùi."],
+    ["Wide Leg", "Quần jeans ống rộng cân đối, rơi thẳng từ hông và phù hợp cách phối hiện đại."],
+  ],
+  khaki: [
+    ["Tapered Daily", "Quần kaki cạp vừa, ống thu nhẹ và bề mặt twill gọn cho ngày đi làm."],
+    ["Straight Office", "Quần kaki ống đứng, đường ly phẳng và phù hợp trang phục công sở."],
+    ["Pleated Relaxed", "Quần kaki có ly trước, rộng vừa ở đùi để tăng khoảng cử động."],
+    ["Flex Commuter", "Quần kaki co giãn nhẹ, túi sâu và phom gọn cho lịch trình di chuyển nhiều."],
+  ],
+  jogger: [
+    ["French Terry", "Quần jogger French terry có cạp dây rút, bo gấu và mặt trong thoáng."],
+    ["Tech Commuter", "Quần jogger vải kỹ thuật nhẹ, nhanh khô và có túi khóa kéo khi di chuyển."],
+    ["Relaxed Lounge", "Quần jogger phom rộng vừa, cạp mềm và ưu tiên cảm giác thư giãn."],
+    ["Motion Flex", "Quần jogger co giãn, đáy quần có khoảng cử động phù hợp tập luyện nhẹ."],
+  ],
+  shorts: [
+    ["Everyday 7 Inch", "Quần short dài trên gối, cạp co giãn và túi sâu để mặc hằng ngày."],
+    ["Motion 5 Inch", "Quần short thể thao ống ngắn, nhẹ và co giãn cho chạy bộ hoặc tập luyện."],
+    ["Chino Daily", "Quần short chino đứng phom, cạp gọn và phù hợp phong cách smart-casual."],
+    ["Cargo Light", "Quần short cargo nhẹ với túi hộp phẳng, tăng không gian chứa mà không cồng kềnh."],
+  ],
+  legging: [
+    ["High Waist", "Quần legging cạp cao ôm hỗ trợ, đường may phẳng và dài tới mắt cá."],
+    ["Pocket Motion", "Quần legging có túi hai bên đủ giữ điện thoại khi đi bộ hoặc tập luyện."],
+    ["Seamless Studio", "Quần legging giảm đường may ở vùng tiếp xúc để hạn chế cọ xát khi vận động."],
+    ["Flare Balance", "Quần legging cạp cao với ống loe nhẹ, phù hợp tập nhẹ và phối athleisure."],
+  ],
+  skirt: [
+    ["A-Line Daily", "Chân váy chữ A cạp cao vừa, có lớp lót và độ dài dễ ứng dụng hằng ngày."],
+    ["Pleated Midi", "Chân váy midi xếp ly nhỏ, chuyển động mềm và có cạp sau co giãn."],
+    ["Straight Office", "Chân váy dáng thẳng có đường xẻ hỗ trợ bước đi và phù hợp môi trường công sở."],
+    ["Cargo Weekend", "Chân váy cargo có túi hộp phẳng, phom thoải mái và phong cách hiện đại."],
+  ],
+  dress: [
+    ["Shirt Midi", "Đầm sơ mi midi có hàng khuy trước, eo điều chỉnh và túi hai bên."],
+    ["Wrap Soft", "Đầm quấn thân vải rủ, phần eo có dây điều chỉnh và tà váy dễ chuyển động."],
+    ["Minimal Slip", "Đầm hai dây tối giản có lớp lót, phù hợp mặc riêng hoặc phối cùng áo khoác."],
+    ["Weekend Relaxed", "Đầm phom relaxed thoáng nhẹ, có túi và phù hợp lịch trình cuối tuần."],
+  ],
+  home: [
+    ["Modal Short Set", "Bộ mặc nhà áo ngắn tay và quần short bằng modal mềm mát."],
+    ["Modal Long Set", "Bộ mặc nhà tay dài, quần dài với cạp mềm và phom rộng vừa."],
+    ["Lounge Dress", "Đầm mặc nhà phom suông bằng vải mềm, thoáng và không bó khi nghỉ ngơi."],
+    ["Travel Lounge", "Bộ lounge gọn nhẹ, bề mặt ít nhăn và phù hợp mang theo chuyến đi."],
+  ],
+  "sport-men": [
+    ["Running Tee", "Áo chạy bộ nhẹ, thoát ẩm nhanh và có đường may hạn chế cọ xát."],
+    ["Training Shorts", "Quần short tập luyện co giãn, cạp chắc và có túi khóa kéo."],
+    ["Performance Polo", "Áo polo thể thao thoát ẩm, cổ gọn và phù hợp vận động ngoài trời."],
+    ["Track Pants", "Quần thể thao ống thu nhẹ, co giãn và có khóa kéo ở gấu."],
+  ],
+  "sport-women": [
+    ["Support Bra", "Áo bra thể thao hỗ trợ mức vừa, bản lưng ổn định và có đệm tháo rời."],
+    ["Training Tee", "Áo thun tập nhẹ, thoát ẩm nhanh và phom không cản chuyển động vai."],
+    ["Biker Shorts", "Quần biker cạp cao, dài trên gối và có túi bên tiện dụng."],
+    ["Yoga Set", "Bộ tập yoga co giãn bốn chiều với đường may phẳng và cạp hỗ trợ."],
+  ],
+  "swim-men": [
+    ["Swim Shorts", "Quần bơi ống ngắn, nhanh khô, có lớp lót và dây rút điều chỉnh."],
+    ["Boardshort", "Quần bơi dáng boardshort dài hơn, cạp chắc và phù hợp hoạt động ngoài biển."],
+    ["Rashguard", "Áo bơi rashguard ôm vừa, co giãn và che phủ thân trên khi ở ngoài trời."],
+    ["Swim Brief", "Quần bơi dáng gọn có lớp lót, ưu tiên độ linh hoạt khi bơi luyện tập."],
+  ],
+  "swim-women": [
+    ["One-Piece Active", "Đồ bơi liền thân có lớp lót, dây vai ổn định và độ che phủ cân đối."],
+    ["Bikini High Waist", "Bộ bikini cạp cao với áo ngực hỗ trợ vừa và đệm có thể tháo rời."],
+    ["Rashguard Long Sleeve", "Áo bơi dài tay co giãn, ôm vừa và tăng độ che phủ ngoài trời."],
+    ["Swim Shorts", "Quần bơi nữ cạp cao, có lớp lót và ống quần đủ linh hoạt khi vận động."],
+  ],
+  "underwear-men": [
+    ["Boxer Brief", "Quần boxer brief cotton modal ôm vừa, cạp mềm và ống quần ổn định."],
+    ["Trunk Seamless", "Quần trunk dáng ngắn với đường viền phẳng, hạn chế hằn dưới trang phục."],
+    ["Brief Daily", "Quần brief thoáng nhẹ, đường cắt gọn và phù hợp mặc hằng ngày."],
+    ["Air Mesh Boxer", "Quần boxer có vùng dệt thoáng, hỗ trợ lưu thông không khí khi vận động."],
+  ],
+  "underwear-women": [
+    ["Bralette Soft", "Áo bralette không gọng bằng cotton modal, bản lưng mềm và đệm tháo rời."],
+    ["Seamless Brief", "Quần lót nữ đường viền phẳng, bề mặt mềm và hạn chế hằn dưới trang phục."],
+    ["Camisole Daily", "Áo hai dây mặc nền có độ co giãn nhẹ và đường viền êm trên da."],
+    ["High Waist Brief", "Quần lót cạp cao che phủ tốt, cạp mềm và phom ổn định khi di chuyển."],
+  ],
+  "accessory-men": [
+    ["Cap Daily", "Mũ lưỡi trai sáu múi có khóa điều chỉnh và vành cong vừa."],
+    ["Crew Socks", "Tất cổ trung dệt thoáng, gót và mũi được gia cố cho sử dụng hằng ngày."],
+    ["Crossbody Bag", "Túi đeo chéo gọn có ngăn khóa kéo, phù hợp điện thoại và vật dụng nhỏ."],
+    ["Webbing Belt", "Thắt lưng vải dệt có khóa kim loại, chiều dài điều chỉnh linh hoạt."],
+  ],
+  "accessory-women": [
+    ["Mini Crossbody", "Túi đeo chéo mini có ngăn chính khóa kéo và dây đeo điều chỉnh."],
+    ["Soft Cap", "Mũ lưỡi trai phom mềm, vòng đầu điều chỉnh và phối màu trung tính."],
+    ["Silk Touch Scarf", "Khăn choàng bề mặt mềm mịn, kích thước vừa để tạo điểm nhấn trang phục."],
+    ["Crew Socks", "Tất cổ trung mềm, bo cổ đàn hồi vừa và gia cố gót mũi."],
+  ],
+  "shoes-men": [
+    ["Sneaker Daily", "Giày sneaker thân dệt thoáng, lót tháo rời và đế cao su dùng hằng ngày."],
+    ["Sandal Travel", "Sandal quai điều chỉnh, đế bám và lớp lót êm cho đi bộ ngắn."],
+    ["Slide Soft", "Dép slide quai bản rộng, lòng dép êm và bề mặt dễ vệ sinh."],
+    ["Loafer City", "Giày loafer phom gọn, đế cao su linh hoạt và phù hợp phong cách công sở."],
+  ],
+  "shoes-women": [
+    ["Sneaker Daily", "Giày sneaker nữ thân dệt thoáng, lót tháo rời và đế cao su linh hoạt."],
+    ["Strap Sandal", "Sandal nữ quai điều chỉnh, đế bám và gót thấp phù hợp đi hằng ngày."],
+    ["Slide Soft", "Dép slide nữ có lòng dép êm, quai mềm và bề mặt dễ vệ sinh."],
+    ["Loafer City", "Giày loafer nữ mũi tròn, đế thấp và phom gọn cho trang phục công sở."],
+  ],
+};
 
 const PROFILES = {
   tee: {
@@ -292,6 +428,14 @@ function distributeStock(sizes, colors, totalStock) {
   }));
 }
 
+function productVariant(category, index) {
+  const variants = PRODUCT_VARIANTS[`${category.profile}-${category.audience}`]
+    || PRODUCT_VARIANTS[category.profile];
+  if (!variants?.length) throw new Error(`Chưa có nội dung sản phẩm cho ${category.id}.`);
+  const [name, description] = variants[index % variants.length];
+  return { name, description };
+}
+
 function categoryForExistingProduct(product) {
   const text = normalize(`${product.name} ${product.slug}`);
   const isWomen = product.audience === "women";
@@ -345,7 +489,7 @@ function enrichProduct(product, category) {
 
 function createCatalogProduct(category, index, idNumber, createdAt) {
   const profile = PROFILES[category.profile];
-  const series = SERIES[index % SERIES.length];
+  const variant = productVariant(category, index);
   const price = profile.price + index * 10000;
   const sizes = [...profile.sizes];
   const colors = [...profile.colors];
@@ -353,8 +497,8 @@ function createCatalogProduct(category, index, idNumber, createdAt) {
   return {
     id: `prd-${String(idNumber).padStart(3, "0")}`,
     sku: `NVA-${category.sku}-${String(index + 1).padStart(2, "0")}`,
-    name: `${category.name} ${series}`,
-    slug: `${category.slug}-${slugify(series)}`,
+    name: `${category.name} ${variant.name}`,
+    slug: `${category.slug}-${slugify(variant.name)}`,
     categoryId: category.id,
     audience: category.audience,
     price,
@@ -370,8 +514,8 @@ function createCatalogProduct(category, index, idNumber, createdAt) {
     colors,
     sizes,
     variants,
-    description: `${category.description} Phiên bản ${series} ưu tiên độ thoải mái, phom dễ mặc và chi tiết hoàn thiện gọn gàng.`,
-    longDescription: `${category.description} Mẫu ${series} được phát triển cho nhịp sống hiện đại: chất liệu được chọn theo đúng công năng, phom có khoảng cử động hợp lý và các chi tiết tiếp xúc với cơ thể được xử lý êm. Thiết kế giữ bảng màu trung tính để dễ phối, đồng thời vẫn đủ bền cho tần suất sử dụng thường xuyên.`,
+    description: variant.description,
+    longDescription: `${variant.description} ${profile.material} ${profile.fit} Sản phẩm phù hợp cho ${profile.suitableFor.charAt(0).toLowerCase()}${profile.suitableFor.slice(1)}`,
     materials: profile.material,
     care: profile.care,
     fit: profile.fit,
@@ -389,8 +533,41 @@ function createCatalogProduct(category, index, idNumber, createdAt) {
     rating: 0,
     reviewCount: 0,
     sold: 0,
+    catalogManaged: true,
     createdAt,
   };
+}
+
+function isCatalogManagedProduct(product, category) {
+  const sku = String(product.sku || "").toUpperCase();
+  return product.catalogManaged === true || sku.startsWith(`NVA-${category.sku}-`);
+}
+
+function refreshCatalogManagedProduct(product, category, index) {
+  const idNumber = Number(String(product.id || "").match(/(\d+)$/)?.[1] || 0);
+  const template = createCatalogProduct(category, index, idNumber, product.createdAt || new Date().toISOString());
+  const contentFields = [
+    "name", "slug", "description", "longDescription", "materials", "care", "fit",
+    "suitableFor", "modelInfo", "origin", "highlights", "featureDetails",
+  ];
+  for (const field of contentFields) product[field] = template[field];
+  product.categoryId = category.id;
+  product.audience = category.audience;
+  product.catalogManaged = true;
+}
+
+function referencedProductIds(data) {
+  const ids = new Set();
+  const visit = (value, key = "") => {
+    if (key === "products") return;
+    if (key === "productId" && value !== undefined && value !== null) ids.add(String(value));
+    if (Array.isArray(value)) value.forEach((item) => visit(item));
+    else if (value && typeof value === "object") {
+      Object.entries(value).forEach(([childKey, childValue]) => visit(childValue, childKey));
+    }
+  };
+  Object.entries(data).forEach(([key, value]) => visit(value, key));
+  return ids;
 }
 
 function applyCatalogMigration(data, options = {}) {
@@ -401,7 +578,7 @@ function applyCatalogMigration(data, options = {}) {
   }
   data.categories = Array.isArray(data.categories) ? data.categories : [];
   data.products = Array.isArray(data.products) ? data.products : [];
-  const minimum = Math.max(1, Number(options.minimum || MIN_PRODUCTS_PER_CATEGORY));
+  const target = Math.max(1, Number(options.target || options.minimum || PRODUCTS_PER_CATEGORY));
   const createdAt = new Date().toISOString();
 
   for (const definition of CATALOG_CATEGORIES) {
@@ -433,12 +610,50 @@ function applyCatalogMigration(data, options = {}) {
     || data.products.some((product) => product.categoryId === category.id)
   ));
 
+  const protectedProductIds = referencedProductIds(data);
   let idNumber = nextProductNumber(data.products);
   let addedProducts = 0;
+  let removedProducts = 0;
+  let archivedProducts = 0;
   const usedSkus = new Set(data.products.map((product) => String(product.sku || "").toUpperCase()));
   for (const category of CATALOG_CATEGORIES) {
-    const existing = data.products.filter((product) => product.categoryId === category.id && product.status === "active");
-    for (let index = existing.length; index < minimum; index += 1) {
+    const active = data.products.filter((product) => product.categoryId === category.id && product.status === "active");
+    active.sort((left, right) => {
+      const leftProtected = protectedProductIds.has(String(left.id)) ? 1 : 0;
+      const rightProtected = protectedProductIds.has(String(right.id)) ? 1 : 0;
+      if (leftProtected !== rightProtected) return rightProtected - leftProtected;
+      const leftManaged = isCatalogManagedProduct(left, category) ? 1 : 0;
+      const rightManaged = isCatalogManagedProduct(right, category) ? 1 : 0;
+      return leftManaged - rightManaged;
+    });
+    const existing = active.slice(0, target);
+    const keptIds = new Set(existing.map((product) => product.id));
+
+    for (const product of existing) {
+      const index = existing.indexOf(product);
+      if (isCatalogManagedProduct(product, category)) refreshCatalogManagedProduct(product, category, index);
+    }
+
+    data.products = data.products.filter((product) => {
+      if (product.categoryId !== category.id || keptIds.has(product.id)) return true;
+      if (!isCatalogManagedProduct(product, category)) {
+        if (product.status === "active") {
+          product.status = "archived";
+          archivedProducts += 1;
+        }
+        return true;
+      }
+      if (protectedProductIds.has(String(product.id))) {
+        product.status = "archived";
+        archivedProducts += 1;
+        return true;
+      }
+      removedProducts += 1;
+      usedSkus.delete(String(product.sku || "").toUpperCase());
+      return false;
+    });
+
+    for (let index = existing.length; index < target; index += 1) {
       let product = createCatalogProduct(category, index, idNumber++, createdAt);
       while (usedSkus.has(product.sku)) {
         product = createCatalogProduct(category, index, idNumber++, createdAt);
@@ -462,12 +677,18 @@ function applyCatalogMigration(data, options = {}) {
     actorName: "Hệ thống",
     at: createdAt,
   });
-  return { changed: true, addedProducts, categories: CATALOG_CATEGORIES.length };
+  return {
+    changed: true,
+    addedProducts,
+    removedProducts,
+    archivedProducts,
+    categories: CATALOG_CATEGORIES.length,
+  };
 }
 
 module.exports = {
   CATALOG_CATEGORIES,
   CATALOG_VERSION,
-  MIN_PRODUCTS_PER_CATEGORY,
+  PRODUCTS_PER_CATEGORY,
   applyCatalogMigration,
 };

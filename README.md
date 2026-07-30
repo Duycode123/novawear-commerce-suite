@@ -65,7 +65,7 @@ Các thông tin cần đổi đã được gom vào:
 
 ## PostgreSQL và cách xem bảng trong VS Code
 
-Catalog production được chuẩn hóa bằng migration có phiên bản: 14 danh mục Nam, 16 danh mục Nữ và tối thiểu 10 sản phẩm được lưu thật trong database cho mỗi danh mục. Mỗi sản phẩm khởi tạo có mô tả, chất liệu, bảo quản, phom dáng, ảnh, màu, size và tồn kho theo biến thể; quản trị viên vẫn có thể thêm, sửa, lưu trữ hoặc xóa trong NOVA OPS.
+Catalog production được chuẩn hóa bằng migration có phiên bản: 14 danh mục Nam, 16 danh mục Nữ và đúng 4 sản phẩm đang bán được lưu thật trong database cho mỗi danh mục. Từng sản phẩm có tên và mô tả riêng phù hợp loại đồ, cùng chất liệu, bảo quản, phom dáng, ảnh tạm, màu, size và tồn kho theo biến thể; quản trị viên có thể thay ảnh, thêm, sửa, lưu trữ hoặc xóa trong NOVA OPS.
 
 Rating, số đánh giá và lượt bán của sản phẩm khởi tạo đều bằng 0. Các chỉ số bán chạy/đánh giá cao chỉ tăng từ đơn hàng và đánh giá hợp lệ, không được tạo ngẫu nhiên ở giao diện.
 
