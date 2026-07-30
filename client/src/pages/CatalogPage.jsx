@@ -62,18 +62,31 @@ export default function CatalogPage() {
 
   const clearFilters = () => setSearchParams({});
   const selectedCategory = categories.find((item) => item.slug === filters.category);
-  const dedicatedCategories = useMemo(() => categories.filter((item) => item.audience === "men" || item.audience === "women"), [categories]);
   const categoryGroups = useMemo(() => {
-    const source = dedicatedCategories.length ? dedicatedCategories : categories;
     return [
-      { key: "men", label: "Nam", items: source.filter((item) => item.audience === "men") },
-      { key: "women", label: "Nữ", items: source.filter((item) => item.audience === "women") },
-      { key: "all", label: "Dùng chung", items: source.filter((item) => item.audience === "all") },
+      { key: "men", label: "Nam", items: categories.filter((item) => item.audience === "men") },
+      { key: "women", label: "Nữ", items: categories.filter((item) => item.audience === "women") },
+      { key: "all", label: "Dùng chung", items: categories.filter((item) => item.audience === "all") },
     ].filter((group) => group.items.length);
-  }, [categories, dedicatedCategories]);
+  }, [categories]);
   const allProductCount = useMemo(() => categories.reduce((sum, category) => sum + Number(category.productCount || 0), 0), [categories]);
   const availableColors = useMemo(() => [...new Set(products.flatMap((item) => item.colors || []))].slice(0, 10), [products]);
   const availableSizes = useMemo(() => [...new Set(products.flatMap((item) => item.sizes || []))].slice(0, 12), [products]);
+  const selectCategory = (category, audience) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("category", category.slug);
+    if (audience === "men" || audience === "women") next.set("audience", audience);
+    else next.delete("audience");
+    next.delete("page");
+    setSearchParams(next);
+  };
+  const clearCategory = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("category");
+    next.delete("audience");
+    next.delete("page");
+    setSearchParams(next);
+  };
 
   return (
     <div className="catalog-page">
@@ -94,17 +107,17 @@ export default function CatalogPage() {
           <div className="filter-group">
             <h3>Danh mục</h3>
             <label className="radio-row radio-row--all">
-              <input type="radio" name="category" checked={!filters.category} onChange={() => setFilter("category", "")} />
+              <input type="radio" name="category" checked={!filters.category} onChange={clearCategory} />
               <span>Tất cả</span><small>{allProductCount}</small>
             </label>
             <div className="catalog-category-groups">
-              {categoryGroups.map((group) => <div className="catalog-category-group" key={group.key}>
-                <p>{group.label}</p>
+              {categoryGroups.map((group) => <details className="catalog-category-group" open={!filters.audience || filters.audience === group.key} key={group.key}>
+                <summary>{group.label}<small>{group.items.length} danh mục</small></summary>
                 {group.items.map((category) => <label className="radio-row" key={category.id}>
-                  <input type="radio" name="category" checked={filters.category === category.slug} onChange={() => setFilter("category", category.slug)} />
+                  <input type="radio" name="category" checked={filters.category === category.slug && (!category.audience || filters.audience === category.audience)} onChange={() => selectCategory(category, group.key)} />
                   <span>{category.name}</span><small>{category.productCount}</small>
                 </label>)}
-              </div>)}
+              </details>)}
             </div>
           </div>
 

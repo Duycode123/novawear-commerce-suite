@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 const { createSeedData } = require("../data/seed");
+const { applyCatalogMigration } = require("./catalog-migration");
 
 class JsonStore {
   constructor(filePath) {
@@ -14,12 +15,15 @@ class JsonStore {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     if (!fs.existsSync(this.filePath)) {
       this.data = createSeedData();
+      applyCatalogMigration(this.data);
       this.save();
       return;
     }
 
     try {
       this.data = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
+      const migration = applyCatalogMigration(this.data);
+      if (migration.changed) this.save();
     } catch (error) {
       throw new Error(`Không thể đọc kho dữ liệu tại ${this.filePath}: ${error.message}`);
     }
@@ -401,7 +405,9 @@ async function createStoreFromEnv() {
   )`);
   await ensureProjectionSchema(pool);
   const result = await pool.query("SELECT data FROM novawear_app_state WHERE id = 1");
-  const store = new PostgresStore(pool, result.rows[0]?.data || createSeedData());
+  const data = result.rows[0]?.data || createSeedData();
+  applyCatalogMigration(data);
+  const store = new PostgresStore(pool, data);
   await store.save();
   return store;
 }
