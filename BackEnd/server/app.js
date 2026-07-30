@@ -8,6 +8,7 @@ const { JsonStore } = require("./lib/store");
 const { createMailer } = require("./lib/mailer");
 const { createCloudinaryService } = require("./lib/cloudinary");
 const { createOAuthService } = require("./lib/oauth");
+const { createSepayTransactionLookup } = require("./lib/sepay");
 const { hashPassword, verifyPassword, sanitizeUser } = require("./lib/security");
 
 const ORDER_STATUS_LABELS = {
@@ -146,7 +147,16 @@ function rebuildCustomerMetrics(store, customerId) {
 }
 
 function ensureDataShape(store) {
-  const collections = ["returns", "suppliers", "inventoryMovements", "tasks", "attendance", "coupons", "auditLogs"];
+  const collections = [
+    "returns",
+    "suppliers",
+    "inventoryMovements",
+    "tasks",
+    "attendance",
+    "coupons",
+    "auditLogs",
+    "paymentTransactions",
+  ];
   collections.forEach((name) => {
     if (!Array.isArray(store.data[name])) store.data[name] = [];
   });
@@ -218,8 +228,19 @@ function createApp(options = {}) {
     accountName: String(options.sepayQr?.accountName || process.env.SEPAY_QR_ACCOUNT_NAME || "").trim(),
     template: String(options.sepayQr?.template || process.env.SEPAY_QR_TEMPLATE || "compact").trim(),
   };
+  const sepayApiPollingEnabled = options.sepayApiPollingEnabled
+    ?? (Boolean(options.sepayTransactionLookup)
+      || String(process.env.SEPAY_API_POLLING_ENABLED || "false").toLowerCase() === "true");
+  const sepayTransactionLookup = options.sepayTransactionLookup || createSepayTransactionLookup({
+    accessToken: options.sepayApiAccessToken,
+    accountNumber: options.sepayApiAccountNumber || sepayQr.accountNumber,
+  });
+  const sepayApiConfigured = Boolean(
+    sepayApiPollingEnabled
+    && (typeof sepayTransactionLookup === "function" || sepayTransactionLookup?.configured),
+  );
   const sepayConfigured = Boolean(
-    validSepayWebhookKey && sepayQr.bankCode && sepayQr.accountNumber && sepayQr.accountName,
+    (validSepayWebhookKey || sepayApiConfigured) && sepayQr.bankCode && sepayQr.accountNumber,
   );
   const requestBodyLimit = String(process.env.REQUEST_BODY_LIMIT || "1mb");
   const otpTtlSeconds = asPositiveInt(process.env.OTP_TTL_SECONDS, 600);
@@ -1253,11 +1274,71 @@ function createApp(options = {}) {
     return res.status(200).json({ success: true, matched: Boolean(order), orderId: order?.id || null });
   });
 
-  app.get("/api/payments/sepay/orders/:id/status", (req, res) => {
+  app.get("/api/payments/sepay/orders/:id/status", async (req, res) => {
     const order = store.data.orders.find((item) => item.id === req.params.id);
     const trackingCode = normalizePaymentCode(req.query.trackingCode);
     if (!order || !trackingCode || trackingCode !== normalizePaymentCode(order.trackingCode)) {
       return notFound(res, "Payment");
+    }
+    if (sepayApiConfigured
+      && order.paymentProvider === "sepay"
+      && order.paymentStatus !== "paid") {
+      const now = Date.now();
+      const lastCheckedAt = Number(order.sepayLastCheckedAt || 0);
+      if (now - lastCheckedAt >= 2500) {
+        order.sepayLastCheckedAt = now;
+        try {
+          const lookup = typeof sepayTransactionLookup === "function"
+            ? sepayTransactionLookup
+            : sepayTransactionLookup.findIncomingPayment.bind(sepayTransactionLookup);
+          const transaction = await lookup({
+            reference: order.paymentCode || order.trackingCode,
+            amount: order.total,
+            accountNumber: sepayQr.accountNumber,
+            createdAt: order.createdAt,
+          });
+          if (transaction) {
+            const duplicate = store.data.paymentTransactions.find(
+              (item) => String(item.id) === String(transaction.id),
+            );
+            if (!duplicate) {
+              const receivedAt = transaction.receivedAt || new Date().toISOString();
+              const savedTransaction = {
+                id: String(transaction.id),
+                orderId: order.id,
+                gateway: String(transaction.gateway || ""),
+                accountNumber: String(transaction.accountNumber || sepayQr.accountNumber),
+                referenceCode: String(transaction.referenceCode || ""),
+                transferAmount: asMoney(transaction.transferAmount),
+                code: String(transaction.code || ""),
+                content: String(transaction.content || "").slice(0, 500),
+                receivedAt,
+                source: "sepay-api",
+              };
+              store.data.paymentTransactions.unshift(savedTransaction);
+              store.data.paymentTransactions = store.data.paymentTransactions.slice(0, 1000);
+              order.paymentStatus = "paid";
+              order.paidAt = receivedAt;
+              order.updatedAt = receivedAt;
+              order.paymentTransaction = savedTransaction;
+              if (order.status === "pending") {
+                order.status = "confirmed";
+                order.timeline.push({
+                  status: "confirmed",
+                  label: ORDER_STATUS_LABELS.confirmed,
+                  at: receivedAt,
+                });
+              }
+              store.audit("payment_confirmed", "order", order.id, { name: "SePay API" });
+              store.save();
+            }
+          }
+        } catch (error) {
+          if (process.env.NODE_ENV !== "test") {
+            console.warn(`SePay polling failed for order ${order.id}: ${error.message}`);
+          }
+        }
+      }
     }
     return res.json({
       data: {
@@ -1294,7 +1375,7 @@ function createApp(options = {}) {
         description,
         bankCode: sepayQr.bankCode,
         accountNumber: sepayQr.accountNumber,
-        accountName: sepayQr.accountName,
+        accountName: sepayQr.accountName || null,
         qrUrl: `https://qr.sepay.vn/img?${query.toString()}`,
       },
     });

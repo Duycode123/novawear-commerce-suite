@@ -9,6 +9,7 @@ let server;
 let baseUrl;
 let tempDir;
 const sentEmails = [];
+const sepayPollingResults = new Map();
 
 test.before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "novawear-api-"));
@@ -21,6 +22,7 @@ test.before(async () => {
       accountName: "NOVAWEAR TEST",
       template: "compact",
     },
+    sepayTransactionLookup: async ({ reference }) => sepayPollingResults.get(reference) || null,
     oauthService: {
       publicConfig: () => ({ google: true, facebook: false }),
       isConfigured: (provider) => provider === "google",
@@ -375,6 +377,45 @@ test("SePay webhook verifies, deduplicates and confirms a bank transfer", async 
   });
   assert.equal(duplicate.response.status, 200);
   assert.equal(duplicate.body.duplicate, true);
+});
+
+test("SePay transaction polling confirms a bank transfer without changing another webhook", async () => {
+  const token = await loginAs("demo@novawear.vn", "Demo@123");
+  const created = await request("/orders", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      customer: {
+        name: "Polling Test",
+        email: "polling.test@novawear.vn",
+        phone: "0912345678",
+        address: "28 Nguyen Van Trang, District 1, Ho Chi Minh City",
+      },
+      items: [{ productId: "prd-002", quantity: 1, size: "M", color: "Kem" }],
+      paymentMethod: "bank",
+      shippingMethod: "standard",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+
+  sepayPollingResults.set(created.body.data.paymentCode, {
+    id: "polling-transaction-001",
+    gateway: "MBBank",
+    accountNumber: "0000000000",
+    referenceCode: "FT26000000002",
+    transferAmount: created.body.data.total,
+    code: created.body.data.paymentCode,
+    content: `${created.body.data.paymentCode} thanh toan`,
+    receivedAt: new Date().toISOString(),
+  });
+
+  const status = await request(
+    `/payments/sepay/orders/${created.body.data.id}/status?trackingCode=${created.body.data.trackingCode}`,
+  );
+  assert.equal(status.response.status, 200);
+  assert.equal(status.body.data.paymentStatus, "paid");
+  assert.equal(status.body.data.orderStatus, "confirmed");
+  sepayPollingResults.delete(created.body.data.paymentCode);
 });
 
 test("staff portal is protected and supports order workflow", async () => {

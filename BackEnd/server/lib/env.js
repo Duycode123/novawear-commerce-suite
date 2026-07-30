@@ -37,6 +37,12 @@ function validateEnvironment() {
   if (isEnabled("CLOUDINARY_ENABLED") && !cloudinaryCredentials) {
     errors.push("Cloudinary cần CLOUDINARY_URL hoặc đủ CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET");
   }
+  requireWhen(
+    isEnabled("SEPAY_API_POLLING_ENABLED"),
+    ["SEPAY_API_ACCESS_TOKEN", "SEPAY_API_ACCOUNT_NUMBER", "SEPAY_QR_BANK_ACCOUNT", "SEPAY_QR_BANK_CODE"],
+    "SePay API",
+    errors,
+  );
   if (process.env.NODE_ENV === "production") {
     requireWhen(true, ["JWT_SECRET", "FRONTEND_BASE_URL", "CORS_ORIGINS"], "Production", errors);
   }
