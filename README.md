@@ -50,11 +50,7 @@ JWT truy cập có thời hạn mặc định 30 phút, bị vô hiệu hóa khi
 
 ## Tài khoản dùng thử
 
-| Vai trò | Email | Mật khẩu |
-| --- | --- | --- |
-| Quản trị | `admin@novawear.vn` | `Admin@123` |
-| Nhân viên | `staff@novawear.vn` | `Staff@123` |
-| Khách hàng | `demo@novawear.vn` | `Demo@123` |
+Các tài khoản mẫu chỉ dùng khi chạy local. Khi `NODE_ENV=production`, hệ thống tự khóa toàn bộ tài khoản mẫu và tạo tài khoản quản trị riêng từ nhóm biến `BOOTSTRAP_ADMIN_*`.
 
 ## Đổi tên thương hiệu
 

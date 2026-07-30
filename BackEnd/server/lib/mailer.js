@@ -99,13 +99,23 @@ function createMailer(options = {}) {
     },
     async sendVerification({ to, name, code, purpose = "account" }) {
       const checkout = purpose === "checkout";
-      const title = checkout ? "Xác nhận email trước khi đặt hàng" : "Xác minh tài khoản NOVAWEAR";
+      const passwordReset = purpose === "password-reset";
+      const title = checkout
+        ? "Xác nhận email trước khi đặt hàng"
+        : passwordReset
+          ? "Đặt lại mật khẩu NOVAWEAR"
+          : "Xác minh tài khoản NOVAWEAR";
+      const action = checkout
+        ? "xác nhận địa chỉ email và tiếp tục đặt hàng"
+        : passwordReset
+          ? "đặt lại mật khẩu tài khoản"
+          : "kích hoạt tài khoản";
       return send({
         to,
         subject: `${code} là mã xác minh NOVAWEAR`,
         text: `Xin chào ${name || "bạn"}, mã xác minh của bạn là ${code}. Mã có hiệu lực 10 phút và chỉ dùng một lần.`,
         html: emailShell(title, `
-          <p style="margin:0 0 22px;color:#525c60;line-height:1.7">Xin chào ${escapeHtml(name || "bạn")}, dùng mã dưới đây để ${checkout ? "xác nhận địa chỉ email và tiếp tục đặt hàng" : "kích hoạt tài khoản"}.</p>
+          <p style="margin:0 0 22px;color:#525c60;line-height:1.7">Xin chào ${escapeHtml(name || "bạn")}, dùng mã dưới đây để ${action}.</p>
           <div style="padding:22px;text-align:center;background:#f3f1eb;font-size:34px;font-weight:800;letter-spacing:9px">${escapeHtml(code)}</div>
           <p style="margin:20px 0 0;color:#6b7375;font-size:13px;line-height:1.7">Mã có hiệu lực trong 10 phút, tối đa 5 lần nhập và chỉ dùng một lần. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>
         `),

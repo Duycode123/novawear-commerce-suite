@@ -8,6 +8,7 @@ export default function AuthPage({ mode = "login" }) {
   const { user, login, register, verifyAccount, resendVerification, notify } = useShop();
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" });
   const [verification, setVerification] = useState(null);
+  const [passwordReset, setPasswordReset] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [oauth, setOauth] = useState({ google: false, facebook: false });
@@ -107,6 +108,43 @@ export default function AuthPage({ mode = "login" }) {
     }
   };
 
+  const requestPasswordReset = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const result = await api.post("/auth/password-reset/request", { email: passwordReset.email });
+      setPasswordReset((current) => ({ ...current, stage: "confirm", code: "", newPassword: "", confirmPassword: "" }));
+      notify(result.message, "info");
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const confirmPasswordReset = async (event) => {
+    event.preventDefault();
+    if (passwordReset.newPassword !== passwordReset.confirmPassword) {
+      notify("Mật khẩu xác nhận chưa khớp.", "error");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await api.post("/auth/password-reset/confirm", {
+        email: passwordReset.email,
+        code: passwordReset.code,
+        newPassword: passwordReset.newPassword,
+      });
+      setForm((current) => ({ ...current, email: passwordReset.email, password: "" }));
+      setPasswordReset(null);
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className={`auth-page auth-page--${isLogin ? "login" : "register"}`}>
       <div className="auth-visual">
@@ -127,11 +165,15 @@ export default function AuthPage({ mode = "login" }) {
               <li><span>3</span>Hoàn tất</li>
             </ol>
           )}
-          <p className="eyebrow">{verification ? "Verify your account" : isLogin ? "Welcome back" : "Join the club"}</p>
-          <h1>{verification ? "Xác minh tài khoản" : isLogin ? "Đăng nhập" : "Tạo tài khoản"}</h1>
+          <p className="eyebrow">{verification ? "Verify your account" : passwordReset ? "Recover your account" : isLogin ? "Welcome back" : "Join the club"}</p>
+          <h1>{verification ? "Xác minh tài khoản" : passwordReset ? "Đặt lại mật khẩu" : isLogin ? "Đăng nhập" : "Tạo tài khoản"}</h1>
           <p>
             {verification
               ? <>Nhập mã 6 số dành cho <strong>{verification.email}</strong>. Mã có hiệu lực trong 10 phút.</>
+              : passwordReset
+                ? passwordReset.stage === "confirm"
+                  ? <>Nhập mã 6 số đã gửi tới <strong>{passwordReset.email}</strong> và chọn mật khẩu mới.</>
+                  : "Nhập email tài khoản để nhận mã đặt lại mật khẩu."
               : isLogin
                 ? "Một cổng đăng nhập cho khách hàng, nhân viên và quản trị viên. Hệ thống sẽ tự chuyển bạn đến đúng khu vực."
                 : "Chỉ mất một phút để bắt đầu."}
@@ -167,6 +209,22 @@ export default function AuthPage({ mode = "login" }) {
                 <button type="button" onClick={() => setVerification(null)}>Đổi email</button>
               </div>
             </form>
+          ) : passwordReset ? (
+            passwordReset.stage === "confirm" ? (
+              <form className="auth-form auth-verification" onSubmit={confirmPasswordReset}>
+                <label className="field"><span>Mã xác minh</span><input autoComplete="one-time-code" inputMode="numeric" maxLength={6} pattern="[0-9]{6}" required value={passwordReset.code} onChange={(event) => setPasswordReset((current) => ({ ...current, code: event.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="000000" /></label>
+                <label className="field"><span>Mật khẩu mới</span><input type="password" minLength={10} maxLength={128} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,128}" required value={passwordReset.newPassword} onChange={(event) => setPasswordReset((current) => ({ ...current, newPassword: event.target.value }))} placeholder="Tối thiểu 10 ký tự, có chữ hoa, chữ thường và số" /></label>
+                <label className="field"><span>Xác nhận mật khẩu mới</span><input type="password" minLength={10} maxLength={128} required value={passwordReset.confirmPassword} onChange={(event) => setPasswordReset((current) => ({ ...current, confirmPassword: event.target.value }))} /></label>
+                <button className="button button--dark button--wide" type="submit" disabled={submitting || passwordReset.code.length !== 6}>{submitting ? "Đang cập nhật..." : "Đặt lại mật khẩu →"}</button>
+                <div className="auth-verification__actions"><button type="button" onClick={() => setPasswordReset((current) => ({ ...current, stage: "request" }))}>Đổi email</button><button type="button" onClick={() => setPasswordReset(null)}>Quay lại đăng nhập</button></div>
+              </form>
+            ) : (
+              <form className="auth-form" onSubmit={requestPasswordReset}>
+                <label className="field"><span>Email</span><input type="email" required value={passwordReset.email} onChange={(event) => setPasswordReset((current) => ({ ...current, email: event.target.value }))} placeholder="ban@email.com" /></label>
+                <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang gửi..." : "Gửi mã xác minh →"}</button>
+                <div className="auth-verification__actions"><button type="button" onClick={() => setPasswordReset(null)}>Quay lại đăng nhập</button></div>
+              </form>
+            )
           ) : (
             <form className="auth-form" onSubmit={submit}>
               {!isLogin && (
@@ -192,18 +250,18 @@ export default function AuthPage({ mode = "login" }) {
                 <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Ẩn" : "Hiện"}</button>
               </label>
               {!isLogin && <label className="field"><span>Xác nhận mật khẩu</span><input name="confirmPassword" type="password" required minLength={10} maxLength={128} value={form.confirmPassword} onChange={change} placeholder="Nhập lại mật khẩu" /></label>}
-              {isLogin && <div className="auth-options"><span>Phiên đăng nhập kết thúc khi đóng tab.</span><button type="button" onClick={() => notify("Vui lòng liên hệ CSKH để đặt lại mật khẩu.", "info")}>Quên mật khẩu?</button></div>}
+              {isLogin && <div className="auth-options"><span>Phiên đăng nhập kết thúc khi đóng tab.</span><button type="button" onClick={() => setPasswordReset({ stage: "request", email: form.email })}>Quên mật khẩu?</button></div>}
               <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang xử lý..." : isLogin ? "Đăng nhập →" : "Tạo tài khoản →"}</button>
             </form>
           )}
-          {isLogin && !verification && (oauth.google || oauth.facebook) && (
+          {isLogin && !verification && !passwordReset && (oauth.google || oauth.facebook) && (
             <div className="auth-social">
               <span>hoặc</span>
               {oauth.google && <button type="button" onClick={() => window.location.assign(`${API_BASE}/auth/oauth/google/start`)}><b>G</b> Đăng nhập với Google</button>}
               {oauth.facebook && <button type="button" onClick={() => window.location.assign(`${API_BASE}/auth/oauth/facebook/start`)}><b>f</b> Đăng nhập với Facebook</button>}
             </div>
           )}
-          {isLogin && !verification && (
+          {isLogin && !verification && !passwordReset && process.env.NODE_ENV !== "production" && (
             <div className="demo-account">
               <strong>Tài khoản trải nghiệm</strong>
               <span>Khách: demo@novawear.vn / Demo@123</span>
@@ -211,7 +269,7 @@ export default function AuthPage({ mode = "login" }) {
               <span>Quản trị: admin@novawear.vn / Admin@123</span>
             </div>
           )}
-          {!verification && <p className="auth-switch">
+          {!verification && !passwordReset && <p className="auth-switch">
             {isLogin ? "Chưa có tài khoản?" : "Đã có tài khoản?"}{" "}
             <Link to={isLogin ? "/dang-ky" : "/dang-nhap"}>{isLogin ? "Đăng ký ngay" : "Đăng nhập"}</Link>
           </p>}

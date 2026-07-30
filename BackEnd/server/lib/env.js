@@ -45,6 +45,25 @@ function validateEnvironment() {
   );
   if (process.env.NODE_ENV === "production") {
     requireWhen(true, ["JWT_SECRET", "FRONTEND_BASE_URL", "CORS_ORIGINS"], "Production", errors);
+    if (!isEnabled("ALLOW_DEMO_ACCOUNTS")) {
+      requireWhen(
+        true,
+        ["BOOTSTRAP_ADMIN_EMAIL", "BOOTSTRAP_ADMIN_PASSWORD", "BOOTSTRAP_ADMIN_PASSWORD_VERSION"],
+        "Tài khoản quản trị production",
+        errors,
+      );
+      const bootstrapPassword = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || "");
+      if (bootstrapPassword && !(
+        bootstrapPassword.length >= 14
+        && bootstrapPassword.length <= 128
+        && /[a-z]/.test(bootstrapPassword)
+        && /[A-Z]/.test(bootstrapPassword)
+        && /\d/.test(bootstrapPassword)
+        && /[^A-Za-z0-9]/.test(bootstrapPassword)
+      )) {
+        errors.push("BOOTSTRAP_ADMIN_PASSWORD cần 14-128 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt");
+      }
+    }
   }
   if (errors.length) {
     throw new Error(`Cấu hình môi trường không hợp lệ:\n- ${errors.join("\n- ")}`);

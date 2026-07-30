@@ -10,6 +10,7 @@ const { createCloudinaryService } = require("./lib/cloudinary");
 const { createOAuthService } = require("./lib/oauth");
 const { createSepayTransactionLookup } = require("./lib/sepay");
 const { hashPassword, verifyPassword, sanitizeUser } = require("./lib/security");
+const { enforceProductionIdentityPolicy } = require("./lib/production-identity");
 
 const ORDER_STATUS_LABELS = {
   pending: "Đã tiếp nhận",
@@ -93,9 +94,13 @@ function createVerificationCode() {
 }
 
 function hashVerificationCode(email, code, secret) {
+  return hashOneTimeCode("account", email, code, secret);
+}
+
+function hashOneTimeCode(purpose, email, code, secret) {
   return crypto
     .createHmac("sha256", secret)
-    .update(`${normalizeText(email)}:${String(code)}`)
+    .update(`${String(purpose)}:${normalizeText(email)}:${String(code)}`)
     .digest("hex");
 }
 
@@ -212,6 +217,7 @@ function createApp(options = {}) {
   if (process.env.NODE_ENV === "production" && unsafeProductionSecret) {
     throw new Error("JWT_SECRET phải là chuỗi bí mật ngẫu nhiên có ít nhất 32 ký tự khi chạy production.");
   }
+  enforceProductionIdentityPolicy(store, options.productionIdentity);
   const jwtSecret = configuredJwtSecret || "novawear-local-development-secret-change-me";
   const exposeVerificationCode = options.exposeVerificationCode
     ?? String(process.env.EXPOSE_VERIFICATION_CODE || "false").toLowerCase() === "true";
@@ -303,6 +309,16 @@ function createApp(options = {}) {
     user.verificationExpiresAt = new Date(now + otpTtlSeconds * 1000).toISOString();
     user.verificationSentAt = new Date(now).toISOString();
     user.verificationAttempts = 0;
+    return code;
+  }
+
+  function issuePasswordResetCode(user) {
+    const code = createVerificationCode();
+    const now = Date.now();
+    user.passwordResetCodeHash = hashOneTimeCode("password-reset", user.email, code, jwtSecret);
+    user.passwordResetExpiresAt = new Date(now + otpTtlSeconds * 1000).toISOString();
+    user.passwordResetSentAt = new Date(now).toISOString();
+    user.passwordResetAttempts = 0;
     return code;
   }
 
@@ -692,6 +708,104 @@ function createApp(options = {}) {
       verificationCode,
       "Mã xác minh mới đã được gửi tới email của bạn.",
     ));
+  });
+
+  app.post("/api/auth/password-reset/request", rateLimitAuth, async (req, res) => {
+    const email = normalizeText(req.body.email);
+    const user = store.data.users.find((item) => normalizeText(item.email) === email);
+    const response = {
+      message: "Nếu email thuộc một tài khoản hợp lệ, mã đặt lại mật khẩu đã được gửi.",
+      requiresCode: true,
+      email,
+      expiresInSeconds: otpTtlSeconds,
+    };
+
+    if (!user || user.status === "inactive") return res.json(response);
+
+    const lastSentAt = new Date(user.passwordResetSentAt || 0).getTime();
+    const remainingSeconds = Math.ceil((otpResendSeconds * 1000 - (Date.now() - lastSentAt)) / 1000);
+    if (remainingSeconds > 0) {
+      return res.json(response);
+    }
+
+    const previousReset = {
+      passwordResetCodeHash: user.passwordResetCodeHash,
+      passwordResetExpiresAt: user.passwordResetExpiresAt,
+      passwordResetSentAt: user.passwordResetSentAt,
+      passwordResetAttempts: user.passwordResetAttempts,
+    };
+    const code = issuePasswordResetCode(user);
+    try {
+      await mailer.sendVerification({
+        to: user.email,
+        name: user.name,
+        code,
+        purpose: "password-reset",
+      });
+    } catch (error) {
+      Object.assign(user, previousReset);
+      if (!exposeVerificationCode) {
+        return res.status(error.code === "EMAIL_NOT_CONFIGURED" ? 503 : 502).json({
+          message: "Chưa thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau.",
+          code: "EMAIL_DELIVERY_UNAVAILABLE",
+        });
+      }
+    }
+    store.save();
+    return res.json({
+      ...response,
+      ...(exposeVerificationCode ? { resetCode: code } : {}),
+    });
+  });
+
+  app.post("/api/auth/password-reset/confirm", rateLimitAuth, (req, res) => {
+    const email = normalizeText(req.body.email);
+    const code = String(req.body.code || "").trim();
+    const newPassword = String(req.body.newPassword || "");
+    const user = store.data.users.find((item) => normalizeText(item.email) === email);
+
+    if (!user || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ message: "Email hoặc mã đặt lại mật khẩu không hợp lệ." });
+    }
+    if (newPassword.length < 10 || newPassword.length > 128
+      || !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return res.status(400).json({
+        message: "Mật khẩu mới cần từ 10 đến 128 ký tự, gồm chữ hoa, chữ thường và số.",
+      });
+    }
+    if (!user.passwordResetExpiresAt || new Date(user.passwordResetExpiresAt).getTime() < Date.now()) {
+      return res.status(410).json({
+        message: "Mã đặt lại mật khẩu đã hết hạn. Vui lòng yêu cầu mã mới.",
+        code: "PASSWORD_RESET_EXPIRED",
+      });
+    }
+    if (Number(user.passwordResetAttempts || 0) >= otpMaxAttempts) {
+      return res.status(429).json({
+        message: "Bạn đã nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.",
+        code: "PASSWORD_RESET_LOCKED",
+      });
+    }
+
+    const expectedHash = hashOneTimeCode("password-reset", user.email, code, jwtSecret);
+    if (!safeTextEqual(user.passwordResetCodeHash, expectedHash)) {
+      user.passwordResetAttempts = Number(user.passwordResetAttempts || 0) + 1;
+      store.save();
+      return res.status(400).json({
+        message: `Mã đặt lại mật khẩu không đúng. Còn ${Math.max(0, otpMaxAttempts - user.passwordResetAttempts)} lần thử.`,
+        code: "PASSWORD_RESET_INVALID",
+      });
+    }
+
+    user.passwordHash = hashPassword(newPassword);
+    user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+    user.passwordResetCodeHash = null;
+    user.passwordResetExpiresAt = null;
+    user.passwordResetSentAt = null;
+    user.passwordResetAttempts = 0;
+    store.audit("reset_password", "user", user.id, sanitizeUser(user));
+    store.save();
+    clearAuthFailures(req.authAttemptKey);
+    return res.json({ message: "Mật khẩu đã được đặt lại. Bạn có thể đăng nhập ngay." });
   });
 
   app.get("/api/health", (_req, res) => {

@@ -4,6 +4,9 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createApp } = require("../app");
+const { JsonStore } = require("../lib/store");
+const { enforceProductionIdentityPolicy } = require("../lib/production-identity");
+const { verifyPassword } = require("../lib/security");
 
 let server;
 let baseUrl;
@@ -590,6 +593,89 @@ test("JWT protects private APIs and rotates after a password change", async () =
     headers: { Authorization: `Bearer ${changed.body.token}` },
   });
   assert.equal(rotatedTokenAccepted.response.status, 200);
+});
+
+test("password reset uses an emailed one-time code and revokes old sessions", async () => {
+  const email = "password.reset@novawear.vn";
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Password Reset Customer",
+      email,
+      phone: "0909000012",
+      password: "BeforeReset@123",
+    }),
+  });
+  assert.equal(registered.response.status, 201);
+
+  const verified = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({ email, code: registered.body.verificationCode }),
+  });
+  assert.equal(verified.response.status, 200);
+
+  const resetRequest = await request("/auth/password-reset/request", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  assert.equal(resetRequest.response.status, 200);
+  assert.match(resetRequest.body.resetCode, /^\d{6}$/);
+  assert.ok(sentEmails.some((item) => (
+    item.type === "verification"
+      && item.to === email
+      && item.purpose === "password-reset"
+      && item.code === resetRequest.body.resetCode
+  )));
+
+  const reset = await request("/auth/password-reset/confirm", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      code: resetRequest.body.resetCode,
+      newPassword: "AfterReset@456",
+    }),
+  });
+  assert.equal(reset.response.status, 200);
+
+  const revoked = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${verified.body.token}` },
+  });
+  assert.equal(revoked.response.status, 401);
+
+  const oldPassword = await request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password: "BeforeReset@123" }),
+  });
+  assert.equal(oldPassword.response.status, 401);
+
+  const newPassword = await request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password: "AfterReset@456" }),
+  });
+  assert.equal(newPassword.response.status, 200);
+  assert.ok(newPassword.body.token);
+});
+
+test("production identity policy disables demo logins and bootstraps a private admin", () => {
+  const identityStore = new JsonStore(path.join(tempDir, "production-identity.json"));
+  const result = enforceProductionIdentityPolicy(identityStore, {
+    production: true,
+    allowDemoAccounts: false,
+    bootstrapEmail: "owner@novawear.vn",
+    bootstrapPassword: "PrivateOwner@2026!",
+    bootstrapPasswordVersion: "1",
+    bootstrapName: "NOVA Owner",
+    bootstrapPhone: "0909000099",
+  });
+
+  assert.equal(result.demoAccountsDisabled, true);
+  assert.ok(identityStore.data.users
+    .filter((user) => ["admin@novawear.vn", "staff@novawear.vn", "demo@novawear.vn"].includes(user.email))
+    .every((user) => user.status === "inactive"));
+  const owner = identityStore.data.users.find((user) => user.email === "owner@novawear.vn");
+  assert.equal(owner.role, "admin");
+  assert.equal(owner.status, "active");
+  assert.equal(verifyPassword("PrivateOwner@2026!", owner.passwordHash), true);
 });
 
 test("admin can manage catalog, inventory and purchase receiving", async () => {
