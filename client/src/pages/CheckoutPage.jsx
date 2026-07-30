@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { formatMoney, SITE } from "../config/site";
@@ -12,7 +12,7 @@ export default function CheckoutPage() {
     name: user?.name || "",
     email: user?.email || "",
     phone: user?.phone || "",
-    address: "",
+    address: user?.address || "",
     note: "",
     shippingMethod: "standard",
     paymentMethod: "cod",
@@ -28,6 +28,9 @@ export default function CheckoutPage() {
     verifiedEmail: "",
   });
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(Boolean(user));
+  const touchedRecipientFields = useRef(new Set());
+  const activeUserId = useRef(user?.id || null);
 
   const standardShippingFee = useMemo(() => {
     if (cartSubtotal >= SITE.freeShippingThreshold) return 0;
@@ -37,10 +40,83 @@ export default function CheckoutPage() {
   const discount = Number(coupon?.discount || 0);
   const total = cartSubtotal + shippingFee - discount;
 
+  useEffect(() => {
+    let active = true;
+
+    if (!user) {
+      if (activeUserId.current) {
+        touchedRecipientFields.current = new Set();
+        setForm((current) => ({
+          ...current,
+          name: "",
+          email: "",
+          phone: "",
+          address: "",
+        }));
+      }
+      activeUserId.current = null;
+      setProfileLoading(false);
+      return undefined;
+    }
+
+    if (activeUserId.current !== user.id) {
+      touchedRecipientFields.current = new Set();
+    }
+    activeUserId.current = user.id;
+
+    const mergeProfile = (profile) => {
+      if (!active) return;
+      setForm((current) => {
+        const next = { ...current };
+        ["name", "email", "phone", "address"].forEach((field) => {
+          if (!touchedRecipientFields.current.has(field)) {
+            next[field] = profile[field] || "";
+          }
+        });
+        return next;
+      });
+    };
+
+    mergeProfile({
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+    });
+    setProfileLoading(true);
+
+    api.get("/auth/me")
+      .then((result) => {
+        const account = result.user || user;
+        const customerProfile = result.customer || result.employee || {};
+        mergeProfile({
+          name: account.name || user.name,
+          email: account.email || user.email,
+          phone: account.phone || customerProfile.phone || user.phone,
+          address: customerProfile.address || user.address,
+        });
+      })
+      .catch(() => {
+        if (active) {
+          notify("Chưa tải được địa chỉ mặc định. Bạn có thể nhập phần còn thiếu.", "info");
+        }
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [notify, user]);
+
   if (!cart.length) return <Navigate to="/gio-hang" replace />;
 
   const change = (event) => {
     const { name, value } = event.target;
+    if (["name", "email", "phone", "address"].includes(name)) {
+      touchedRecipientFields.current.add(name);
+    }
     setForm((current) => ({ ...current, [name]: value }));
     if (name === "email" && !user) {
       setEmailVerification({ requested: false, code: "", checkoutToken: "", verifiedEmail: "" });
@@ -157,23 +233,35 @@ export default function CheckoutPage() {
         <main className="checkout-main">
           <div className="checkout-title"><p className="eyebrow">Almost there</p><h1>Thông tin giao hàng</h1></div>
           <section className="checkout-section">
-            <div className="checkout-section__head"><span>01</span><div><h2>Người nhận</h2><p>Chúng tôi chỉ dùng thông tin này để giao đơn.</p></div></div>
+            <div className="checkout-section__head">
+              <span>01</span>
+              <div>
+                <h2>Người nhận</h2>
+                <p>
+                  {user
+                    ? (profileLoading
+                      ? "Đang lấy thông tin từ hồ sơ của bạn…"
+                      : "Đã tự động điền từ hồ sơ. Bạn vẫn có thể điều chỉnh cho đơn hàng này.")
+                    : "Khách vãng lai vui lòng nhập thông tin để chúng tôi giao và xác nhận đơn hàng."}
+                </p>
+              </div>
+            </div>
             <div className="form-grid">
               <label className="field field--wide">
                 <span>Họ và tên *</span>
-                <input name="name" required minLength={2} value={form.name} onChange={change} placeholder="Nguyễn Văn A" />
+                <input name="name" autoComplete="name" required minLength={2} value={form.name} onChange={change} placeholder="Nguyễn Văn A" />
               </label>
               <label className="field">
                 <span>Số điện thoại *</span>
-                <input name="phone" required pattern="[0-9+\s.-]{9,15}" value={form.phone} onChange={change} placeholder="090 123 4567" />
+                <input name="phone" autoComplete="tel" required pattern="[0-9+\s.-]{9,15}" value={form.phone} onChange={change} placeholder="090 123 4567" />
               </label>
               <label className="field">
                 <span>Email nhận xác nhận *</span>
-                <input name="email" type="email" required readOnly={Boolean(user)} value={form.email} onChange={change} placeholder="ban@email.com" />
+                <input name="email" type="email" autoComplete="email" required readOnly={Boolean(user)} value={form.email} onChange={change} placeholder="ban@email.com" />
               </label>
               <label className="field field--wide">
                 <span>Địa chỉ nhận hàng *</span>
-                <input name="address" required value={form.address} onChange={change} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" />
+                <input name="address" autoComplete="street-address" required value={form.address} onChange={change} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" />
               </label>
               <label className="field field--wide">
                 <span>Ghi chú cho đơn hàng</span>
