@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { formatMoney, ORDER_STATUS } from "../config/site";
 import { useShop } from "../context/ShopContext";
@@ -151,22 +152,50 @@ export function ToastViewport() {
 }
 
 export function Modal({ open, title, children, onClose, size = "medium" }) {
-  if (!open) return null;
-  return (
+  const titleId = React.useId();
+  const closeButtonRef = React.useRef(null);
+  const onCloseRef = React.useRef(onClose);
+
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const previouslyFocused = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onCloseRef.current?.();
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [open]);
+
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className={`modal modal--${size}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal__header">
-          <h2 id="modal-title">{title}</h2>
-          <button type="button" aria-label="Đóng" onClick={onClose}>×</button>
+          <h2 id={titleId}>{title}</h2>
+          <button ref={closeButtonRef} type="button" aria-label="Đóng" onClick={onClose}>×</button>
         </header>
         <div className="modal__body">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

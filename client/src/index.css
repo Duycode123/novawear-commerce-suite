@@ -868,6 +868,10 @@ h4 {
   z-index: 500;
   inset: 0;
   display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   place-items: center;
   padding: 24px;
   background: rgba(17, 18, 16, 0.65);
@@ -875,12 +879,15 @@ h4 {
 }
 
 .modal {
+  display: flex;
   width: min(100%, 660px);
   max-height: calc(100vh - 48px);
-  overflow: auto;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
   border-radius: 18px;
   background: var(--paper);
   box-shadow: var(--shadow);
+  flex-direction: column;
 }
 
 .modal--large {
@@ -892,6 +899,7 @@ h4 {
   z-index: 2;
   top: 0;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -918,6 +926,9 @@ h4 {
 }
 
 .modal__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px;
 }
 
