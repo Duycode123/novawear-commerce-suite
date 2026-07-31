@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
 import { ErrorState, ProductCard, ProductGridSkeleton, SmartImage } from "../components/Common";
+import { formatMoney } from "../config/site";
 import { useShop } from "../context/ShopContext";
 
 const categoryPriority = [
@@ -135,6 +136,7 @@ export default function HomePage() {
     catalog: [],
     categories: [],
     news: [],
+    promotions: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -146,13 +148,14 @@ export default function HomePage() {
     setLoading(true);
     setError("");
     try {
-      const [topRated, newest, popular, sale, categories, news] = await Promise.all([
+      const [topRated, newest, popular, sale, categories, news, promotions] = await Promise.all([
         api.get("/products?sort=rating&limit=100"),
         api.get("/products?sort=newest&limit=4"),
         api.get("/products?sort=popular&limit=100"),
-        api.get("/products?sale=true&sort=popular&limit=4"),
+        api.get("/products?sale=true&sort=discount-desc&limit=4"),
         api.get("/categories"),
         api.get("/news"),
+        api.get("/promotions"),
       ]);
       const popularProducts = (popular.data || []).filter((product) => Number(product.sold) > 0);
       setContent({
@@ -165,6 +168,7 @@ export default function HomePage() {
         catalog: popular.data || [],
         categories: categories.data || [],
         news: news.data || [],
+        promotions: promotions.data || [],
       });
     } catch (requestError) {
       setError(requestError.message);
@@ -235,18 +239,24 @@ export default function HomePage() {
   );
   const menCategories = [...categoryIndex.values()].filter((category) => category.audience === "men").length;
   const womenCategories = [...categoryIndex.values()].filter((category) => category.audience === "women").length;
-  const featuredSale = content.sale.reduce((best, product) => {
-    const discount = product.comparePrice > product.price
-      ? (1 - product.price / product.comparePrice) * 100
-      : 0;
-    const bestDiscount = best?.comparePrice > best?.price
-      ? (1 - best.price / best.comparePrice) * 100
-      : 0;
-    return discount > bestDiscount ? product : best;
-  }, null);
+  const featuredSale = content.sale[0] || null;
+  const featuredPromotion = content.promotions[0] || null;
   const featuredSalePercent = featuredSale?.comparePrice > featuredSale?.price
     ? Math.round((1 - featuredSale.price / featuredSale.comparePrice) * 100)
     : 0;
+  const featuredSaleDeadline = featuredSale?.saleEndsAt
+    ? new Date(featuredSale.saleEndsAt).toLocaleDateString("vi-VN")
+    : "";
+  const featuredPromotionDeadline = featuredPromotion?.expiresAt
+    ? new Date(featuredPromotion.expiresAt).toLocaleDateString("vi-VN")
+    : "";
+  const featuredPromotionSummary = featuredPromotion
+    ? featuredPromotion.type === "percent"
+      ? `Giảm ${featuredPromotion.value}%${featuredPromotion.maxDiscount ? `, tối đa ${formatMoney(featuredPromotion.maxDiscount)}` : ""} cho đơn từ ${formatMoney(featuredPromotion.minOrder)}.`
+      : featuredPromotion.type === "shipping"
+        ? `Hỗ trợ ${formatMoney(featuredPromotion.value)} phí giao hàng cho đơn từ ${formatMoney(featuredPromotion.minOrder)}.`
+        : `Giảm ${formatMoney(featuredPromotion.value)} cho đơn từ ${formatMoney(featuredPromotion.minOrder)}.`
+    : "";
 
   return (
     <main className="home-v4">
@@ -288,29 +298,32 @@ export default function HomePage() {
         <Link className="home-v4-categories__all" to="/cua-hang"><i>＋</i><span><strong>Tất cả</strong><small>Khám phá</small></span></Link>
       </nav>
 
-      <section className="home-v4-offer-banners" aria-label="Ưu đãi nổi bật">
-        <Link className="home-v4-offer-banner home-v4-offer-banner--sale" to="/uu-dai#san-pham-uu-dai">
-          <SmartImage
-            src={featuredSale?.image || "/Images/nova-v3/product-shirt-blue.png"}
-            alt={featuredSale?.name || "Sản phẩm đang ưu đãi tại NOVAWEAR"}
-          />
-          <div>
-            <span>GIÁ ĐANG GIẢM</span>
-            <h2>{featuredSalePercent ? `Giảm đến ${featuredSalePercent}%` : "Ưu đãi đang chờ bạn"}</h2>
-            <p>Những lựa chọn có mức giá tốt trong thời gian giới hạn.</p>
-            <b>Xem sản phẩm ưu đãi →</b>
-          </div>
-        </Link>
-        <Link className="home-v4-offer-banner home-v4-offer-banner--codes" to="/uu-dai#uu-dai-hien-co">
-          <SmartImage src="/Images/nova-v3/promotions-women-color.png" alt="Ưu đãi dành cho thành viên NOVAWEAR" />
-          <div>
-            <span>NOVA REWARDS</span>
-            <h2>Mã ưu đãi cho đơn hàng</h2>
-            <p>Thêm một lý do để chọn món bạn yêu thích.</p>
-            <b>Xem mã đang có →</b>
-          </div>
-        </Link>
-      </section>
+      {(featuredSale || featuredPromotion) && (
+        <section className={`home-v4-offer-banners ${!featuredSale || !featuredPromotion ? "is-single" : ""}`} aria-label="Ưu đãi nổi bật">
+          {featuredSale && (
+            <Link className="home-v4-offer-banner home-v4-offer-banner--sale" to={`/san-pham/${featuredSale.slug || featuredSale.id}`}>
+              <SmartImage src={featuredSale.image} alt={featuredSale.name} />
+              <div>
+                <span>{featuredSaleDeadline ? `KẾT THÚC ${featuredSaleDeadline}` : "GIÁ ĐANG GIẢM"}</span>
+                <h2>Giảm {featuredSalePercent}%</h2>
+                <p>{featuredSale.name} · {formatMoney(featuredSale.comparePrice)} → {formatMoney(featuredSale.price)}</p>
+                <b>Xem sản phẩm →</b>
+              </div>
+            </Link>
+          )}
+          {featuredPromotion && (
+            <Link className="home-v4-offer-banner home-v4-offer-banner--codes" to="/uu-dai#uu-dai-hien-co">
+              <SmartImage src="/Images/nova-v3/promotions-women-color.png" alt={`Mã ưu đãi ${featuredPromotion.code} của NOVAWEAR`} />
+              <div>
+                <span>{featuredPromotionDeadline ? `HIỆU LỰC ĐẾN ${featuredPromotionDeadline}` : "MÃ ĐANG ÁP DỤNG"}</span>
+                <h2>{featuredPromotion.code}</h2>
+                <p>{featuredPromotionSummary}</p>
+                <b>Xem điều kiện ưu đãi →</b>
+              </div>
+            </Link>
+          )}
+        </section>
+      )}
 
       {error && <div className="home-v4-error"><ErrorState message={error} onRetry={loadContent} /></div>}
 

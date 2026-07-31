@@ -2313,10 +2313,16 @@ function createApp(options = {}) {
     if (inStock === "true") products = products.filter((item) => Number(item.stock) > 0);
     if (sale === "true") products = products.filter((item) => Number(item.comparePrice) > Number(item.price) && (!item.saleEndsAt || new Date(item.saleEndsAt) > new Date()));
 
+    const discountRate = (item) => {
+      const price = Number(item.price);
+      const comparePrice = Number(item.comparePrice);
+      return comparePrice > price && comparePrice > 0 ? (comparePrice - price) / comparePrice : 0;
+    };
     const sorters = {
       newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
       "price-asc": (a, b) => a.price - b.price,
       "price-desc": (a, b) => b.price - a.price,
+      "discount-desc": (a, b) => discountRate(b) - discountRate(a),
       popular: (a, b) => b.sold - a.sold,
       rating: (a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount || b.sold - a.sold,
       featured: (a, b) => Number(b.featured) - Number(a.featured) || b.sold - a.sold,

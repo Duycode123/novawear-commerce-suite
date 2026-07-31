@@ -995,6 +995,11 @@ button {
   gap: 16px;
 }
 
+.home-v4-offer-banners.is-single {
+  grid-template-columns: minmax(0, 716px);
+  justify-content: center;
+}
+
 .home-v4-offer-banner {
   position: relative;
   isolation: isolate;

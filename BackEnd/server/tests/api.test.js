@@ -131,6 +131,27 @@ test("health check and catalog are available", async () => {
   assert.equal(products.body.data.length, 4);
   assert.ok(products.body.data.every((item) => item.featured));
 
+  const saleProducts = await request("/products?sale=true&sort=discount-desc&limit=100");
+  assert.equal(saleProducts.response.status, 200);
+  assert.ok(saleProducts.body.data.length > 0);
+  assert.ok(saleProducts.body.data.every((item) => (
+    Number(item.comparePrice) > Number(item.price)
+    && (!item.saleEndsAt || new Date(item.saleEndsAt) > new Date())
+  )));
+  const discountRates = saleProducts.body.data.map(
+    (item) => (Number(item.comparePrice) - Number(item.price)) / Number(item.comparePrice),
+  );
+  assert.deepEqual(discountRates, [...discountRates].sort((left, right) => right - left));
+
+  const promotions = await request("/promotions");
+  assert.equal(promotions.response.status, 200);
+  assert.ok(promotions.body.data.length > 0);
+  assert.ok(promotions.body.data.every((item) => (
+    item.code
+    && new Date(item.startsAt || 0) <= new Date()
+    && new Date(item.expiresAt) > new Date()
+  )));
+
   const hiddenProduct = application.locals.store.data.products[0];
   const previousProductStatus = hiddenProduct.status;
   hiddenProduct.status = "draft";
