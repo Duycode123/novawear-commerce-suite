@@ -20,7 +20,6 @@ export default function LoginPage() {
       <div className="ops-login-redirect__mark">N</div>
       <p>NOVAWEAR ID</p>
       <h1>Đang mở cổng đăng nhập chung…</h1>
-      <span>Quyền truy cập sẽ được xác định tự động theo vai trò tài khoản.</span>
     </main>
   );
 }

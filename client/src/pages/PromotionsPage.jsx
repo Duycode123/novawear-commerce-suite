@@ -56,7 +56,7 @@ export default function PromotionsPage() {
       <div className="offers-hero__copy">
         <p className="eyebrow">NOVA REWARDS</p>
         <h1>Mặc điều bạn thích.<br />Ưu đãi theo cách của bạn.</h1>
-        <p>Mỗi mã đều được cập nhật trực tiếp từ hệ thống. Chọn ưu đãi phù hợp, sao chép mã và dùng ở bước thanh toán.</p>
+        <p>Chọn ưu đãi phù hợp cho đơn hàng của bạn.</p>
         <div className="offers-hero__actions"><Link className="button button--dark" to="/cua-hang">Khám phá sản phẩm <span>→</span></Link><a href="#uu-dai-hien-co">Xem mã đang có</a></div>
       </div>
       <div className="offers-hero__visual">
@@ -69,7 +69,7 @@ export default function PromotionsPage() {
     </header>
 
     <main className="offers-content" id="uu-dai-hien-co">
-      <div className="offers-section-heading"><div><p className="eyebrow">ƯU ĐÃI HÔM NAY</p><h2>Chọn một mã, hoàn thiện đơn hàng.</h2></div><p>Mã chỉ được hiển thị khi còn hiệu lực và có thể dùng ngay trong giỏ hàng.</p></div>
+      <div className="offers-section-heading"><div><p className="eyebrow">ƯU ĐÃI HÔM NAY</p><h2>Chọn một mã, hoàn thiện đơn hàng.</h2></div></div>
       {error && <p className="muted">{error}</p>}
       <div className="offers-grid">
         {promotions.map((item, index) => <article className="offer-card" key={item.code}>
@@ -81,12 +81,11 @@ export default function PromotionsPage() {
         {!error && !promotions.length && <p className="muted">Hiện chưa có ưu đãi đang áp dụng.</p>}
       </div>
       <section className="offers-sale-products">
-        <div className="offers-section-heading"><div><p className="eyebrow">GIÁ ĐANG GIẢM</p><h2>Sản phẩm ưu đãi</h2></div><p>Sản phẩm ở đây được hiển thị tự động khi quản trị viên đặt giá so sánh cao hơn giá bán trong Admin.</p></div>
+        <div className="offers-section-heading"><div><p className="eyebrow">GIÁ ĐANG GIẢM</p><h2>Sản phẩm ưu đãi</h2></div></div>
         {clock && <div className="sale-countdown"><span>Kết thúc sau</span><strong>{clock[0]}:{clock[1]}:{clock[2]}</strong><small>Giờ Việt Nam · {new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "medium", timeStyle: "short" }).format(new Date(deadline))}</small></div>}
-        <div className="offers-sale-layout"><aside className="sale-category-tabs"><h3>Danh mục</h3><button className={!saleCategory ? "is-active" : ""} onClick={() => setSaleCategory("")}>Tất cả</button>{saleCategoryGroups.map((group) => <div className="sale-category-group" key={group.label}><p>{group.label}</p>{group.items.map((category) => <button key={category.slug} className={saleCategory === category.slug ? "is-active" : ""} onClick={() => setSaleCategory(category.slug)}>{category.name}</button>)}</div>)}</aside><div>{visibleSaleProducts.length ? <div className="product-grid">{visibleSaleProducts.map((product) => <div className="sale-product" key={product.id}><span>−{Math.round((1 - product.price / product.comparePrice) * 100)}%</span><ProductCard product={product} /></div>)}</div> : <p className="muted">Chưa có sản phẩm ưu đãi. Quản trị viên có thể đặt Giá so sánh cao hơn Giá bán và thời gian kết thúc trong trang Sản phẩm.</p>}</div></div>
+        <div className="offers-sale-layout"><aside className="sale-category-tabs"><h3>Danh mục</h3><button className={!saleCategory ? "is-active" : ""} onClick={() => setSaleCategory("")}>Tất cả</button>{saleCategoryGroups.map((group) => <div className="sale-category-group" key={group.label}><p>{group.label}</p>{group.items.map((category) => <button key={category.slug} className={saleCategory === category.slug ? "is-active" : ""} onClick={() => setSaleCategory(category.slug)}>{category.name}</button>)}</div>)}</aside><div>{visibleSaleProducts.length ? <div className="product-grid">{visibleSaleProducts.map((product) => <div className="sale-product" key={product.id}><span>−{Math.round((1 - product.price / product.comparePrice) * 100)}%</span><ProductCard product={product} /></div>)}</div> : <p className="muted">Hiện chưa có sản phẩm ưu đãi.</p>}</div></div>
       </section>
 
-      <section className="offers-how"><div><p className="eyebrow">DỄ DÀNG SỬ DỤNG</p><h2>Ba bước để nhận ưu đãi.</h2></div><ol><li><span>01</span><h3>Chọn mã phù hợp</h3><p>Xem điều kiện đơn hàng trước khi sao chép mã.</p></li><li><span>02</span><h3>Thêm vào giỏ</h3><p>Chọn màu, size và số lượng bạn muốn mua.</p></li><li><span>03</span><h3>Nhập mã khi thanh toán</h3><p>Hệ thống sẽ tự kiểm tra điều kiện và trừ giá.</p></li></ol></section>
       <section className="offers-note"><div><span>?</span><p><strong>Cần hỗ trợ về mã ưu đãi?</strong> Đội ngũ NOVAWEAR sẵn sàng kiểm tra điều kiện đơn hàng cho bạn.</p></div><Link to="/ho-tro">Đến trung tâm hỗ trợ →</Link></section>
     </main>
   </div>;

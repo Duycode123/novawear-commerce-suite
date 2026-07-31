@@ -59,7 +59,6 @@ function HomeDiscovery({ content, loading }) {
         <div>
           <p className="eyebrow">NOVA CURATED</p>
           <h2>Bắt đầu từ điều bạn đang tìm.</h2>
-          <p>Mỗi lối đi đều dẫn tới đúng bộ lọc, sản phẩm và dữ liệu đang có trên cửa hàng.</p>
         </div>
         <Link to="/cua-hang">Khám phá cửa hàng <span>→</span></Link>
       </header>
@@ -72,7 +71,7 @@ function HomeDiscovery({ content, loading }) {
           />
           <span className="home-v4-discovery__index">01 / NEW ARRIVAL</span>
           <div>
-            <small>Cập nhật trực tiếp từ cửa hàng</small>
+            <small>VỪA LÊN KỆ</small>
             <h3>{newest?.name || "Những thiết kế vừa lên kệ"}</h3>
             <b>Xem hàng mới →</b>
           </div>
@@ -102,7 +101,7 @@ function HomeDiscovery({ content, loading }) {
               <p>
                 {sale?.comparePrice > sale?.price
                   ? `Tiết kiệm ${Math.round((1 - sale.price / sale.comparePrice) * 100)}% trên giá niêm yết`
-                  : "Sản phẩm đang được Admin thiết lập ưu đãi"}
+                  : "Ưu đãi mới sẽ sớm được cập nhật"}
               </p>
             </div>
             <SmartImage
@@ -306,7 +305,7 @@ export default function HomePage() {
           id="home-top-rated"
           eyebrow="ĐÁNH GIÁ TỪ KHÁCH ĐÃ NHẬN HÀNG"
           title="Được đánh giá cao"
-          copy="Chỉ hiển thị sản phẩm có đánh giá đã xuất bản từ khách hàng đủ điều kiện."
+          copy="Những lựa chọn được khách hàng đánh giá cao."
           href="/cua-hang?sort=rating"
           products={content.topRated}
           loading={loading}
@@ -369,7 +368,7 @@ export default function HomePage() {
         id="home-newest"
         eyebrow="FRESH DROP"
         title="Vừa lên kệ"
-        copy="Những sản phẩm mới nhất do Admin cập nhật."
+        copy="Những thiết kế mới vừa có mặt."
         href="/cua-hang?sort=newest"
         products={content.newest}
         loading={loading}
@@ -379,7 +378,7 @@ export default function HomePage() {
         <div className="home-v4-promotion__copy">
           <p className="eyebrow">NOVA OFFERS</p>
           <h2>Giá tốt cho những món bạn sẽ mặc nhiều.</h2>
-          <p>Sản phẩm và thời gian ưu đãi được cập nhật trực tiếp từ trang quản trị.</p>
+          <p>Ưu đãi giới hạn cho những lựa chọn đang được yêu thích.</p>
           <Link className="button button--accent" to="/uu-dai">Xem toàn bộ ưu đãi <span>→</span></Link>
         </div>
         <div className="home-v4-promotion__products">
@@ -389,7 +388,7 @@ export default function HomePage() {
               <span>-{Math.round((1 - product.price / product.comparePrice) * 100)}%</span>
             </div>
           ))}
-          {!loading && !content.sale.length && <p>Ưu đãi mới sẽ xuất hiện khi Admin thiết lập giá giảm.</p>}
+          {!loading && !content.sale.length && <p>Hiện chưa có sản phẩm ưu đãi.</p>}
         </div>
       </section>
 

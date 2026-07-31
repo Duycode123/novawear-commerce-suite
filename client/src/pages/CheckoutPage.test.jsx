@@ -80,7 +80,7 @@ describe("CheckoutPage recipient information", () => {
     expect(container.querySelector('input[name="phone"]')).toHaveValue("0934457124");
     expect(container.querySelector('input[name="email"]')).toHaveValue("duy@example.com");
     expect(container.querySelector('input[name="email"]')).toHaveAttribute("readonly");
-    expect(getByText("Đã tự động điền từ hồ sơ. Bạn vẫn có thể điều chỉnh cho đơn hàng này.")).toBeInTheDocument();
+    expect(getByText("Thông tin từ hồ sơ của bạn.")).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith("/auth/me");
   });
 
@@ -116,7 +116,7 @@ describe("CheckoutPage recipient information", () => {
     });
 
     await waitFor(() => {
-      expect(getByText("Đã tự động điền từ hồ sơ. Bạn vẫn có thể điều chỉnh cho đơn hàng này.")).toBeInTheDocument();
+      expect(getByText("Thông tin từ hồ sơ của bạn.")).toBeInTheDocument();
     });
     expect(addressInput).toHaveValue("Địa chỉ dùng riêng cho đơn này");
   });

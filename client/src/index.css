@@ -2991,6 +2991,10 @@ h4 {
   color: var(--muted);
 }
 
+.auth-form-wrap > h1 + .auth-form {
+  margin-top: 27px;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -3015,16 +3019,10 @@ h4 {
 .auth-options {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin: 1px 0 4px;
   color: var(--muted);
   font-size: 0.68rem;
-}
-
-.auth-options label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .auth-options button {

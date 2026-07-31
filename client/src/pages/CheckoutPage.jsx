@@ -246,7 +246,7 @@ export default function CheckoutPage() {
                   {user
                     ? (profileLoading
                       ? "Đang lấy thông tin từ hồ sơ của bạn…"
-                      : "Đã tự động điền từ hồ sơ. Bạn vẫn có thể điều chỉnh cho đơn hàng này.")
+                      : "Thông tin từ hồ sơ của bạn.")
                     : "Khách vãng lai vui lòng nhập thông tin để chúng tôi giao và xác nhận đơn hàng."}
                 </p>
               </div>

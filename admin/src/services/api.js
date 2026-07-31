@@ -26,7 +26,7 @@ export async function request(path, options = {}) {
       },
     });
   } catch (_error) {
-    throw new ApiError("Không thể kết nối máy chủ. Hãy kiểm tra backend đang chạy.", 0);
+    throw new ApiError("Không thể kết nối. Vui lòng thử lại sau.", 0);
   }
 
   const payload = await response.json().catch(() => ({ message: "Phản hồi không hợp lệ." }));

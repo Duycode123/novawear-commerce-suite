@@ -173,17 +173,15 @@ export default function AuthPage({ mode = "login" }) {
           )}
           <p className="eyebrow">{verification ? "Verify your account" : passwordReset ? "Recover your account" : isLogin ? "Welcome back" : "Join the club"}</p>
           <h1>{verification ? "Xác minh tài khoản" : passwordReset ? "Đặt lại mật khẩu" : isLogin ? "Đăng nhập" : "Tạo tài khoản"}</h1>
-          <p>
-            {verification
-              ? <>Nhập mã 6 số dành cho <strong>{verification.email}</strong>. Mã có hiệu lực trong 10 phút.</>
-              : passwordReset
-                ? passwordReset.stage === "confirm"
+          {(verification || passwordReset) && (
+            <p>
+              {verification
+                ? <>Nhập mã 6 số dành cho <strong>{verification.email}</strong>. Mã có hiệu lực trong 10 phút.</>
+                : passwordReset.stage === "confirm"
                   ? <>Nhập mã 6 số đã gửi tới <strong>{passwordReset.email}</strong> và chọn mật khẩu mới.</>
-                  : "Nhập email tài khoản để nhận mã đặt lại mật khẩu."
-              : isLogin
-                ? "Một cổng đăng nhập cho khách hàng, nhân viên và quản trị viên. Hệ thống sẽ tự chuyển bạn đến đúng khu vực."
-                : "Chỉ mất một phút để bắt đầu."}
-          </p>
+                  : "Nhập email tài khoản để nhận mã đặt lại mật khẩu."}
+            </p>
+          )}
           {verification ? (
             <form className="auth-form auth-verification" onSubmit={submitVerification}>
               <label className="field">
@@ -256,7 +254,7 @@ export default function AuthPage({ mode = "login" }) {
                 <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Ẩn" : "Hiện"}</button>
               </label>
               {!isLogin && <label className="field"><span>Xác nhận mật khẩu</span><input name="confirmPassword" type="password" required minLength={10} maxLength={128} value={form.confirmPassword} onChange={change} placeholder="Nhập lại mật khẩu" /></label>}
-              {isLogin && <div className="auth-options"><span>Phiên đăng nhập kết thúc khi đóng tab.</span><button type="button" onClick={() => setPasswordReset({ stage: "request", email: form.email })}>Quên mật khẩu?</button></div>}
+              {isLogin && <div className="auth-options"><button type="button" onClick={() => setPasswordReset({ stage: "request", email: form.email })}>Quên mật khẩu?</button></div>}
               <button className="button button--dark button--wide" type="submit" disabled={submitting}>{submitting ? "Đang xử lý..." : isLogin ? "Đăng nhập →" : "Tạo tài khoản →"}</button>
             </form>
           )}

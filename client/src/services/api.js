@@ -32,7 +32,7 @@ export async function apiRequest(path, options = {}) {
     });
   } catch (error) {
     if (error.name === "AbortError") throw error;
-    throw new ApiError("Không thể kết nối máy chủ. Hãy kiểm tra backend đang chạy.", 0);
+    throw new ApiError("Không thể kết nối. Vui lòng thử lại sau.", 0);
   }
 
   const contentType = response.headers.get("content-type") || "";

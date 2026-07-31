@@ -125,7 +125,7 @@ export default function LifestylePage() {
 
       <section className="lifestyle-products" id="lua-chon-phu-hop">
         <header>
-          <div><p className="eyebrow">CURATED FROM LIVE CATALOG</p><h2>Lựa chọn phù hợp</h2><p>Sản phẩm được lấy trực tiếp từ danh mục hiện có và chỉ hiển thị khi còn hàng.</p></div>
+          <div><p className="eyebrow">NOVA SELECTION</p><h2>Lựa chọn phù hợp</h2></div>
           {!loading && !error && <dl>
             <div><dt>{insights.count}</dt><dd>sản phẩm chọn lọc</dd></div>
             <div><dt>{insights.fromPrice ? formatMoney(insights.fromPrice) : "—"}</dt><dd>giá bắt đầu</dd></div>
@@ -142,7 +142,7 @@ export default function LifestylePage() {
               <EmptyState
                 symbol="N"
                 title="Chưa có sản phẩm phù hợp đang còn hàng"
-                copy="NOVAWEAR chỉ hiển thị sản phẩm thuộc đúng nhóm phong cách này. Danh sách sẽ tự cập nhật khi quản trị viên bổ sung hàng vào các danh mục liên quan."
+                copy="Thử xem những lựa chọn gần nhất trong cửa hàng."
                 action={<Link className="button button--dark" to={config.catalogHref}>Xem danh mục gần nhất</Link>}
               />
             )}

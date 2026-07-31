@@ -343,7 +343,7 @@ export default function Layout() {
             <div className="mega-menu__inner">
               <div className="mega-menu__intro"><p>{menuTitle}</p><h2>Trang phục được chọn lọc cho nhịp sống hiện đại.</h2><span>Thiết kế dễ mặc, phom dáng chỉn chu và chất liệu phù hợp khí hậu Việt Nam.</span><Link to={menuHref}>Khám phá bộ sưu tập <b>↗</b></Link></div>
               <div className="mega-menu__links"><h3>Mua sắm</h3><Link to={`${menuHref}&sort=newest`}>Hàng mới về</Link><Link to={`${menuHref}&sort=rating`}>Đánh giá cao</Link><Link to={`${menuHref}&sort=popular`}>Được mua nhiều</Link><Link to={`${menuHref}&inStock=true`}>Sẵn sàng giao ngay</Link></div>
-              <div className="mega-menu__links mega-menu__links--categories"><h3>Danh mục</h3>{menuCategories(activeMegaMenu).map((category) => <Link key={category.id} to={`${menuHref}&category=${category.slug}`}>{category.name}<small>{category.audienceCounts?.[activeMegaMenu]}</small></Link>)}{!menuCategories(activeMegaMenu).length && <span>Danh mục sẽ hiện khi admin thêm sản phẩm.</span>}</div>
+              <div className="mega-menu__links mega-menu__links--categories"><h3>Danh mục</h3>{menuCategories(activeMegaMenu).map((category) => <Link key={category.id} to={`${menuHref}&category=${category.slug}`}>{category.name}<small>{category.audienceCounts?.[activeMegaMenu]}</small></Link>)}{!menuCategories(activeMegaMenu).length && <span>Hiện chưa có danh mục phù hợp.</span>}</div>
               <Link className="mega-menu__feature" to={`${menuHref}&sort=rating`}><img src={menuEditorial.image} alt={`Biên tập thời trang ${menuTitle}`} /><span>{menuEditorial.eyebrow}</span><strong>{menuEditorial.title}</strong><em>Khám phá ngay ↗</em></Link>
             </div>
           </div>
