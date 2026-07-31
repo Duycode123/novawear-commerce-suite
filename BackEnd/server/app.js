@@ -69,6 +69,7 @@ const ALLOWED_RETURN_TRANSITIONS = {
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^[0-9+\s.-]{9,15}$/;
+const CUSTOMER_TIERS = new Set(["Member", "Silver", "Gold"]);
 const appTimeZone = process.env.APP_TIME_ZONE || "Asia/Ho_Chi_Minh";
 
 function localDateKey(value = new Date()) {
@@ -4037,13 +4038,20 @@ function createApp(options = {}) {
   });
 
   admin.post("/customers", (req, res) => {
+    const requestedTier = String(req.body.tier || "Member").trim();
+    if (!CUSTOMER_TIERS.has(requestedTier)) {
+      return res.status(400).json({ message: "Hạng thành viên không hợp lệ." });
+    }
+    if (req.user.role !== "admin" && requestedTier !== "Member") {
+      return res.status(403).json({ message: "Chỉ quản trị viên được thiết lập hạng thành viên." });
+    }
     const customer = {
       id: store.nextId("customers", "cus-"),
       name: String(req.body.name || "").trim(),
       email: normalizeText(req.body.email),
       phone: String(req.body.phone || "").trim(),
       address: String(req.body.address || "").trim(),
-      tier: req.body.tier || "Member",
+      tier: requestedTier,
       totalSpent: 0,
       orderCount: 0,
       status: "active",
@@ -4078,10 +4086,11 @@ function createApp(options = {}) {
     const nextName = String(req.body.name ?? customer.name).trim();
     const nextEmail = normalizeText(req.body.email ?? customer.email);
     const nextPhone = String(req.body.phone ?? customer.phone).trim();
+    const nextTier = String(req.body.tier ?? customer.tier).trim();
     const nextStatus = ["active", "inactive"].includes(String(req.body.status))
       ? String(req.body.status)
       : customer.status;
-    if (!nextName || !phonePattern.test(nextPhone) || (nextEmail && !emailPattern.test(nextEmail))) {
+    if (!nextName || !phonePattern.test(nextPhone) || (nextEmail && !emailPattern.test(nextEmail)) || !CUSTOMER_TIERS.has(nextTier)) {
       return res.status(400).json({ message: "Thông tin khách hàng chưa hợp lệ." });
     }
     if (linkedUser && nextEmail !== normalizeText(linkedUser.email)) {
@@ -4099,9 +4108,8 @@ function createApp(options = {}) {
     customer.email = nextEmail;
     customer.phone = nextPhone;
     customer.status = nextStatus;
-    ["address", "tier"].forEach((field) => {
-      if (req.body[field] !== undefined) customer[field] = String(req.body[field]).trim();
-    });
+    customer.tier = nextTier;
+    if (req.body.address !== undefined) customer.address = String(req.body.address).trim();
     if (linkedUser) {
       linkedUser.name = nextName;
       linkedUser.phone = nextPhone;
@@ -4846,6 +4854,8 @@ function createApp(options = {}) {
       .filter((item) => item.assigneeId === employee.id || (!item.assigneeId && item.status === "pending"))
       .filter((item) => !["delivered", "cancelled"].includes(item.status))
       .slice(0, 8);
+    const assignedOrders = orderQueue.filter((item) => item.assigneeId === employee.id).length;
+    const availableOrders = orderQueue.filter((item) => !item.assigneeId).length;
     return res.json({
       data: {
         employee,
@@ -4855,7 +4865,8 @@ function createApp(options = {}) {
         summary: {
           openTasks: tasks.filter((item) => item.status !== "done").length,
           completedTasks: tasks.filter((item) => item.status === "done").length,
-          assignedOrders: orderQueue.length,
+          assignedOrders,
+          availableOrders,
           shift: employee.shift,
         },
       },

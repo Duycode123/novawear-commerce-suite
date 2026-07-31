@@ -78,7 +78,11 @@ export default function WorkspacePage() {
           <section className="ops-workspace-stats">
             <div><span>Việc đang mở</span><strong>{workspace.tasks.filter((item) => item.status !== "done").length}</strong><small>Trong ca hôm nay</small></div>
             <div><span>Việc hoàn tất</span><strong>{workspace.tasks.filter((item) => item.status === "done").length}</strong><small>Tiến độ cá nhân</small></div>
-            <div><span>Đơn phụ trách</span><strong>{workspace.orderQueue.length}</strong><small>Cần theo dõi</small></div>
+            <div>
+              <span>Đơn đang phụ trách</span>
+              <strong>{workspace.summary?.assignedOrders ?? workspace.orderQueue.filter((item) => item.assigneeId === workspace.employee.id).length}</strong>
+              <small>{workspace.summary?.availableOrders ?? workspace.orderQueue.filter((item) => !item.assigneeId).length} đơn chờ nhận</small>
+            </div>
             <div><span>Hiệu suất</span><strong>{workspace.employee.performance}%</strong><small>30 ngày gần nhất</small></div>
           </section>
 

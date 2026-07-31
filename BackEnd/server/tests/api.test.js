@@ -689,6 +689,71 @@ test("staff portal is protected and supports order workflow", async () => {
   });
   assert.equal(deniedPurchaseReceiving.response.status, 403);
 
+  const deniedElevatedCustomer = await request("/admin/customers", {
+    method: "POST",
+    headers: staffAuth,
+    body: JSON.stringify({
+      name: "Khách kiểm thử phân quyền",
+      email: "staff-tier-denied@novawear.vn",
+      phone: "0911222333",
+      tier: "Gold",
+    }),
+  });
+  assert.equal(deniedElevatedCustomer.response.status, 403);
+
+  const staffCreatedCustomer = await request("/admin/customers", {
+    method: "POST",
+    headers: staffAuth,
+    body: JSON.stringify({
+      name: "Khách do nhân viên tạo",
+      email: "staff-created-customer@novawear.vn",
+      phone: "0911222444",
+      tier: "Member",
+    }),
+  });
+  assert.equal(staffCreatedCustomer.response.status, 201);
+  assert.equal(staffCreatedCustomer.body.data.tier, "Member");
+
+  const deniedTierUpdate = await request(`/admin/customers/${staffCreatedCustomer.body.data.id}`, {
+    method: "PUT",
+    headers: staffAuth,
+    body: JSON.stringify({ tier: "Silver" }),
+  });
+  assert.equal(deniedTierUpdate.response.status, 403);
+
+  const invalidAdminTier = await request("/admin/customers", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({
+      name: "Khách có hạng sai",
+      email: "invalid-tier@novawear.vn",
+      phone: "0911222555",
+      tier: "Platinum",
+    }),
+  });
+  assert.equal(invalidAdminTier.response.status, 400);
+
+  const adminCreatedCustomer = await request("/admin/customers", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({
+      name: "Khách do quản trị viên tạo",
+      email: "admin-created-customer@novawear.vn",
+      phone: "0911222666",
+      tier: "Gold",
+    }),
+  });
+  assert.equal(adminCreatedCustomer.response.status, 201);
+  assert.equal(adminCreatedCustomer.body.data.tier, "Gold");
+
+  const adminUpdatedTier = await request(`/admin/customers/${adminCreatedCustomer.body.data.id}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ tier: "Silver" }),
+  });
+  assert.equal(adminUpdatedTier.response.status, 200);
+  assert.equal(adminUpdatedTier.body.data.tier, "Silver");
+
   const beforeUpdate = await request("/admin/orders/ORD-2026-004", {
     headers: staffAuth,
   });
@@ -711,6 +776,14 @@ test("staff portal is protected and supports order workflow", async () => {
   });
   assert.equal(workspace.response.status, 200);
   assert.equal(workspace.body.data.employee.id, "emp-002");
+  assert.equal(
+    workspace.body.data.summary.assignedOrders,
+    workspace.body.data.orderQueue.filter((item) => item.assigneeId === "emp-002").length,
+  );
+  assert.equal(
+    workspace.body.data.summary.availableOrders,
+    workspace.body.data.orderQueue.filter((item) => !item.assigneeId).length,
+  );
 });
 
 test("order state machine synchronizes delivery, inventory and notifications", async () => {
