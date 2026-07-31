@@ -235,6 +235,18 @@ export default function HomePage() {
   );
   const menCategories = [...categoryIndex.values()].filter((category) => category.audience === "men").length;
   const womenCategories = [...categoryIndex.values()].filter((category) => category.audience === "women").length;
+  const featuredSale = content.sale.reduce((best, product) => {
+    const discount = product.comparePrice > product.price
+      ? (1 - product.price / product.comparePrice) * 100
+      : 0;
+    const bestDiscount = best?.comparePrice > best?.price
+      ? (1 - best.price / best.comparePrice) * 100
+      : 0;
+    return discount > bestDiscount ? product : best;
+  }, null);
+  const featuredSalePercent = featuredSale?.comparePrice > featuredSale?.price
+    ? Math.round((1 - featuredSale.price / featuredSale.comparePrice) * 100)
+    : 0;
 
   return (
     <main className="home-v4">
@@ -275,6 +287,30 @@ export default function HomePage() {
         ))}
         <Link className="home-v4-categories__all" to="/cua-hang"><i>＋</i><span><strong>Tất cả</strong><small>Khám phá</small></span></Link>
       </nav>
+
+      <section className="home-v4-offer-banners" aria-label="Ưu đãi nổi bật">
+        <Link className="home-v4-offer-banner home-v4-offer-banner--sale" to="/uu-dai#san-pham-uu-dai">
+          <SmartImage
+            src={featuredSale?.image || "/Images/nova-v3/product-shirt-blue.png"}
+            alt={featuredSale?.name || "Sản phẩm đang ưu đãi tại NOVAWEAR"}
+          />
+          <div>
+            <span>GIÁ ĐANG GIẢM</span>
+            <h2>{featuredSalePercent ? `Giảm đến ${featuredSalePercent}%` : "Ưu đãi đang chờ bạn"}</h2>
+            <p>Những lựa chọn có mức giá tốt trong thời gian giới hạn.</p>
+            <b>Xem sản phẩm ưu đãi →</b>
+          </div>
+        </Link>
+        <Link className="home-v4-offer-banner home-v4-offer-banner--codes" to="/uu-dai#uu-dai-hien-co">
+          <SmartImage src="/Images/nova-v3/promotions-women-color.png" alt="Ưu đãi dành cho thành viên NOVAWEAR" />
+          <div>
+            <span>NOVA REWARDS</span>
+            <h2>Mã ưu đãi cho đơn hàng</h2>
+            <p>Thêm một lý do để chọn món bạn yêu thích.</p>
+            <b>Xem mã đang có →</b>
+          </div>
+        </Link>
+      </section>
 
       {error && <div className="home-v4-error"><ErrorState message={error} onRetry={loadContent} /></div>}
 

@@ -80,7 +80,7 @@ export default function PromotionsPage() {
         </article>)}
         {!error && !promotions.length && <p className="muted">Hiện chưa có ưu đãi đang áp dụng.</p>}
       </div>
-      <section className="offers-sale-products">
+      <section className="offers-sale-products" id="san-pham-uu-dai">
         <div className="offers-section-heading"><div><p className="eyebrow">GIÁ ĐANG GIẢM</p><h2>Sản phẩm ưu đãi</h2></div></div>
         {clock && <div className="sale-countdown"><span>Kết thúc sau</span><strong>{clock[0]}:{clock[1]}:{clock[2]}</strong><small>Giờ Việt Nam · {new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "medium", timeStyle: "short" }).format(new Date(deadline))}</small></div>}
         <div className="offers-sale-layout"><aside className="sale-category-tabs"><h3>Danh mục</h3><button className={!saleCategory ? "is-active" : ""} onClick={() => setSaleCategory("")}>Tất cả</button>{saleCategoryGroups.map((group) => <div className="sale-category-group" key={group.label}><p>{group.label}</p>{group.items.map((category) => <button key={category.slug} className={saleCategory === category.slug ? "is-active" : ""} onClick={() => setSaleCategory(category.slug)}>{category.name}</button>)}</div>)}</aside><div>{visibleSaleProducts.length ? <div className="product-grid">{visibleSaleProducts.map((product) => <div className="sale-product" key={product.id}><span>−{Math.round((1 - product.price / product.comparePrice) * 100)}%</span><ProductCard product={product} /></div>)}</div> : <p className="muted">Hiện chưa có sản phẩm ưu đãi.</p>}</div></div>

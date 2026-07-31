@@ -29,12 +29,17 @@ export default function Layout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
+    const targetId = decodeURIComponent(location.hash.replace(/^#/, ""));
+    const timer = window.setTimeout(() => {
+      if (targetId) document.getElementById(targetId)?.scrollIntoView({ block: "start" });
+      else window.scrollTo({ top: 0, behavior: "instant" });
+    }, 60);
     setMobileOpen(false);
     setSearchOpen(false);
     setActiveMegaMenu("");
     setNotificationOpen(false);
-  }, [location.pathname, location.search]);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, location.search, location.hash]);
 
   useEffect(() => {
     let mounted = true;
