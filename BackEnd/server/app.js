@@ -263,6 +263,127 @@ function rebuildCustomerMetrics(store, customerId) {
   customer.tier = customerTier(customer.totalSpent);
 }
 
+function chatContactMatchesUser(contact, user) {
+  if (!contact || contact.channel !== "chat" || !user) return false;
+  return contact.userId === user.id
+    || Boolean(user.customerId && contact.customerId === user.customerId);
+}
+
+function contactTime(contact, field) {
+  const value = contact?.[field];
+  const timestamp = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function syncChatContactIdentity(contact, user) {
+  if (!contact || !user) return contact;
+  contact.userId = user.id;
+  contact.customerId = user.customerId || contact.customerId || null;
+  contact.name = user.name;
+  contact.email = normalizeText(user.email);
+  contact.phone = user.phone || "";
+  contact.guestTokenHash = null;
+  contact.messages = (contact.messages || []).map((message) => (
+    message.sender === "customer"
+      ? { ...message, senderId: user.id, senderName: user.name }
+      : message
+  ));
+  return contact;
+}
+
+function mergeChatConversationsForUser(store, user) {
+  const activeContacts = store.data.contacts
+    .filter((contact) => !contact.mergedIntoId && chatContactMatchesUser(contact, user))
+    .sort((a, b) => (
+      contactTime(b, "lastMessageAt")
+      - contactTime(a, "lastMessageAt")
+    ));
+  if (!activeContacts.length) return null;
+
+  const canonical = activeContacts[0];
+  syncChatContactIdentity(canonical, user);
+  if (activeContacts.length === 1) return canonical;
+
+  const messageIds = new Set();
+  canonical.messages = activeContacts
+    .flatMap((contact) => contact.messages || [])
+    .filter((message) => {
+      if (!message?.id || messageIds.has(message.id)) return false;
+      messageIds.add(message.id);
+      return true;
+    })
+    .sort((a, b) => (
+      new Date(a.createdAt || 0).getTime()
+      - new Date(b.createdAt || 0).getTime()
+    ));
+  syncChatContactIdentity(canonical, user);
+
+  const statuses = activeContacts.map((contact) => contact.status);
+  canonical.status = statuses.includes("in_progress")
+    ? "in_progress"
+    : (statuses.includes("new") ? "new" : "resolved");
+  canonical.operationsUnreadCount = activeContacts.reduce(
+    (sum, contact) => sum + Math.max(0, Number(contact.operationsUnreadCount || 0)),
+    0,
+  );
+  canonical.customerUnreadCount = activeContacts.reduce(
+    (sum, contact) => sum + Math.max(0, Number(contact.customerUnreadCount || 0)),
+    0,
+  );
+
+  const assignedContact = activeContacts.find((contact) => contact.assigneeId);
+  canonical.assigneeId = canonical.assigneeId || assignedContact?.assigneeId || null;
+  canonical.assigneeName = canonical.assigneeName || assignedContact?.assigneeName || null;
+  canonical.createdAt = activeContacts
+    .map((contact) => contact.createdAt)
+    .filter(Boolean)
+    .sort((a, b) => new Date(a) - new Date(b))[0] || canonical.createdAt;
+  canonical.lastMessageAt = canonical.messages.at(-1)?.createdAt
+    || activeContacts
+      .map((contact) => contact.lastMessageAt || contact.updatedAt || contact.createdAt)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b) - new Date(a))[0]
+    || canonical.lastMessageAt;
+  canonical.updatedAt = canonical.lastMessageAt || canonical.updatedAt;
+  canonical.message = canonical.messages.at(-1)?.body || canonical.message;
+
+  const duplicateIds = activeContacts.slice(1).map((contact) => contact.id);
+  canonical.mergedContactIds = [...new Set([
+    ...(canonical.mergedContactIds || []),
+    ...duplicateIds,
+  ])];
+  for (const duplicate of activeContacts.slice(1)) {
+    duplicate.mergedIntoId = canonical.id;
+    duplicate.operationsUnreadCount = 0;
+    duplicate.customerUnreadCount = 0;
+  }
+
+  for (const notification of store.data.notifications || []) {
+    if (!duplicateIds.includes(notification.contactId)) continue;
+    notification.contactId = canonical.id;
+    if (notification.href && notification.href.includes("/support?open=")) {
+      notification.href = `/support?open=${encodeURIComponent(canonical.id)}`;
+    }
+  }
+  return canonical;
+}
+
+function mergeAuthenticatedChatConversations(store) {
+  for (const user of store.data.users || []) {
+    if (user.role === "customer") mergeChatConversationsForUser(store, user);
+  }
+}
+
+function resolveStoredContact(store, id) {
+  let contact = store.data.contacts.find((item) => item.id === id);
+  const visited = new Set();
+  while (contact?.mergedIntoId && !visited.has(contact.id)) {
+    visited.add(contact.id);
+    contact = store.data.contacts.find((item) => item.id === contact.mergedIntoId);
+  }
+  return contact || null;
+}
+
 function ensureDataShape(store) {
   const collections = [
     "returns",
@@ -372,6 +493,7 @@ function ensureDataShape(store) {
         : null;
     }
   });
+  mergeAuthenticatedChatConversations(store);
 }
 
 function couponAvailabilityError(coupon, subtotal = null, now = new Date()) {
@@ -1038,6 +1160,8 @@ function createApp(options = {}) {
       guestTokenHash: _guestTokenHash,
       operationsUnreadCount: _operationsUnreadCount,
       assigneeId: _assigneeId,
+      mergedContactIds: _mergedContactIds,
+      mergedIntoId: _mergedIntoId,
       ...safeContact
     } = contact;
     return {
@@ -1055,7 +1179,12 @@ function createApp(options = {}) {
   }
 
   function operationsChatConversation(contact) {
-    const { guestTokenHash: _guestTokenHash, ...safeContact } = contact;
+    const {
+      guestTokenHash: _guestTokenHash,
+      mergedContactIds: _mergedContactIds,
+      mergedIntoId: _mergedIntoId,
+      ...safeContact
+    } = contact;
     const assignee = store.data.users.find((user) => user.id === contact.assigneeId);
     return {
       ...safeContact,
@@ -1064,10 +1193,12 @@ function createApp(options = {}) {
   }
 
   function chatConversationForCustomer(req) {
-    const contact = store.data.contacts.find((item) => (
+    const requestedContact = store.data.contacts.find((item) => (
       item.id === req.params.id && item.channel === "chat"
     ));
-    if (!contact) return null;
+    if (!requestedContact) return null;
+    const contact = resolveStoredContact(store, requestedContact.id);
+    if (!contact || contact.channel !== "chat") return null;
     const ownsAuthenticatedConversation = req.user?.role === "customer"
       && (
         contact.userId === req.user.id
@@ -1077,8 +1208,8 @@ function createApp(options = {}) {
     const suppliedToken = String(req.headers["x-chat-token"] || "");
     if (
       suppliedToken
-      && contact.guestTokenHash
-      && safeTextEqual(temporaryKey(suppliedToken), contact.guestTokenHash)
+      && requestedContact.guestTokenHash
+      && safeTextEqual(temporaryKey(suppliedToken), requestedContact.guestTokenHash)
     ) {
       return contact;
     }
@@ -2005,6 +2136,9 @@ function createApp(options = {}) {
     if (user.employeeId) {
       const employee = store.data.employees.find((item) => item.id === user.employeeId);
       if (employee) Object.assign(employee, { name, phone, address: address || employee.address });
+    }
+    if (user.role === "customer") {
+      mergeChatConversationsForUser(store, user);
     }
     store.audit("update", "user", user.id, req.user);
     store.save();
@@ -3218,8 +3352,41 @@ function createApp(options = {}) {
         });
       }
 
-      const guestToken = customerUser ? null : crypto.randomBytes(32).toString("base64url");
       const createdAt = new Date().toISOString();
+      if (customerUser) {
+        const existingContact = mergeChatConversationsForUser(store, customerUser);
+        if (existingContact) {
+          syncChatContactIdentity(existingContact, customerUser);
+          appendChatMessage(existingContact, {
+            sender: "customer",
+            senderId: customerUser.id,
+            senderName: customerUser.name,
+            body,
+            createdAt,
+          });
+          if (existingContact.status === "resolved") existingContact.status = "new";
+          existingContact.operationsUnreadCount = Number(existingContact.operationsUnreadCount || 0) + 1;
+          existingContact.customerUnreadCount = 0;
+          createNotification(store, {
+            audience: "operations",
+            contactId: existingContact.id,
+            type: "chat_message",
+            title: `Tin nhắn mới · ${customerUser.name}`,
+            message: body,
+            href: `/support?open=${encodeURIComponent(existingContact.id)}`,
+            createdAt,
+          });
+          store.audit("message", "chat_conversation", existingContact.id, customerUser);
+          store.save();
+          return res.json({
+            message: "Tin nhắn đã được thêm vào cuộc trò chuyện hiện có.",
+            data: publicChatConversation(existingContact),
+            reused: true,
+          });
+        }
+      }
+
+      const guestToken = customerUser ? null : crypto.randomBytes(32).toString("base64url");
       const contact = {
         id: store.nextId("contacts", "chat-"),
         channel: "chat",
@@ -3294,11 +3461,14 @@ function createApp(options = {}) {
       if (body.length < 1 || body.length > 1000) {
         return res.status(400).json({ message: "Tin nhắn cần từ 1 đến 1.000 ký tự." });
       }
+      if (req.user?.role === "customer") {
+        syncChatContactIdentity(contact, req.user);
+      }
       const createdAt = new Date().toISOString();
       const message = appendChatMessage(contact, {
         sender: "customer",
         senderId: req.user?.id || null,
-        senderName: contact.name,
+        senderName: req.user?.name || contact.name,
         body,
         createdAt,
       });
@@ -4262,7 +4432,7 @@ function createApp(options = {}) {
   });
 
   admin.get("/contacts", (req, res) => {
-    let contacts = [...store.data.contacts];
+    let contacts = store.data.contacts.filter((item) => !item.mergedIntoId);
     if (req.user.role === "staff") {
       contacts = contacts.filter((item) => !item.assigneeId || item.assigneeId === req.user.id);
     }
@@ -4277,7 +4447,7 @@ function createApp(options = {}) {
   });
 
   admin.get("/contacts/:id", (req, res) => {
-    const contact = store.data.contacts.find((item) => item.id === req.params.id);
+    const contact = resolveStoredContact(store, req.params.id);
     if (!contact) return notFound(res, "Yêu cầu hỗ trợ");
     if (req.user.role === "staff" && contact.assigneeId && contact.assigneeId !== req.user.id) {
       return res.status(403).json({ message: "Yêu cầu hỗ trợ đang được một nhân viên khác phụ trách." });
@@ -4291,7 +4461,7 @@ function createApp(options = {}) {
   });
 
   admin.patch("/contacts/:id", (req, res) => {
-    const contact = store.data.contacts.find((item) => item.id === req.params.id);
+    const contact = resolveStoredContact(store, req.params.id);
     if (!contact) return notFound(res, "Yêu cầu hỗ trợ");
     if (req.user.role === "staff" && contact.assigneeId && contact.assigneeId !== req.user.id) {
       return res.status(403).json({ message: "Yêu cầu hỗ trợ đang được một nhân viên khác phụ trách." });
@@ -4313,7 +4483,7 @@ function createApp(options = {}) {
   });
 
   admin.post("/contacts/:id/messages", (req, res) => {
-    const contact = store.data.contacts.find((item) => item.id === req.params.id);
+    const contact = resolveStoredContact(store, req.params.id);
     if (!contact) return notFound(res, "Yêu cầu hỗ trợ");
     if (contact.channel !== "chat") {
       return res.status(409).json({

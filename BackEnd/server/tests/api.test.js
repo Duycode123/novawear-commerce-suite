@@ -1106,6 +1106,90 @@ test("guest chat is private and supports a two-way operations conversation", asy
   assert.equal(markedRead.body.data.customerUnreadCount, 0);
 });
 
+test("authenticated chat stays in one conversation after the customer changes their name", async () => {
+  const email = "chat.identity@novawear.vn";
+  const registered = await request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Original Chat Name",
+      email,
+      phone: "0909123001",
+      password: "ChatIdentity@123",
+    }),
+  });
+  assert.equal(registered.response.status, 201);
+
+  const verified = await request("/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({ email, code: registered.body.verificationCode }),
+  });
+  assert.equal(verified.response.status, 200);
+  const auth = { Authorization: `Bearer ${verified.body.token}` };
+
+  const first = await request("/chat/conversations", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ message: "Tin nhắn đầu tiên của tài khoản." }),
+  });
+  assert.equal(first.response.status, 201);
+  const conversationId = first.body.data.id;
+
+  const storedConversation = application.locals.store.data.contacts
+    .find((item) => item.id === conversationId);
+  const legacyDuplicateId = "chat-legacy-same-account";
+  application.locals.store.data.contacts.push({
+    ...structuredClone(storedConversation),
+    id: legacyDuplicateId,
+    name: "Legacy Display Name",
+    messages: [{
+      id: "chat-legacy-message",
+      sender: "customer",
+      senderId: verified.body.user.id,
+      senderName: "Legacy Display Name",
+      body: "Tin nhắn nằm trong cuộc trò chuyện cũ.",
+      createdAt: new Date(Date.now() - 60000).toISOString(),
+    }],
+    lastMessageAt: new Date(Date.now() - 60000).toISOString(),
+  });
+
+  const renamed = await request("/auth/me", {
+    method: "PUT",
+    headers: auth,
+    body: JSON.stringify({ name: "Renamed Chat Customer" }),
+  });
+  assert.equal(renamed.response.status, 200);
+
+  const continued = await request("/chat/conversations", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ message: "Tin nhắn sau khi đổi tên." }),
+  });
+  assert.equal(continued.response.status, 200);
+  assert.equal(continued.body.reused, true);
+  assert.equal(continued.body.data.id, conversationId);
+  assert.equal(continued.body.data.name, "Renamed Chat Customer");
+  assert.equal(continued.body.data.messages.length, 3);
+  assert.ok(continued.body.data.messages
+    .filter((message) => message.sender === "customer")
+    .every((message) => message.senderName === "Renamed Chat Customer"));
+
+  const legacySession = await request(`/chat/conversations/${legacyDuplicateId}`, {
+    headers: auth,
+  });
+  assert.equal(legacySession.response.status, 200);
+  assert.equal(legacySession.body.data.id, conversationId);
+
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const inbox = await request("/admin/contacts", {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  const conversationsForAccount = inbox.body.data.filter((item) => (
+    item.userId === verified.body.user.id && item.channel === "chat"
+  ));
+  assert.equal(conversationsForAccount.length, 1);
+  assert.equal(conversationsForAccount[0].name, "Renamed Chat Customer");
+});
+
 test("coupon schedule and usage limits are enforced and restored after cancellation", async () => {
   const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
   const adminAuth = { Authorization: `Bearer ${adminToken}` };

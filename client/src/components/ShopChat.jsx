@@ -60,12 +60,16 @@ export default function ShopChat() {
   }, [location.search]);
 
   useEffect(() => {
-    if (!session?.userId || session.userId === user?.id) return;
+    if (!session) return;
+    const belongsToCurrentVisitor = user
+      ? session.userId === user.id
+      : !session.userId;
+    if (belongsToCurrentVisitor) return;
     localStorage.removeItem(STORAGE_KEY);
     setSession(null);
     setConversation(null);
     setLoading(false);
-  }, [session, user?.id]);
+  }, [session, user]);
 
   const loadConversation = useCallback(async (markRead = false, quiet = false) => {
     if (!session?.conversationId) return;
@@ -75,6 +79,11 @@ export default function ShopChat() {
         `/chat/conversations/${session.conversationId}${markRead ? "?markRead=true" : ""}`,
         { headers: chatHeaders(session) },
       );
+      if (result.data?.id && result.data.id !== session.conversationId) {
+        const resolvedSession = { ...session, conversationId: result.data.id };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(resolvedSession));
+        setSession(resolvedSession);
+      }
       setConversation(result.data);
       setError("");
     } catch (requestError) {
