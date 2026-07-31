@@ -48,50 +48,161 @@ export default function Layout() {
   useEffect(() => {
     const root = document.getElementById("main-content");
     if (!root) return undefined;
-    if (!("IntersectionObserver" in window)) return undefined;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const queuedVisible = new Set();
+    let outerFrame = 0;
+    let innerFrame = 0;
+    let safetyTimer = 0;
 
-    const revealObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add("is-revealed");
-        revealObserver.unobserve(entry.target);
+    const revealElement = (element) => {
+      if (!element?.isConnected) return;
+      element.classList.add("is-revealed");
+    };
+
+    const flushVisibleQueue = () => {
+      if (outerFrame) return;
+      outerFrame = window.requestAnimationFrame(() => {
+        innerFrame = window.requestAnimationFrame(() => {
+          queuedVisible.forEach(revealElement);
+          queuedVisible.clear();
+          outerFrame = 0;
+          innerFrame = 0;
+        });
       });
-    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+    };
+
+    const revealObserver = !reducedMotion && "IntersectionObserver" in window
+      ? new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          revealElement(entry.target);
+          revealObserver.unobserve(entry.target);
+        });
+      }, { rootMargin: "0px 0px -7% 0px", threshold: 0.075 })
+      : null;
 
     const registerRevealElements = () => {
       const groups = [
-        { selector: "h1, h2", className: "nova-reveal-heading" },
-        { selector: "h3, .eyebrow", className: "nova-reveal-subtitle" },
-        { selector: "img:not(.brand-logo img)", className: "nova-reveal-image" },
+        {
+          selector: "h1, h2",
+          className: "nova-motion-heading",
+        },
+        {
+          selector: "h3, .eyebrow, blockquote",
+          className: "nova-motion-kicker",
+        },
+        {
+          selector: [
+            ".product-card",
+            ".news-card",
+            ".offer-card",
+            ".promotion-card",
+            ".category-tile",
+            ".review-story",
+            ".product-editorial-card",
+            ".cart-item",
+            ".order-card",
+            ".faq-item",
+            ".support-shortcuts > *",
+            ".home-v4-categories > a",
+            ".home-v4-occasion-grid > a",
+            ".home-v4-gender > a",
+            ".home-v4-journal > div > a",
+            ".home-v4-benefits > article",
+            ".policy-strip > div",
+          ].join(", "),
+          className: "nova-motion-card",
+        },
+        {
+          selector: [
+            "figure",
+            ".home-v4-hero__media",
+            ".home-v4-story__media",
+            ".product-gallery__main",
+            ".nova-about-hero__visual",
+            ".lifestyle-hero__visual",
+            ".news-detail__hero",
+            "img:not(.brand-logo img)",
+          ].join(", "),
+          className: "nova-motion-media",
+        },
+        {
+          selector: [
+            "section > header",
+            ".product-info",
+            ".contact-form",
+            ".size-calculator__form",
+            ".size-result",
+            ".cart-summary",
+            ".checkout-summary",
+            ".account-header",
+            ".catalog-sidebar",
+            ".review-overview",
+          ].join(", "),
+          className: "nova-motion-block",
+        },
       ];
 
       groups.forEach(({ selector, className }) => {
-        root.querySelectorAll(selector).forEach((element) => {
-          if (element.dataset.novaReveal) return;
+        root.querySelectorAll(selector).forEach((element, groupIndex) => {
+          if (element.dataset.novaMotion) return;
+          if (
+            className === "nova-motion-media"
+            && element.tagName === "IMG"
+            && element.closest(
+              "figure, .product-card, .news-card, .offer-card, .promotion-card, .category-tile, .home-v4-hero__media, .home-v4-story__media, .home-v4-occasion-grid > a, .home-v4-gender > a, .home-v4-journal > div > a",
+            )
+          ) {
+            return;
+          }
           const siblings = element.parentElement ? Array.from(element.parentElement.children) : [];
           const siblingIndex = Math.max(0, siblings.indexOf(element));
-          element.dataset.novaReveal = "true";
+          element.dataset.novaMotion = "true";
           element.classList.add(className);
-          element.style.setProperty("--nova-reveal-delay", `${Math.min(siblingIndex, 5) * 55}ms`);
+          const order = Math.min(
+            siblingIndex >= 0 ? siblingIndex : groupIndex,
+            5,
+          );
+          element.style.setProperty("--nova-motion-delay", `${order * 65}ms`);
+
+          if (reducedMotion || !revealObserver) {
+            revealElement(element);
+            return;
+          }
           const bounds = element.getBoundingClientRect();
-          const isAlreadyVisible = bounds.top < window.innerHeight * 0.96 && bounds.bottom > 0;
+          const isAlreadyVisible = bounds.top < window.innerHeight * 0.98 && bounds.bottom > 0;
           if (isAlreadyVisible) {
-            element.classList.add("is-revealed");
+            queuedVisible.add(element);
           } else {
             revealObserver.observe(element);
           }
         });
       });
+      flushVisibleQueue();
+      window.clearTimeout(safetyTimer);
+      safetyTimer = window.setTimeout(() => {
+        root.querySelectorAll("[data-nova-motion]:not(.is-revealed)").forEach((element) => {
+          const bounds = element.getBoundingClientRect();
+          if (bounds.top < window.innerHeight * 1.15 && bounds.bottom > -100) {
+            revealElement(element);
+          }
+        });
+      }, 1800);
     };
 
+    root.classList.add("nova-motion-ready");
     const frame = window.requestAnimationFrame(registerRevealElements);
     const mutationObserver = new MutationObserver(registerRevealElements);
     mutationObserver.observe(root, { childList: true, subtree: true });
 
     return () => {
+      root.classList.remove("nova-motion-ready");
       window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(outerFrame);
+      window.cancelAnimationFrame(innerFrame);
+      window.clearTimeout(safetyTimer);
       mutationObserver.disconnect();
-      revealObserver.disconnect();
+      revealObserver?.disconnect();
     };
   }, [location.pathname, location.search]);
 
@@ -269,7 +380,12 @@ export default function Layout() {
       </header>
 
       <main id="main-content">
-        <Outlet />
+        <div
+          className="nova-route-stage"
+          key={`${location.pathname}${location.search}`}
+        >
+          <Outlet />
+        </div>
       </main>
 
       <footer className="site-footer">

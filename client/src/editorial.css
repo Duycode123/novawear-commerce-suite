@@ -3457,3 +3457,322 @@ button {
     grid-column: auto;
   }
 }
+
+/* --------------------------------------------------------------------------
+   NOVA Motion System
+   One restrained language for route changes, scroll reveals and interactions.
+   Text is never clipped; every hidden state also has a JavaScript safety reveal.
+   -------------------------------------------------------------------------- */
+
+@keyframes nova-route-enter {
+  from {
+    opacity: .72;
+    translate: 0 12px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes nova-header-arrive {
+  from {
+    opacity: 0;
+    translate: 0 -9px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes nova-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 18px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes nova-image-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.018;
+  }
+}
+
+.nova-route-stage {
+  min-height: 1px;
+  animation: nova-route-enter 480ms cubic-bezier(.22, .72, .2, 1) both;
+}
+
+.nova-motion-ready .nova-motion-heading,
+.nova-motion-ready .nova-motion-kicker,
+.nova-motion-ready .nova-motion-card,
+.nova-motion-ready .nova-motion-media,
+.nova-motion-ready .nova-motion-block {
+  transition-delay: var(--nova-motion-delay, 0ms);
+  will-change: opacity, translate, filter, clip-path;
+}
+
+.nova-motion-ready .nova-motion-heading:not(.is-revealed) {
+  opacity: .01;
+  filter: blur(3px);
+  translate: 0 22px;
+}
+
+.nova-motion-ready .nova-motion-heading {
+  transition:
+    opacity 720ms cubic-bezier(.2, .72, .2, 1),
+    translate 720ms cubic-bezier(.2, .72, .2, 1),
+    filter 620ms ease;
+}
+
+.nova-motion-ready .nova-motion-kicker:not(.is-revealed) {
+  opacity: .01;
+  translate: 0 13px;
+}
+
+.nova-motion-ready .nova-motion-kicker {
+  transition:
+    opacity 560ms ease,
+    translate 650ms cubic-bezier(.2, .72, .2, 1);
+}
+
+.nova-motion-ready .nova-motion-card:not(.is-revealed) {
+  opacity: .01;
+  scale: .985;
+  translate: 0 24px;
+}
+
+.nova-motion-ready .nova-motion-card {
+  transition:
+    opacity 650ms ease,
+    translate 720ms cubic-bezier(.2, .72, .2, 1),
+    scale 720ms cubic-bezier(.2, .72, .2, 1),
+    border-color 240ms ease,
+    box-shadow 240ms ease,
+    background-color 240ms ease;
+}
+
+.nova-motion-ready .nova-motion-media:not(.is-revealed) {
+  opacity: .08;
+  clip-path: inset(0 0 14% 0);
+  filter: saturate(.72) contrast(.96);
+}
+
+.nova-motion-ready .nova-motion-media {
+  transition:
+    opacity 780ms ease,
+    clip-path 920ms cubic-bezier(.18, .76, .2, 1),
+    filter 820ms ease;
+}
+
+.nova-motion-ready .nova-motion-block:not(.is-revealed) {
+  opacity: .01;
+  translate: 0 17px;
+}
+
+.nova-motion-ready .nova-motion-block {
+  transition:
+    opacity 620ms ease,
+    translate 720ms cubic-bezier(.2, .72, .2, 1);
+}
+
+.nova-motion-ready .nova-motion-heading.is-revealed,
+.nova-motion-ready .nova-motion-kicker.is-revealed,
+.nova-motion-ready .nova-motion-card.is-revealed,
+.nova-motion-ready .nova-motion-block.is-revealed {
+  opacity: 1;
+  filter: none;
+  scale: 1;
+  translate: 0 0;
+  will-change: auto;
+}
+
+.nova-motion-ready .nova-motion-media.is-revealed {
+  opacity: 1;
+  clip-path: inset(0 0 0 0);
+  filter: none;
+  will-change: auto;
+}
+
+/* Header and mega menu arrive as a composed sequence on first paint. */
+.announcement > * {
+  animation: nova-header-arrive 440ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.announcement > :nth-child(2) {
+  animation-delay: 55ms;
+}
+
+.announcement > :nth-child(3) {
+  animation-delay: 110ms;
+}
+
+.announcement > :nth-child(4) {
+  animation-delay: 165ms;
+}
+
+.site-header__inner > .brand-logo {
+  animation: nova-header-arrive 520ms 70ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.desktop-nav > * {
+  animation: nova-header-arrive 500ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.desktop-nav > :nth-child(1) { animation-delay: 90ms; }
+.desktop-nav > :nth-child(2) { animation-delay: 125ms; }
+.desktop-nav > :nth-child(3) { animation-delay: 160ms; }
+.desktop-nav > :nth-child(4) { animation-delay: 195ms; }
+.desktop-nav > :nth-child(5) { animation-delay: 230ms; }
+.desktop-nav > :nth-child(6) { animation-delay: 265ms; }
+.desktop-nav > :nth-child(7) { animation-delay: 300ms; }
+.desktop-nav > :nth-child(8) { animation-delay: 335ms; }
+
+.header-search-inline,
+.header-help-link,
+.header-actions {
+  animation: nova-header-arrive 520ms 250ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.mega-menu {
+  transform-origin: top center;
+  animation: nova-menu-open 240ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+@keyframes nova-menu-open {
+  from {
+    opacity: 0;
+    scale: 1 .97;
+    translate: 0 -7px;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+/* Premium micro-interactions remain quiet but clearly responsive. */
+.button,
+.product-card__quick,
+.home-v4-heading > a,
+.news-card a,
+.footer-links a {
+  transition:
+    color 190ms ease,
+    background-color 190ms ease,
+    border-color 190ms ease,
+    translate 220ms cubic-bezier(.2, .72, .2, 1),
+    box-shadow 220ms ease;
+}
+
+.button:hover,
+.home-v4-heading > a:hover {
+  translate: 0 -2px;
+}
+
+.product-card__media img,
+.news-card img,
+.offer-card img,
+.home-v4-categories img,
+.home-v4-occasion-grid img,
+.home-v4-gender img,
+.home-v4-journal img,
+.home-v4-lookbook img {
+  transition:
+    transform 720ms cubic-bezier(.2, .72, .2, 1),
+    filter 420ms ease;
+}
+
+.product-card:hover .product-card__media img,
+.news-card:hover img,
+.offer-card:hover img,
+.home-v4-categories > a:hover img,
+.home-v4-occasion-grid > a:hover img,
+.home-v4-gender > a:hover img,
+.home-v4-journal > div > a:hover img,
+.home-v4-lookbook figure:hover img {
+  transform: scale(1.035);
+}
+
+.product-card__badge,
+.home-v4-hero__stamp {
+  transition: translate 220ms ease, box-shadow 220ms ease;
+}
+
+.product-card:hover .product-card__badge {
+  translate: 0 -2px;
+}
+
+.home-v4-hero__media > img,
+.nova-about-hero__visual > img {
+  animation: nova-image-breathe 13s ease-in-out infinite;
+}
+
+/* Standalone customer pages are outside the shared Layout. */
+.auth-page,
+.checkout-page,
+.oauth-callback {
+  animation: nova-route-enter 480ms cubic-bezier(.22, .72, .2, 1) both;
+}
+
+.auth-visual,
+.checkout-main {
+  animation: nova-rise-in 650ms 80ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.auth-panel,
+.checkout-summary {
+  animation: nova-rise-in 650ms 180ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.auth-form > *,
+.checkout-main > .checkout-section {
+  animation: nova-rise-in 560ms cubic-bezier(.2, .72, .2, 1) both;
+}
+
+.auth-form > :nth-child(1),
+.checkout-main > .checkout-section:nth-of-type(1) {
+  animation-delay: 160ms;
+}
+
+.auth-form > :nth-child(2),
+.checkout-main > .checkout-section:nth-of-type(2) {
+  animation-delay: 220ms;
+}
+
+.auth-form > :nth-child(3),
+.checkout-main > .checkout-section:nth-of-type(3) {
+  animation-delay: 280ms;
+}
+
+.auth-form > :nth-child(4) {
+  animation-delay: 340ms;
+}
+
+@media (max-width: 720px) {
+  .nova-motion-ready .nova-motion-heading:not(.is-revealed) {
+    translate: 0 15px;
+  }
+
+  .nova-motion-ready .nova-motion-card:not(.is-revealed),
+  .nova-motion-ready .nova-motion-block:not(.is-revealed) {
+    translate: 0 14px;
+  }
+
+  .nova-motion-ready .nova-motion-heading,
+  .nova-motion-ready .nova-motion-card,
+  .nova-motion-ready .nova-motion-block,
+  .nova-motion-ready .nova-motion-media {
+    transition-duration: 520ms;
+  }
+}
