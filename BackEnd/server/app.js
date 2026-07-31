@@ -2440,6 +2440,70 @@ function createApp(options = {}) {
     return res.json({ data });
   });
 
+  app.get("/api/promotions/catalog-summary", (_req, res) => {
+    const now = new Date();
+    const categoryById = new Map(
+      (store.data.categories || [])
+        .filter((item) => !item.status || item.status === "active")
+        .map((item) => [item.id, item]),
+    );
+    const groups = new Map();
+
+    (store.data.products || [])
+      .filter((item) => (
+        item.status === "active"
+        && Number(item.comparePrice) > Number(item.price)
+        && (!item.saleEndsAt || new Date(item.saleEndsAt) > now)
+      ))
+      .forEach((product) => {
+        const category = categoryById.get(product.categoryId);
+        if (!category) return;
+        const discountPercent = Math.round(
+          ((Number(product.comparePrice) - Number(product.price)) / Number(product.comparePrice)) * 100,
+        );
+        const current = groups.get(category.id) || {
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          audience: category.audience || "all",
+          productCount: 0,
+          minDiscountPercent: discountPercent,
+          maxDiscountPercent: discountPercent,
+          totalDiscountPercent: 0,
+          images: [],
+        };
+        current.productCount += 1;
+        current.minDiscountPercent = Math.min(current.minDiscountPercent, discountPercent);
+        current.maxDiscountPercent = Math.max(current.maxDiscountPercent, discountPercent);
+        current.totalDiscountPercent += discountPercent;
+        if (product.image && !current.images.includes(product.image) && current.images.length < 2) {
+          current.images.push(product.image);
+        }
+        groups.set(category.id, current);
+      });
+
+    const categories = [...groups.values()]
+      .map(({ totalDiscountPercent, ...item }) => ({
+        ...item,
+        averageDiscountPercent: Math.round(totalDiscountPercent / item.productCount),
+      }))
+      .sort((left, right) => (
+        right.productCount - left.productCount
+        || right.averageDiscountPercent - left.averageDiscountPercent
+        || right.maxDiscountPercent - left.maxDiscountPercent
+        || String(left.name).localeCompare(String(right.name), "vi")
+      ));
+
+    return res.json({
+      data: {
+        totalSaleProducts: categories.reduce((total, item) => total + item.productCount, 0),
+        categoryCount: categories.length,
+        featuredCategory: categories[0] || null,
+        categories,
+      },
+    });
+  });
+
   app.get("/api/news", (_req, res) => {
     const data = (store.data.news || []).filter((item) => item.status === "published").sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
     return res.json({ data });

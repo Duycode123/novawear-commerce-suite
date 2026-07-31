@@ -137,6 +137,7 @@ export default function HomePage() {
     categories: [],
     news: [],
     promotions: [],
+    saleSummary: null,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -148,7 +149,7 @@ export default function HomePage() {
     setLoading(true);
     setError("");
     try {
-      const [topRated, newest, popular, sale, categories, news, promotions] = await Promise.all([
+      const [topRated, newest, popular, sale, categories, news, promotions, saleSummary] = await Promise.all([
         api.get("/products?sort=rating&limit=100"),
         api.get("/products?sort=newest&limit=4"),
         api.get("/products?sort=popular&limit=100"),
@@ -156,6 +157,7 @@ export default function HomePage() {
         api.get("/categories"),
         api.get("/news"),
         api.get("/promotions"),
+        api.get("/promotions/catalog-summary"),
       ]);
       const popularProducts = (popular.data || []).filter((product) => Number(product.sold) > 0);
       setContent({
@@ -169,6 +171,7 @@ export default function HomePage() {
         categories: categories.data || [],
         news: news.data || [],
         promotions: promotions.data || [],
+        saleSummary: saleSummary.data || null,
       });
     } catch (requestError) {
       setError(requestError.message);
@@ -239,13 +242,12 @@ export default function HomePage() {
   );
   const menCategories = [...categoryIndex.values()].filter((category) => category.audience === "men").length;
   const womenCategories = [...categoryIndex.values()].filter((category) => category.audience === "women").length;
-  const featuredSale = content.sale[0] || null;
+  const featuredSaleCategory = content.saleSummary?.featuredCategory || null;
   const featuredPromotion = content.promotions[0] || null;
-  const featuredSalePercent = featuredSale?.comparePrice > featuredSale?.price
-    ? Math.round((1 - featuredSale.price / featuredSale.comparePrice) * 100)
-    : 0;
-  const featuredSaleDeadline = featuredSale?.saleEndsAt
-    ? new Date(featuredSale.saleEndsAt).toLocaleDateString("vi-VN")
+  const featuredSaleRange = featuredSaleCategory
+    ? featuredSaleCategory.minDiscountPercent === featuredSaleCategory.maxDiscountPercent
+      ? `${featuredSaleCategory.maxDiscountPercent}%`
+      : `từ ${featuredSaleCategory.minDiscountPercent}% đến ${featuredSaleCategory.maxDiscountPercent}%`
     : "";
   const featuredPromotionDeadline = featuredPromotion?.expiresAt
     ? new Date(featuredPromotion.expiresAt).toLocaleDateString("vi-VN")
@@ -298,16 +300,16 @@ export default function HomePage() {
         <Link className="home-v4-categories__all" to="/cua-hang"><i>＋</i><span><strong>Tất cả</strong><small>Khám phá</small></span></Link>
       </nav>
 
-      {(featuredSale || featuredPromotion) && (
-        <section className={`home-v4-offer-banners ${!featuredSale || !featuredPromotion ? "is-single" : ""}`} aria-label="Ưu đãi nổi bật">
-          {featuredSale && (
-            <Link className="home-v4-offer-banner home-v4-offer-banner--sale" to={`/san-pham/${featuredSale.slug || featuredSale.id}`}>
-              <SmartImage src={featuredSale.image} alt={featuredSale.name} />
+      {(featuredSaleCategory || featuredPromotion) && (
+        <section className={`home-v4-offer-banners ${!featuredSaleCategory || !featuredPromotion ? "is-single" : ""}`} aria-label="Ưu đãi nổi bật">
+          {featuredSaleCategory && (
+            <Link className="home-v4-offer-banner home-v4-offer-banner--sale" to={`/uu-dai?category=${featuredSaleCategory.slug}#san-pham-uu-dai`}>
+              <SmartImage src={featuredSaleCategory.images?.[0]} alt={`Danh mục ${featuredSaleCategory.name} đang có ưu đãi`} />
               <div>
-                <span>{featuredSaleDeadline ? `KẾT THÚC ${featuredSaleDeadline}` : "GIÁ ĐANG GIẢM"}</span>
-                <h2>Giảm {featuredSalePercent}%</h2>
-                <p>{featuredSale.name} · {formatMoney(featuredSale.comparePrice)} → {formatMoney(featuredSale.price)}</p>
-                <b>Xem sản phẩm →</b>
+                <span>{content.saleSummary.totalSaleProducts} SẢN PHẨM · {content.saleSummary.categoryCount} DANH MỤC</span>
+                <h2>{featuredSaleCategory.name}</h2>
+                <p>Danh mục có nhiều ưu đãi nhất: {featuredSaleCategory.productCount} sản phẩm đang giảm {featuredSaleRange}.</p>
+                <b>Xem ưu đãi {featuredSaleCategory.name} →</b>
               </div>
             </Link>
           )}

@@ -1,19 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
 import { formatMoney } from "../config/site";
 import { ProductCard } from "../components/Common";
 
 export default function PromotionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [promotions, setPromotions] = useState([]);
   const [saleProducts, setSaleProducts] = useState([]);
   const [error, setError] = useState("");
   const [copiedCode, setCopiedCode] = useState("");
-  const [saleCategory, setSaleCategory] = useState("");
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    Promise.all([api.get("/promotions"), api.get("/products?sale=true&limit=24")])
+    Promise.all([api.get("/promotions"), api.get("/products?sale=true&sort=discount-desc&limit=100")])
       .then(([promotionResult, productResult]) => { setPromotions(promotionResult.data); setSaleProducts(productResult.data); })
       .catch((requestError) => setError(requestError.message));
   }, []);
@@ -37,6 +37,16 @@ export default function PromotionsPage() {
 
   const featured = promotions[0];
   const saleCategories = useMemo(() => [...new Map(saleProducts.map((product) => [product.category?.slug, product.category])).values()].filter(Boolean), [saleProducts]);
+  const requestedSaleCategory = searchParams.get("category") || "";
+  const saleCategory = saleCategories.some((item) => item.slug === requestedSaleCategory)
+    ? requestedSaleCategory
+    : "";
+  const selectSaleCategory = (categorySlug) => {
+    const next = new URLSearchParams(searchParams);
+    if (categorySlug) next.set("category", categorySlug);
+    else next.delete("category");
+    setSearchParams(next, { replace: true });
+  };
   const saleCategoryGroups = useMemo(() => [
     { label: "Nam", items: saleCategories.filter((item) => item.audience === "men") },
     { label: "Nữ", items: saleCategories.filter((item) => item.audience === "women") },
@@ -83,7 +93,7 @@ export default function PromotionsPage() {
       <section className="offers-sale-products" id="san-pham-uu-dai">
         <div className="offers-section-heading"><div><p className="eyebrow">GIÁ ĐANG GIẢM</p><h2>Sản phẩm ưu đãi</h2></div></div>
         {clock && <div className="sale-countdown"><span>Kết thúc sau</span><strong>{clock[0]}:{clock[1]}:{clock[2]}</strong><small>Giờ Việt Nam · {new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "medium", timeStyle: "short" }).format(new Date(deadline))}</small></div>}
-        <div className="offers-sale-layout"><aside className="sale-category-tabs"><h3>Danh mục</h3><button className={!saleCategory ? "is-active" : ""} onClick={() => setSaleCategory("")}>Tất cả</button>{saleCategoryGroups.map((group) => <div className="sale-category-group" key={group.label}><p>{group.label}</p>{group.items.map((category) => <button key={category.slug} className={saleCategory === category.slug ? "is-active" : ""} onClick={() => setSaleCategory(category.slug)}>{category.name}</button>)}</div>)}</aside><div>{visibleSaleProducts.length ? <div className="product-grid">{visibleSaleProducts.map((product) => <div className="sale-product" key={product.id}><span>−{Math.round((1 - product.price / product.comparePrice) * 100)}%</span><ProductCard product={product} /></div>)}</div> : <p className="muted">Hiện chưa có sản phẩm ưu đãi.</p>}</div></div>
+        <div className="offers-sale-layout"><aside className="sale-category-tabs"><h3>Danh mục</h3><button className={!saleCategory ? "is-active" : ""} onClick={() => selectSaleCategory("")}>Tất cả</button>{saleCategoryGroups.map((group) => <div className="sale-category-group" key={group.label}><p>{group.label}</p>{group.items.map((category) => <button key={category.slug} className={saleCategory === category.slug ? "is-active" : ""} onClick={() => selectSaleCategory(category.slug)}>{category.name}</button>)}</div>)}</aside><div>{visibleSaleProducts.length ? <div className="product-grid">{visibleSaleProducts.map((product) => <div className="sale-product" key={product.id}><span>−{Math.round((1 - product.price / product.comparePrice) * 100)}%</span><ProductCard product={product} /></div>)}</div> : <p className="muted">Hiện chưa có sản phẩm ưu đãi.</p>}</div></div>
       </section>
 
       <section className="offers-note"><div><span>?</span><p><strong>Cần hỗ trợ về mã ưu đãi?</strong> Đội ngũ NOVAWEAR sẵn sàng kiểm tra điều kiện đơn hàng cho bạn.</p></div><Link to="/ho-tro">Đến trung tâm hỗ trợ →</Link></section>

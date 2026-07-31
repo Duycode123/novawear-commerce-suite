@@ -152,6 +152,30 @@ test("health check and catalog are available", async () => {
     && new Date(item.expiresAt) > new Date()
   )));
 
+  const saleSummary = await request("/promotions/catalog-summary");
+  assert.equal(saleSummary.response.status, 200);
+  assert.equal(saleSummary.body.data.totalSaleProducts, saleProducts.body.pagination.total);
+  assert.equal(saleSummary.body.data.categoryCount, saleSummary.body.data.categories.length);
+  assert.deepEqual(saleSummary.body.data.featuredCategory, saleSummary.body.data.categories[0]);
+  assert.ok(saleSummary.body.data.categories.every((item) => (
+    item.productCount > 0
+    && item.minDiscountPercent > 0
+    && item.minDiscountPercent <= item.averageDiscountPercent
+    && item.averageDiscountPercent <= item.maxDiscountPercent
+    && item.images.length <= 2
+  )));
+  for (let index = 1; index < saleSummary.body.data.categories.length; index += 1) {
+    const previous = saleSummary.body.data.categories[index - 1];
+    const current = saleSummary.body.data.categories[index];
+    assert.ok(
+      previous.productCount > current.productCount
+      || (
+        previous.productCount === current.productCount
+        && previous.averageDiscountPercent >= current.averageDiscountPercent
+      ),
+    );
+  }
+
   const hiddenProduct = application.locals.store.data.products[0];
   const previousProductStatus = hiddenProduct.status;
   hiddenProduct.status = "draft";

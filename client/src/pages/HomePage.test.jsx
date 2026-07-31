@@ -42,12 +42,33 @@ const activePromotion = {
   expiresAt: "2026-12-31T16:59:59.000Z",
 };
 
-function mockHomeApi({ sale = [saleProduct], promotions = [activePromotion] } = {}) {
+const saleSummary = {
+  totalSaleProducts: 9,
+  categoryCount: 4,
+  featuredCategory: {
+    id: "cat-jacket-men",
+    name: "Áo khoác nam",
+    slug: "ao-khoac-nam",
+    audience: "men",
+    productCount: 3,
+    minDiscountPercent: 10,
+    maxDiscountPercent: 25,
+    averageDiscountPercent: 18,
+    images: ["/sale-product.jpg", "/sale-product-2.jpg"],
+  },
+};
+
+function mockHomeApi({
+  sale = [saleProduct],
+  promotions = [activePromotion],
+  summary = saleSummary,
+} = {}) {
   api.get.mockImplementation((path) => {
     if (path === "/products?sale=true&sort=discount-desc&limit=4") {
       return Promise.resolve({ data: sale });
     }
     if (path === "/promotions") return Promise.resolve({ data: promotions });
+    if (path === "/promotions/catalog-summary") return Promise.resolve({ data: summary });
     return Promise.resolve({ data: [] });
   });
 }
@@ -75,24 +96,26 @@ describe("HomePage promotion banners", () => {
 
     expect(api.get).toHaveBeenCalledWith("/products?sale=true&sort=discount-desc&limit=4");
     expect(api.get).toHaveBeenCalledWith("/promotions");
-    expect(view.getByRole("heading", { name: "Giảm 25%" })).toBeInTheDocument();
-    expect(view.getByText("Áo khoác giảm thật · 800.000 ₫ → 600.000 ₫")).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith("/promotions/catalog-summary");
+    expect(view.getByRole("heading", { name: "Áo khoác nam" })).toBeInTheDocument();
+    expect(view.getByText("9 SẢN PHẨM · 4 DANH MỤC")).toBeInTheDocument();
+    expect(view.getByText("Danh mục có nhiều ưu đãi nhất: 3 sản phẩm đang giảm từ 10% đến 25%.")).toBeInTheDocument();
     expect(view.container.querySelector(".home-v4-offer-banner--sale")).toHaveAttribute(
       "href",
-      "/san-pham/ao-khoac-sale-25"
+      "/uu-dai?category=ao-khoac-nam#san-pham-uu-dai"
     );
     expect(view.getByRole("heading", { name: "SAVE15" })).toBeInTheDocument();
     expect(view.getByText("Giảm 15%, tối đa 120.000 ₫ cho đơn từ 500.000 ₫.")).toBeInTheDocument();
   });
 
   test("does not invent banners when there is no active promotion data", async () => {
-    mockHomeApi({ sale: [], promotions: [] });
+    mockHomeApi({ sale: [], promotions: [], summary: null });
     let view;
     await act(async () => {
       view = render(<HomePage />);
     });
 
-    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(7));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(8));
     await waitFor(() => expect(view.queryAllByLabelText("Đang tải sản phẩm")).toHaveLength(0));
     expect(view.queryByRole("region", { name: "Ưu đãi nổi bật" })).not.toBeInTheDocument();
     expect(view.queryByText(/Ưu đãi đang chờ bạn/i)).not.toBeInTheDocument();
