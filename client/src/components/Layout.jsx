@@ -4,6 +4,7 @@ import { formatDate, SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
 import { Logo } from "./Common";
 import Icon from "./Icon";
+import ShopChat from "./ShopChat";
 
 const navItems = [
   { to: "/", label: "Trang chủ", end: true },
@@ -313,6 +314,7 @@ export default function Layout() {
           <div><Link to="/ho-tro">Chính sách bảo mật</Link><Link to="/ho-tro">Điều khoản</Link></div>
         </div>
       </footer>
+      <ShopChat />
     </div>
   );
 }

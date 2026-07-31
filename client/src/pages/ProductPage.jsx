@@ -16,11 +16,7 @@ export default function ProductPage() {
   const [size, setSize] = useState("");
   const [color, setColor] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [reviewForm, setReviewForm] = useState({ rating: 5, content: "", images: [] });
-  const [uploadingReviewImage, setUploadingReviewImage] = useState(false);
-  const [submittingReview, setSubmittingReview] = useState(false);
-  const [reviewEligibility, setReviewEligibility] = useState(null);
-  const { addToCart, toggleWishlist, wishlist, user, notify, integrations } = useShop();
+  const { addToCart, toggleWishlist, wishlist } = useShop();
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
@@ -44,16 +40,6 @@ export default function ProductPage() {
   useEffect(() => {
     loadProduct();
   }, [loadProduct]);
-
-  useEffect(() => {
-    if (!user || !product) {
-      setReviewEligibility(null);
-      return;
-    }
-    api.get(`/products/${product.id}/review-eligibility`)
-      .then((result) => setReviewEligibility(result.data))
-      .catch(() => setReviewEligibility({ eligible: false, delivered: false }));
-  }, [product, user]);
 
   const discountPercent = useMemo(() => {
     if (!product?.comparePrice || product.comparePrice <= product.price) return 0;
@@ -97,45 +83,6 @@ export default function ProductPage() {
 
   const wished = wishlist.some((item) => item.id === product.id);
   const images = product.images?.length ? product.images : [product.image];
-
-  const submitReview = async (event) => {
-    event.preventDefault();
-    if (!user) {
-      notify("Hãy đăng nhập để gửi đánh giá.", "info");
-      return;
-    }
-    if (!reviewEligibility?.eligible) {
-      notify("Đánh giá chỉ mở sau khi đơn hàng đã giao thành công.", "info");
-      return;
-    }
-    setSubmittingReview(true);
-    try {
-      const result = await api.post(`/products/${product.id}/reviews`, reviewForm);
-      setReviews((current) => [result.data, ...current]);
-      setReviewForm({ rating: 5, content: "", images: [] });
-      notify(result.message);
-    } catch (requestError) {
-      notify(requestError.message, "error");
-    } finally {
-      setSubmittingReview(false);
-    }
-  };
-
-  const uploadReviewImage = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file || reviewForm.images.length >= 3) return;
-    setUploadingReviewImage(true);
-    try {
-      const result = await api.upload("/uploads/review", file);
-      setReviewForm((current) => ({ ...current, images: [...current.images, result.data.url] }));
-      notify(result.message);
-    } catch (requestError) {
-      notify(requestError.message, "error");
-    } finally {
-      setUploadingReviewImage(false);
-      event.target.value = "";
-    }
-  };
 
   return (
     <div className="product-page">
@@ -345,61 +292,26 @@ export default function ProductPage() {
 
           <div className="review-feed">
             <header><div><span>Cảm nhận khách hàng</span><strong>{reviewStats.total} chia sẻ</strong></div><p>Mới nhất trước</p></header>
-            {reviews.length ? reviews.map((review) => (
-              <article className="review-story" key={review.id}>
-                <header>
-                  <div className="avatar">{review.name?.charAt(0)}</div>
-                  <div><strong>{review.name}</strong><span>✓ Đã mua & nhận hàng</span></div>
-                  <time>{new Date(review.createdAt).toLocaleDateString("vi-VN")}</time>
-                </header>
-                <div className="review-story__rating"><span>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</span><b>{Number(review.rating).toFixed(1)}</b></div>
-                <blockquote>“{review.content}”</blockquote>
-                {review.images?.length > 0 && <div className="review-images">{review.images.map((image) => <SmartImage src={image} alt={`Ảnh đánh giá của ${review.name}`} key={image} />)}</div>}
-                <footer><span>Đánh giá ngày {new Date(review.createdAt).toLocaleDateString("vi-VN")}</span><span>{product.name}</span></footer>
-              </article>
-            )) : (
-              <div className="review-empty"><span>N</span><h3>Chưa có đánh giá</h3><p>Người mua đầu tiên nhận hàng sẽ có thể chia sẻ cảm nhận tại đây.</p></div>
-            )}
+            <div className="review-feed__list">
+              {reviews.length ? reviews.map((review) => (
+                <article className="review-story" key={review.id}>
+                  <header>
+                    <div className="avatar">{review.name?.charAt(0)}</div>
+                    <div><strong>{review.name}</strong><span>✓ Đã mua & nhận hàng</span></div>
+                    <time>{new Date(review.createdAt).toLocaleDateString("vi-VN")}</time>
+                  </header>
+                  <div className="review-story__rating"><span>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</span><b>{Number(review.rating).toFixed(1)}</b></div>
+                  <blockquote>“{review.content}”</blockquote>
+                  {review.images?.length > 0 && <div className="review-images">{review.images.map((image) => <SmartImage src={image} alt={`Ảnh đánh giá của ${review.name}`} key={image} />)}</div>}
+                  <footer><span>Đánh giá ngày {new Date(review.createdAt).toLocaleDateString("vi-VN")}</span><span>{product.name}</span></footer>
+                </article>
+              )) : (
+                <div className="review-empty"><span>N</span><h3>Chưa có đánh giá</h3><p>Người mua đầu tiên nhận hàng sẽ có thể chia sẻ cảm nhận tại đây.</p></div>
+              )}
+            </div>
           </div>
-
-          <form className="review-compose" onSubmit={submitReview}>
-            <div className="review-compose__title"><span>Viết đánh giá</span><b>06</b></div>
-            <h3>Trải nghiệm của bạn thế nào?</h3>
-            <div className={`review-compose__status ${reviewEligibility?.eligible ? "is-ready" : "is-locked"}`}>
-              <span>{reviewEligibility?.eligible ? "✓" : "↗"}</span>
-              <p>{!user
-                ? "Đăng nhập để hệ thống kiểm tra đơn hàng của bạn."
-                : reviewEligibility?.eligible
-                  ? `Đã xác minh đơn hàng của ${user.name}. Bạn có thể đánh giá.`
-                  : reviewEligibility?.reviewed
-                    ? "Bạn đã gửi đánh giá cho sản phẩm này."
-                    : "Biểu mẫu sẽ mở khi đơn có sản phẩm này được giao thành công."}</p>
-            </div>
-            {!user && <Link className="review-compose__login" to={`/dang-nhap?from=${encodeURIComponent(`/san-pham/${product.slug || product.id}`)}`}>Đăng nhập để đánh giá <span>→</span></Link>}
-            <div className="review-compose__field">
-              <span>Điểm của bạn</span>
-              <div className="review-score-picker" role="radiogroup" aria-label="Điểm đánh giá">
-                {[1, 2, 3, 4, 5].map((rating) => <button type="button" role="radio" aria-checked={reviewForm.rating === rating} aria-label={`${rating} sao`} className={reviewForm.rating >= rating ? "is-active" : ""} onClick={() => setReviewForm((current) => ({ ...current, rating }))} disabled={!reviewEligibility?.eligible} key={rating}>★</button>)}
-              </div>
-            </div>
-            {integrations.uploads && (
-              <label className="review-compose__upload">
-                <span>Ảnh thực tế <small>Tối đa 3 ảnh</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadReviewImage} disabled={uploadingReviewImage || reviewForm.images.length >= 3 || !reviewEligibility?.eligible} />
-                <i>{uploadingReviewImage ? "Đang tải ảnh…" : "+ Chọn ảnh từ thiết bị"}</i>
-              </label>
-            )}
-            {reviewForm.images.length > 0 && <div className="review-images">{reviewForm.images.map((image) => <SmartImage src={image} alt="Ảnh chờ gửi" key={image} />)}</div>}
-            <label className="review-compose__message">
-              <span>Cảm nhận <small>{reviewForm.content.length}/500</small></span>
-              <textarea required minLength={10} maxLength={500} rows={5} value={reviewForm.content} placeholder="Phom dáng, chất liệu và cảm giác khi mặc…" onChange={(event) => setReviewForm((current) => ({ ...current, content: event.target.value }))} disabled={!reviewEligibility?.eligible} />
-            </label>
-            <button className="review-compose__submit" type="submit" disabled={submittingReview || !user || !reviewEligibility?.eligible}>
-              {submittingReview ? "Đang gửi…" : "Gửi đánh giá"}<span>→</span>
-            </button>
-            <p className="review-compose__note">Đánh giá được công khai sau khi gửi và phải tuân thủ tiêu chuẩn cộng đồng của NOVAWEAR.</p>
-          </form>
         </div>
+        <p className="reviews-editorial__policy"><span>✓</span> Khu vực này chỉ hiển thị đánh giá đã xác minh. Khách hàng viết đánh giá từ chi tiết đơn hàng sau khi nhận hàng thành công.</p>
       </section>
 
       <section className="section section--cream related-products">

@@ -18,6 +18,10 @@ export default function AccountPage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [cancelReason, setCancelReason] = useState("");
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [reviewForm, setReviewForm] = useState({ rating: 5, content: "", images: [] });
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [uploadingReviewImage, setUploadingReviewImage] = useState(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!user) return;
@@ -79,6 +83,11 @@ export default function AccountPage() {
     setSearchParams(next, { replace: true });
   };
 
+  const closeReview = () => {
+    setReviewTarget(null);
+    setReviewForm({ rating: 5, content: "", images: [] });
+  };
+
   if (!user) return <Navigate to="/dang-nhap" state={{ from: "/tai-khoan" }} replace />;
 
   const saveProfile = async (event) => {
@@ -137,6 +146,68 @@ export default function AccountPage() {
     } finally {
       setUploadingAvatar(false);
       event.target.value = "";
+    }
+  };
+
+  const openReview = async (order, item) => {
+    if (order.status !== "delivered") {
+      notify("Bạn chỉ có thể đánh giá sau khi đơn hàng đã giao thành công.", "info");
+      return;
+    }
+    if (item.reviewStatus === "reviewed") {
+      notify("Bạn đã đánh giá sản phẩm này.", "info");
+      return;
+    }
+    try {
+      const result = await api.get(`/products/${item.productId}/review-eligibility`);
+      if (!result.data?.eligible) {
+        notify(result.data?.reviewed ? "Bạn đã đánh giá sản phẩm này." : "Sản phẩm chưa đủ điều kiện đánh giá.", "info");
+        return;
+      }
+      closeOrder();
+      setReviewTarget({ ...item, orderId: order.id, deliveredAt: order.updatedAt || order.createdAt });
+      setReviewForm({ rating: 5, content: "", images: [] });
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    }
+  };
+
+  const uploadReviewImage = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || reviewForm.images.length >= 3) return;
+    setUploadingReviewImage(true);
+    try {
+      const result = await api.upload("/uploads/review", file);
+      setReviewForm((current) => ({ ...current, images: [...current.images, result.data.url] }));
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setUploadingReviewImage(false);
+      event.target.value = "";
+    }
+  };
+
+  const submitReview = async (event) => {
+    event.preventDefault();
+    if (!reviewTarget) return;
+    setSubmittingReview(true);
+    try {
+      const result = await api.post(`/products/${reviewTarget.productId}/reviews`, reviewForm);
+      const markReviewed = (order) => ({
+        ...order,
+        items: order.items.map((item) => (
+          item.productId === reviewTarget.productId ? { ...item, reviewStatus: "reviewed" } : item
+        )),
+      });
+      setOrders((current) => current.map(markReviewed));
+      setSelectedOrder((current) => current ? markReviewed(current) : current);
+      notify(result.message);
+      closeReview();
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -278,10 +349,17 @@ export default function AccountPage() {
             {selectedOrder.shipment?.trackingNumber && <div className="order-shipment"><div><span>Đơn vị vận chuyển</span><strong>{selectedOrder.shipment.carrier}</strong></div><div><span>Mã vận đơn</span><strong>{selectedOrder.shipment.trackingNumber}</strong></div><div><span>Số lần giao</span><strong>{selectedOrder.deliveryAttempts || 1}</strong></div>{selectedOrder.shipment.estimatedDeliveryAt && <div><span>Dự kiến giao</span><strong>{formatDate(selectedOrder.shipment.estimatedDeliveryAt, { hour: "2-digit", minute: "2-digit" })}</strong></div>}</div>}
             <div className="order-detail-items">
               {selectedOrder.items.map((item, index) => (
-                <div key={`${item.productId}-${index}`}>
+                <div className="order-detail-item" key={`${item.productId}-${index}`}>
                   <SmartImage src={item.image} alt={item.name} />
                   <span><strong>{item.name}</strong><small>{item.color} · Size {item.size} · SL {item.quantity}</small></span>
-                  <b>{formatMoney(item.price * item.quantity)}</b>
+                  <div className="order-detail-item__actions">
+                    <b>{formatMoney(item.price * item.quantity)}</b>
+                    {selectedOrder.status === "delivered" && (
+                      item.reviewStatus === "reviewed"
+                        ? <span className="order-review-complete">✓ Đã đánh giá</span>
+                        : <button className="order-review-button" type="button" onClick={() => openReview(selectedOrder, item)}>Đánh giá sản phẩm →</button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -290,6 +368,59 @@ export default function AccountPage() {
               <div className="customer-cancel-order"><label className="field"><span>Lý do hủy đơn *</span><input value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} minLength={5} placeholder="Ví dụ: Tôi muốn thay đổi sản phẩm trong đơn" /></label><button className="button button--danger" disabled={cancelReason.trim().length < 5} type="button" onClick={() => cancelOrder(selectedOrder)}>Xác nhận hủy đơn hàng</button><small>Đơn đã thanh toán sẽ chuyển sang quy trình hoàn tiền, không thay đổi thủ công.</small></div>
             )}
           </div>
+        )}
+      </Modal>
+
+      <Modal open={Boolean(reviewTarget)} title="Đánh giá sản phẩm" onClose={closeReview} size="medium">
+        {reviewTarget && (
+          <form className="account-review-form" onSubmit={submitReview}>
+            <header className="account-review-product">
+              <SmartImage src={reviewTarget.image} alt={reviewTarget.name} />
+              <div><p>Đơn hàng {reviewTarget.orderId}</p><h3>{reviewTarget.name}</h3><span>{reviewTarget.color} · Size {reviewTarget.size}</span></div>
+            </header>
+            <div className="account-review-verified"><span>✓</span><p><strong>Đã xác minh mua hàng</strong>Đơn hàng đã giao thành công. Đánh giá của bạn sẽ được gắn nhãn người mua đã xác minh.</p></div>
+            <fieldset className="account-review-score">
+              <legend>Chất lượng sản phẩm</legend>
+              <div role="radiogroup" aria-label="Điểm đánh giá">
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={reviewForm.rating === rating}
+                    aria-label={`${rating} sao`}
+                    className={reviewForm.rating >= rating ? "is-active" : ""}
+                    onClick={() => setReviewForm((current) => ({ ...current, rating }))}
+                    key={rating}
+                  >
+                    ★
+                  </button>
+                ))}
+                <strong>{reviewForm.rating}/5</strong>
+              </div>
+            </fieldset>
+            <label className="account-review-message">
+              <span>Cảm nhận của bạn <small>{reviewForm.content.length}/500</small></span>
+              <textarea required minLength={10} maxLength={500} rows={5} value={reviewForm.content} placeholder="Chia sẻ về phom dáng, chất liệu và cảm giác khi mặc…" onChange={(event) => setReviewForm((current) => ({ ...current, content: event.target.value }))} />
+            </label>
+            {integrations.uploads && (
+              <label className="account-review-upload">
+                <span>Ảnh thực tế <small>Tối đa 3 ảnh</small></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadReviewImage} disabled={uploadingReviewImage || reviewForm.images.length >= 3} />
+                <i>{uploadingReviewImage ? "Đang tải ảnh…" : "+ Thêm ảnh sản phẩm thực tế"}</i>
+              </label>
+            )}
+            {reviewForm.images.length > 0 && (
+              <div className="account-review-images">
+                {reviewForm.images.map((image) => (
+                  <div key={image}><SmartImage src={image} alt="Ảnh đánh giá chờ gửi" /><button type="button" aria-label="Xóa ảnh" onClick={() => setReviewForm((current) => ({ ...current, images: current.images.filter((item) => item !== image) }))}>×</button></div>
+                ))}
+              </div>
+            )}
+            <button className="button button--dark account-review-submit" type="submit" disabled={submittingReview || reviewForm.content.trim().length < 10}>
+              {submittingReview ? "Đang gửi đánh giá…" : "Gửi đánh giá"} <span>→</span>
+            </button>
+            <p className="account-review-note">Mỗi sản phẩm chỉ được đánh giá một lần. Nội dung sẽ hiển thị công khai tại trang sản phẩm.</p>
+          </form>
         )}
       </Modal>
     </div>

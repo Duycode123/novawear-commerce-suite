@@ -866,6 +866,32 @@ test("order state machine synchronizes delivery, inventory and notifications", a
   assert.equal(Object.hasOwn(publicOrderData, "userId"), false);
   assert.equal(Object.hasOwn(publicOrderData, "customerId"), false);
   assert.equal(Object.hasOwn(publicOrderData, "stockReservedAt"), false);
+  assert.equal(publicOrderData.items[0].reviewStatus, "eligible");
+
+  const submittedReview = await request(`/products/${publicOrderData.items[0].productId}/reviews`, {
+    method: "POST",
+    headers: customerAuth,
+    body: JSON.stringify({
+      rating: 5,
+      content: "Sản phẩm đúng mô tả, phom vừa vặn và chất liệu mặc dễ chịu.",
+      images: [],
+    }),
+  });
+  assert.equal(submittedReview.response.status, 201);
+
+  const historyAfterReview = await request("/orders/my", { headers: customerAuth });
+  const reviewedOrder = historyAfterReview.body.data.find((item) => item.id === order.id);
+  assert.equal(reviewedOrder.items[0].reviewStatus, "reviewed");
+
+  const duplicateReview = await request(`/products/${publicOrderData.items[0].productId}/reviews`, {
+    method: "POST",
+    headers: customerAuth,
+    body: JSON.stringify({
+      rating: 4,
+      content: "Đánh giá trùng cần bị hệ thống từ chối để bảo đảm dữ liệu chính xác.",
+    }),
+  });
+  assert.equal(duplicateReview.response.status, 409);
 });
 
 test("cancellation and payment expiry restore stock exactly once", async () => {
@@ -1009,6 +1035,75 @@ test("customer self-service, coupon and support flows work end to end", async ()
     body: JSON.stringify({ email: "customer.test@novawear.vn" }),
   });
   assert.equal(newsletter.response.status, 200);
+});
+
+test("guest chat is private and supports a two-way operations conversation", async () => {
+  const created = await request("/chat/conversations", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Guest Chat",
+      email: "guest.chat@example.com",
+      phone: "0912345678",
+      message: "Shop tư vấn giúp tôi chọn size áo.",
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  assert.ok(created.body.accessToken);
+  assert.equal(created.body.data.channel, "chat");
+  assert.equal(created.body.data.messages.length, 1);
+
+  const conversationId = created.body.data.id;
+  const blockedWithoutSecret = await request(`/chat/conversations/${conversationId}`);
+  assert.equal(blockedWithoutSecret.response.status, 404);
+  const blockedWithWrongSecret = await request(`/chat/conversations/${conversationId}`, {
+    headers: { "X-Chat-Token": "wrong-secret" },
+  });
+  assert.equal(blockedWithWrongSecret.response.status, 404);
+
+  const guestHeaders = { "X-Chat-Token": created.body.accessToken };
+  const customerMessage = await request(`/chat/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: guestHeaders,
+    body: JSON.stringify({ message: "Tôi cao 1m70 và nặng 62kg." }),
+  });
+  assert.equal(customerMessage.response.status, 201);
+  assert.equal(customerMessage.body.data.messages.length, 2);
+
+  const adminToken = await loginAs("admin@novawear.vn", "Admin@123", "admin");
+  const adminHeaders = { Authorization: `Bearer ${adminToken}` };
+  const inbox = await request("/admin/contacts", { headers: adminHeaders });
+  assert.equal(inbox.response.status, 200);
+  const inboxConversation = inbox.body.data.find((item) => item.id === conversationId);
+  assert.ok(inboxConversation);
+  assert.equal(Object.hasOwn(inboxConversation, "guestTokenHash"), false);
+
+  const opened = await request(`/admin/contacts/${conversationId}`, { headers: adminHeaders });
+  assert.equal(opened.response.status, 200);
+  assert.equal(opened.body.data.operationsUnreadCount, 0);
+  const reply = await request(`/admin/contacts/${conversationId}/messages`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({
+      message: "Với số đo này, bạn có thể bắt đầu với size M và kiểm tra thêm bảng size.",
+    }),
+  });
+  assert.equal(reply.response.status, 201);
+  assert.equal(reply.body.data.status, "in_progress");
+  assert.equal(reply.body.data.customerUnreadCount, 1);
+
+  const unreadForGuest = await request(`/chat/conversations/${conversationId}`, {
+    headers: guestHeaders,
+  });
+  assert.equal(unreadForGuest.response.status, 200);
+  assert.equal(unreadForGuest.body.data.customerUnreadCount, 1);
+  assert.equal(unreadForGuest.body.data.messages.at(-1).sender, "operations");
+  assert.equal(unreadForGuest.body.data.messages.at(-1).senderName, "NOVAWEAR");
+
+  const markedRead = await request(`/chat/conversations/${conversationId}?markRead=true`, {
+    headers: guestHeaders,
+  });
+  assert.equal(markedRead.response.status, 200);
+  assert.equal(markedRead.body.data.customerUnreadCount, 0);
 });
 
 test("coupon schedule and usage limits are enforced and restored after cancellation", async () => {

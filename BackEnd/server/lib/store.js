@@ -215,6 +215,22 @@ const projectionSchemas = [
     created_at TIMESTAMPTZ,
     data JSONB NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS novawear_contacts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    customer_id TEXT,
+    channel TEXT NOT NULL,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    subject TEXT,
+    status TEXT,
+    assignee_id TEXT,
+    last_message_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    data JSONB NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS novawear_inventory_movements (
     id TEXT PRIMARY KEY,
     product_id TEXT,
@@ -375,6 +391,20 @@ const projectionQueries = [
       FROM jsonb_array_elements($1::jsonb) AS item`,
   },
   {
+    table: "novawear_contacts",
+    collection: "contacts",
+    sql: `INSERT INTO novawear_contacts
+      (id,user_id,customer_id,channel,name,email,phone,subject,status,assignee_id,last_message_at,created_at,updated_at,data)
+      SELECT item->>'id', item->>'userId', item->>'customerId',
+        COALESCE(item->>'channel','form'), item->>'name', item->>'email', item->>'phone',
+        item->>'subject', item->>'status', item->>'assigneeId',
+        NULLIF(item->>'lastMessageAt','')::timestamptz,
+        NULLIF(item->>'createdAt','')::timestamptz,
+        NULLIF(item->>'updatedAt','')::timestamptz,
+        item - 'guestTokenHash'
+      FROM jsonb_array_elements($1::jsonb) AS item`,
+  },
+  {
     table: "novawear_inventory_movements",
     collection: "inventoryMovements",
     sql: `INSERT INTO novawear_inventory_movements
@@ -420,6 +450,8 @@ async function ensureProjectionSchema(pool) {
   await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS novawear_coupons_code_idx ON novawear_coupons (UPPER(code))");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_notifications_audience_created_idx ON novawear_notifications (audience, created_at DESC)");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_notifications_user_idx ON novawear_notifications (user_id, read_at)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_contacts_status_updated_idx ON novawear_contacts (status, last_message_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_contacts_assignee_idx ON novawear_contacts (assignee_id, last_message_at DESC)");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_inventory_order_idx ON novawear_inventory_movements (order_id, created_at DESC)");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_inventory_return_idx ON novawear_inventory_movements (return_id, created_at DESC)");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_payments_order_idx ON novawear_payment_transactions (order_id, received_at DESC)");

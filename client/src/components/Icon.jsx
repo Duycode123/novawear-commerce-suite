@@ -8,6 +8,8 @@ const drawings = {
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" /><path d="M10 21h4" /></>,
+  message: <><path d="M4 5.5h16v11H9l-5 4v-15Z" /><path d="M8 10h8M8 13h5" /></>,
+  send: <><path d="m3 11 18-8-7.5 18-2.2-7.3L3 11Z" /><path d="M11.3 13.7 21 3" /></>,
 };
 
 export default function Icon({ name, size = 20, filled = false, className = "" }) {

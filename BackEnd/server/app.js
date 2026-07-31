@@ -267,6 +267,7 @@ function ensureDataShape(store) {
   const collections = [
     "returns",
     "notifications",
+    "contacts",
     "suppliers",
     "inventoryMovements",
     "tasks",
@@ -318,6 +319,29 @@ function ensureDataShape(store) {
   });
   store.data.notifications.forEach((notification) => {
     if (!Array.isArray(notification.readBy)) notification.readBy = [];
+  });
+  store.data.contacts.forEach((contact, contactIndex) => {
+    contact.channel = contact.channel || "form";
+    contact.status = ["new", "in_progress", "resolved"].includes(contact.status)
+      ? contact.status
+      : "new";
+    contact.messages = Array.isArray(contact.messages) && contact.messages.length
+      ? contact.messages
+      : (contact.message ? [{
+        id: `legacy-${contact.id || contactIndex + 1}-1`,
+        sender: "customer",
+        senderId: contact.userId || null,
+        senderName: contact.name || "Khách hàng",
+        body: String(contact.message),
+        createdAt: contact.createdAt || new Date().toISOString(),
+      }] : []);
+    contact.lastMessageAt = contact.lastMessageAt
+      || contact.messages[contact.messages.length - 1]?.createdAt
+      || contact.updatedAt
+      || contact.createdAt
+      || new Date().toISOString();
+    contact.operationsUnreadCount = Math.max(0, Number(contact.operationsUnreadCount || 0));
+    contact.customerUnreadCount = Math.max(0, Number(contact.customerUnreadCount || 0));
   });
   store.data.returns.forEach((returnRequest) => {
     if (!Number.isFinite(Number(returnRequest.version)) || Number(returnRequest.version) < 1) {
@@ -468,6 +492,7 @@ function createNotification(store, details) {
     customerId: details.customerId || null,
     orderId: details.orderId || null,
     returnId: details.returnId || null,
+    contactId: details.contactId || null,
     type: details.type || "order_status",
     title: String(details.title || "Đơn hàng được cập nhật").slice(0, 160),
     message: String(details.message || "").slice(0, 500),
@@ -932,6 +957,10 @@ function createApp(options = {}) {
         const returnRequest = store.data.returns.find((item) => item.id === notification.returnId);
         return !returnRequest?.assigneeId || returnRequest.assigneeId === user.employeeId;
       }
+      if (notification.contactId) {
+        const contact = store.data.contacts.find((item) => item.id === notification.contactId);
+        return !contact?.assigneeId || contact.assigneeId === user.id;
+      }
       if (notification.orderId) {
         const order = store.data.orders.find((item) => item.id === notification.orderId);
         return !order?.assigneeId || order.assigneeId === user.employeeId;
@@ -1002,6 +1031,78 @@ function createApp(options = {}) {
 
   function temporaryKey(value) {
     return crypto.createHmac("sha256", jwtSecret).update(String(value || "")).digest("hex");
+  }
+
+  function publicChatConversation(contact) {
+    const {
+      guestTokenHash: _guestTokenHash,
+      operationsUnreadCount: _operationsUnreadCount,
+      assigneeId: _assigneeId,
+      ...safeContact
+    } = contact;
+    return {
+      ...safeContact,
+      messages: (contact.messages || []).map((message) => ({
+        id: message.id,
+        sender: message.sender,
+        senderName: message.sender === "operations"
+          ? "NOVAWEAR"
+          : (message.senderName || contact.name || "Khách hàng"),
+        body: message.body,
+        createdAt: message.createdAt,
+      })),
+    };
+  }
+
+  function operationsChatConversation(contact) {
+    const { guestTokenHash: _guestTokenHash, ...safeContact } = contact;
+    const assignee = store.data.users.find((user) => user.id === contact.assigneeId);
+    return {
+      ...safeContact,
+      assigneeName: assignee?.name || contact.assigneeName || null,
+    };
+  }
+
+  function chatConversationForCustomer(req) {
+    const contact = store.data.contacts.find((item) => (
+      item.id === req.params.id && item.channel === "chat"
+    ));
+    if (!contact) return null;
+    const ownsAuthenticatedConversation = req.user?.role === "customer"
+      && (
+        contact.userId === req.user.id
+        || (contact.customerId && contact.customerId === req.user.customerId)
+      );
+    if (ownsAuthenticatedConversation) return contact;
+    const suppliedToken = String(req.headers["x-chat-token"] || "");
+    if (
+      suppliedToken
+      && contact.guestTokenHash
+      && safeTextEqual(temporaryKey(suppliedToken), contact.guestTokenHash)
+    ) {
+      return contact;
+    }
+    return null;
+  }
+
+  function appendChatMessage(contact, details) {
+    const createdAt = details.createdAt || new Date().toISOString();
+    const message = {
+      id: `chat-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
+      sender: details.sender,
+      senderId: details.senderId || null,
+      senderName: details.senderName || (
+        details.sender === "operations" ? "NOVAWEAR" : contact.name || "Khách hàng"
+      ),
+      body: String(details.body || "").trim().slice(0, 1000),
+      createdAt,
+    };
+    contact.messages = Array.isArray(contact.messages) ? contact.messages : [];
+    contact.messages.push(message);
+    contact.message = message.body;
+    contact.lastMessageAt = createdAt;
+    contact.updatedAt = createdAt;
+    return message;
   }
 
   function issueOperationsHandoff(user) {
@@ -1206,6 +1307,18 @@ function createApp(options = {}) {
   const limitOAuthStart = fixedWindowLimit("oauth-start", 30, 15 * 60);
   const limitOrderTracking = fixedWindowLimit("order-tracking", 60, 15 * 60);
   const limitPublicForms = fixedWindowLimit("public-forms", 20, 15 * 60);
+  const limitChatReads = fixedWindowLimit(
+    "chat-reads",
+    300,
+    15 * 60,
+    (req) => req.user?.id || req.ip || "unknown",
+  );
+  const limitChatMessages = fixedWindowLimit(
+    "chat-messages",
+    40,
+    15 * 60,
+    (req) => req.user?.id || req.ip || "unknown",
+  );
   const limitOrderCreation = fixedWindowLimit(
     "order-creation",
     12,
@@ -2811,7 +2924,26 @@ function createApp(options = {}) {
     const orders = store.data.orders
       .filter((item) => item.userId === req.user.id || item.customerId === req.user.customerId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    res.json({ data: orders.map(publicOrder) });
+    const reviewedProductIds = new Set(
+      store.data.reviews
+        .filter((item) => item.userId === req.user.id)
+        .map((item) => item.productId),
+    );
+    const data = orders.map((order) => {
+      const safeOrder = publicOrder(order);
+      return {
+        ...safeOrder,
+        items: safeOrder.items.map((item) => ({
+          ...item,
+          reviewStatus: order.status !== "delivered"
+            ? "unavailable"
+            : reviewedProductIds.has(item.productId)
+              ? "reviewed"
+              : "eligible",
+        })),
+      };
+    });
+    res.json({ data });
   });
 
   app.get("/api/orders/track/:trackingCode", limitOrderTracking, (req, res) => {
@@ -3026,20 +3158,171 @@ function createApp(options = {}) {
       || message.length < 10) {
       return res.status(400).json({ message: "Vui lòng nhập đầy đủ họ tên, email và nội dung." });
     }
+    const createdAt = new Date().toISOString();
     const contact = {
       id: store.nextId("contacts", "msg-"),
+      channel: "form",
       name,
       email,
       phone,
       subject,
       message: message.slice(0, 2000),
       status: "new",
-      createdAt: new Date().toISOString(),
+      messages: [{
+        id: `chat-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
+        sender: "customer",
+        senderId: null,
+        senderName: name,
+        body: message.slice(0, 2000),
+        createdAt,
+      }],
+      operationsUnreadCount: 1,
+      customerUnreadCount: 0,
+      lastMessageAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
     };
     store.data.contacts.unshift(contact);
+    createNotification(store, {
+      audience: "operations",
+      contactId: contact.id,
+      type: "support_request",
+      title: `Yêu cầu hỗ trợ mới · ${name}`,
+      message: contact.message,
+      href: `/support?open=${encodeURIComponent(contact.id)}`,
+      createdAt,
+    });
     store.save();
     return res.status(201).json({ message: "NOVAWEAR đã nhận được lời nhắn của bạn." });
   });
+
+  app.post(
+    "/api/chat/conversations",
+    optionalAuth,
+    limitChatMessages,
+    (req, res) => {
+      const customerUser = req.user?.role === "customer" ? req.user : null;
+      const name = String(customerUser?.name || req.body.name || "").trim().slice(0, 100);
+      const email = normalizeText(customerUser?.email || req.body.email);
+      const phone = String(customerUser?.phone || req.body.phone || "").trim();
+      const body = String(req.body.message || "").trim();
+      if (
+        name.length < 2
+        || !emailPattern.test(email)
+        || (phone && !phonePattern.test(phone))
+        || body.length < 2
+        || body.length > 1000
+      ) {
+        return res.status(400).json({
+          message: "Vui lòng nhập họ tên, email hợp lệ và nội dung từ 2 đến 1.000 ký tự.",
+        });
+      }
+
+      const guestToken = customerUser ? null : crypto.randomBytes(32).toString("base64url");
+      const createdAt = new Date().toISOString();
+      const contact = {
+        id: store.nextId("contacts", "chat-"),
+        channel: "chat",
+        userId: customerUser?.id || null,
+        customerId: customerUser?.customerId || null,
+        guestTokenHash: guestToken ? temporaryKey(guestToken) : null,
+        name,
+        email,
+        phone,
+        subject: "Trò chuyện trực tuyến",
+        message: body,
+        status: "new",
+        messages: [],
+        assigneeId: null,
+        operationsUnreadCount: 1,
+        customerUnreadCount: 0,
+        lastMessageAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+      };
+      appendChatMessage(contact, {
+        sender: "customer",
+        senderId: customerUser?.id || null,
+        senderName: name,
+        body,
+        createdAt,
+      });
+      store.data.contacts.unshift(contact);
+      createNotification(store, {
+        audience: "operations",
+        contactId: contact.id,
+        type: "chat_message",
+        title: `Tin nhắn mới · ${name}`,
+        message: body,
+        href: `/support?open=${encodeURIComponent(contact.id)}`,
+        createdAt,
+      });
+      store.audit("create", "chat_conversation", contact.id, customerUser || { name });
+      store.save();
+      return res.status(201).json({
+        message: "Đã kết nối cuộc trò chuyện với NOVAWEAR.",
+        data: publicChatConversation(contact),
+        ...(guestToken ? { accessToken: guestToken } : {}),
+      });
+    },
+  );
+
+  app.get(
+    "/api/chat/conversations/:id",
+    optionalAuth,
+    limitChatReads,
+    (req, res) => {
+      const contact = chatConversationForCustomer(req);
+      if (!contact) return notFound(res, "Cuộc trò chuyện");
+      if (req.query.markRead === "true" && Number(contact.customerUnreadCount || 0) > 0) {
+        contact.customerUnreadCount = 0;
+        contact.customerReadAt = new Date().toISOString();
+        store.save();
+      }
+      return res.json({ data: publicChatConversation(contact) });
+    },
+  );
+
+  app.post(
+    "/api/chat/conversations/:id/messages",
+    optionalAuth,
+    limitChatMessages,
+    (req, res) => {
+      const contact = chatConversationForCustomer(req);
+      if (!contact) return notFound(res, "Cuộc trò chuyện");
+      const body = String(req.body.message || "").trim();
+      if (body.length < 1 || body.length > 1000) {
+        return res.status(400).json({ message: "Tin nhắn cần từ 1 đến 1.000 ký tự." });
+      }
+      const createdAt = new Date().toISOString();
+      const message = appendChatMessage(contact, {
+        sender: "customer",
+        senderId: req.user?.id || null,
+        senderName: contact.name,
+        body,
+        createdAt,
+      });
+      if (contact.status === "resolved") contact.status = "new";
+      contact.operationsUnreadCount = Number(contact.operationsUnreadCount || 0) + 1;
+      contact.customerUnreadCount = 0;
+      createNotification(store, {
+        audience: "operations",
+        contactId: contact.id,
+        type: "chat_message",
+        title: `Tin nhắn mới · ${contact.name}`,
+        message: body,
+        href: `/support?open=${encodeURIComponent(contact.id)}`,
+        createdAt,
+      });
+      store.audit("message", "chat_conversation", contact.id, req.user || { name: contact.name });
+      store.save();
+      return res.status(201).json({
+        message: "Đã gửi tin nhắn.",
+        data: publicChatConversation(contact),
+        sentMessageId: message.id,
+      });
+    },
+  );
 
   app.post("/api/newsletter", limitPublicForms, (req, res) => {
     const email = normalizeText(req.body.email);
@@ -3983,7 +4266,28 @@ function createApp(options = {}) {
     if (req.user.role === "staff") {
       contacts = contacts.filter((item) => !item.assigneeId || item.assigneeId === req.user.id);
     }
-    res.json({ data: contacts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) });
+    return res.json({
+      data: contacts
+        .sort((a, b) => (
+          new Date(b.lastMessageAt || b.updatedAt || b.createdAt)
+          - new Date(a.lastMessageAt || a.updatedAt || a.createdAt)
+        ))
+        .map(operationsChatConversation),
+    });
+  });
+
+  admin.get("/contacts/:id", (req, res) => {
+    const contact = store.data.contacts.find((item) => item.id === req.params.id);
+    if (!contact) return notFound(res, "Yêu cầu hỗ trợ");
+    if (req.user.role === "staff" && contact.assigneeId && contact.assigneeId !== req.user.id) {
+      return res.status(403).json({ message: "Yêu cầu hỗ trợ đang được một nhân viên khác phụ trách." });
+    }
+    if (Number(contact.operationsUnreadCount || 0) > 0) {
+      contact.operationsUnreadCount = 0;
+      contact.operationsReadAt = new Date().toISOString();
+      store.save();
+    }
+    return res.json({ data: operationsChatConversation(contact) });
   });
 
   admin.patch("/contacts/:id", (req, res) => {
@@ -3997,10 +4301,66 @@ function createApp(options = {}) {
     }
     contact.status = req.body.status;
     contact.assigneeId = req.user.id;
+    contact.assigneeName = req.user.name;
+    contact.operationsUnreadCount = 0;
     contact.updatedAt = new Date().toISOString();
     store.audit("update", "contact", contact.id, req.user);
     store.save();
-    return res.json({ message: "Đã cập nhật yêu cầu hỗ trợ.", data: contact });
+    return res.json({
+      message: "Đã cập nhật yêu cầu hỗ trợ.",
+      data: operationsChatConversation(contact),
+    });
+  });
+
+  admin.post("/contacts/:id/messages", (req, res) => {
+    const contact = store.data.contacts.find((item) => item.id === req.params.id);
+    if (!contact) return notFound(res, "Yêu cầu hỗ trợ");
+    if (contact.channel !== "chat") {
+      return res.status(409).json({
+        message: "Yêu cầu từ biểu mẫu cần được trả lời qua email hoặc điện thoại.",
+      });
+    }
+    if (req.user.role === "staff" && contact.assigneeId && contact.assigneeId !== req.user.id) {
+      return res.status(403).json({ message: "Cuộc trò chuyện đang được một nhân viên khác phụ trách." });
+    }
+    const body = String(req.body.message || "").trim();
+    if (body.length < 1 || body.length > 1000) {
+      return res.status(400).json({ message: "Tin nhắn cần từ 1 đến 1.000 ký tự." });
+    }
+    const createdAt = new Date().toISOString();
+    const message = appendChatMessage(contact, {
+      sender: "operations",
+      senderId: req.user.id,
+      senderName: req.user.name,
+      body,
+      createdAt,
+    });
+    contact.assigneeId = contact.assigneeId || req.user.id;
+    contact.assigneeName = contact.assigneeName || req.user.name;
+    contact.status = contact.status === "resolved" ? "in_progress" : contact.status;
+    if (contact.status === "new") contact.status = "in_progress";
+    contact.operationsUnreadCount = 0;
+    contact.customerUnreadCount = Number(contact.customerUnreadCount || 0) + 1;
+    if (contact.userId || contact.customerId) {
+      createNotification(store, {
+        audience: "customer",
+        userId: contact.userId,
+        customerId: contact.customerId,
+        contactId: contact.id,
+        type: "chat_reply",
+        title: "NOVAWEAR đã trả lời tin nhắn",
+        message: body,
+        href: "/?chat=open",
+        createdAt,
+      });
+    }
+    store.audit("reply", "chat_conversation", contact.id, req.user);
+    store.save();
+    return res.status(201).json({
+      message: "Đã gửi trả lời cho khách hàng.",
+      data: operationsChatConversation(contact),
+      sentMessageId: message.id,
+    });
   });
 
   admin.get("/returns", (req, res) => {
