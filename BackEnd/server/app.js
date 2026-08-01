@@ -2179,27 +2179,59 @@ function createApp(options = {}) {
     const user = store.data.users.find((item) => item.id === req.user.id);
     const name = String(req.body.name || user.name).trim();
     const phone = String(req.body.phone || user.phone).trim();
-    const address = String(req.body.address || "").trim();
+    const addressProvided = req.body.address !== undefined;
+    const address = addressProvided ? String(req.body.address || "").trim() : null;
 
     if (name.length < 2) return res.status(400).json({ message: "Họ tên chưa hợp lệ." });
     if (!phonePattern.test(phone)) return res.status(400).json({ message: "Số điện thoại chưa hợp lệ." });
 
+    const customer = user.customerId
+      ? store.data.customers.find((item) => item.id === user.customerId)
+      : null;
+    const employee = user.employeeId
+      ? store.data.employees.find((item) => item.id === user.employeeId)
+      : null;
+    const addressChanged = Boolean(customer && addressProvided
+      && normalizeText(address) !== normalizeText(customer.address));
+    if (addressChanged && address) {
+      const confirmation = req.body.addressConfirmation;
+      if (!confirmation?.confirmed
+        || normalizeText(confirmation.address) !== normalizeText(address)) {
+        return res.status(400).json({
+          message: "Vui lòng kiểm tra địa chỉ mới trước khi lưu vào hồ sơ.",
+          code: "PROFILE_ADDRESS_CONFIRMATION_REQUIRED",
+        });
+      }
+    }
+
     user.name = name;
     user.phone = phone;
-    if (user.customerId) {
-      const customer = store.data.customers.find((item) => item.id === user.customerId);
-      if (customer) Object.assign(customer, { name, phone, address: address || customer.address });
+    if (customer) {
+      if (addressChanged && address) {
+        customer.addressVerifiedAt = new Date().toISOString();
+        customer.addressVerificationMethod = "customer_map_review";
+      } else if (addressChanged) {
+        customer.addressVerifiedAt = null;
+        customer.addressVerificationMethod = null;
+      }
+      Object.assign(customer, { name, phone });
+      if (addressProvided) customer.address = address;
     }
-    if (user.employeeId) {
-      const employee = store.data.employees.find((item) => item.id === user.employeeId);
-      if (employee) Object.assign(employee, { name, phone, address: address || employee.address });
+    if (employee) {
+      Object.assign(employee, { name, phone });
+      if (addressProvided) employee.address = address;
     }
     if (user.role === "customer") {
       mergeChatConversationsForUser(store, user);
     }
     store.audit("update", "user", user.id, req.user);
     store.save();
-    return res.json({ message: "Đã cập nhật hồ sơ.", user: sanitizeUser(user) });
+    return res.json({
+      message: "Đã cập nhật hồ sơ.",
+      user: sanitizeUser(user),
+      customer,
+      employee,
+    });
   });
 
   app.put("/api/auth/password", requireAuth, (req, res) => {
@@ -2876,18 +2908,33 @@ function createApp(options = {}) {
     if (req.user?.role === "customer") {
       customer.email = normalizeText(req.user.email);
     }
+    const savedCustomerRecord = req.user?.customerId
+      ? store.data.customers.find((item) => item.id === req.user.customerId)
+      : null;
+    const requestedAddressSource = String(req.body.addressSource || "").trim().toLowerCase();
+    const addressSource = !req.user
+      ? "guest"
+      : requestedAddressSource === "custom"
+        ? "custom"
+        : requestedAddressSource === "saved"
+          ? "saved"
+          : (savedCustomerRecord?.address
+            && normalizeText(savedCustomerRecord.address) === normalizeText(customer.address)
+            ? "saved"
+            : "custom");
+    if (addressSource === "saved") {
+      if (!savedCustomerRecord?.address) {
+        return res.status(400).json({
+          message: "Tài khoản chưa có địa chỉ mặc định. Vui lòng nhập địa chỉ nhận hàng.",
+          code: "SAVED_ADDRESS_REQUIRED",
+        });
+      }
+      customer.address = savedCustomerRecord.address;
+    }
     const validationError = validateCustomer(customer);
     if (validationError) return res.status(400).json({ message: validationError });
     if (!customer.email) {
       return res.status(400).json({ message: "Email nhận xác nhận đơn hàng là bắt buộc." });
-    }
-    const addressConfirmation = req.body.addressConfirmation;
-    if (!addressConfirmation?.confirmed
-      || normalizeText(addressConfirmation.address) !== normalizeText(customer.address)) {
-      return res.status(400).json({
-        message: "Vui lòng kiểm tra và xác nhận đúng địa chỉ nhận hàng trên bản đồ.",
-        code: "ADDRESS_CONFIRMATION_REQUIRED",
-      });
     }
     const checkoutRequestId = String(req.body.requestId || "").trim();
     if (checkoutRequestId && !/^[A-Za-z0-9_-]{16,128}$/.test(checkoutRequestId)) {
@@ -2984,10 +3031,7 @@ function createApp(options = {}) {
       });
     }
 
-    let customerRecord = null;
-    if (req.user?.customerId) {
-      customerRecord = store.data.customers.find((item) => item.id === req.user.customerId);
-    }
+    let customerRecord = savedCustomerRecord;
     if (!customerRecord && customer.email) {
       customerRecord = store.data.customers.find((item) => normalizeText(item.email) === customer.email);
     }
@@ -3052,8 +3096,13 @@ function createApp(options = {}) {
         createdAt,
       };
       store.data.customers.push(customerRecord);
-    } else {
-      Object.assign(customerRecord, customer);
+    } else if (!req.user && !store.data.users.some((item) => item.customerId === customerRecord.id)) {
+      Object.assign(customerRecord, {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        address: customer.address,
+      });
     }
     customerRecord.tier = membership.tier;
 
@@ -3087,9 +3136,14 @@ function createApp(options = {}) {
       addressConfirmation: {
         address: customer.address,
         confirmed: true,
-        method: "customer_map_review",
+        method: addressSource === "saved"
+          ? "saved_profile_address"
+          : addressSource === "guest"
+            ? "guest_checkout_entry"
+            : "checkout_override",
         confirmedAt: createdAt,
       },
+      deliveryAddressSource: addressSource,
       checkoutRequestId: checkoutRequestId || null,
       guestCheckoutJti,
       assigneeId: null,

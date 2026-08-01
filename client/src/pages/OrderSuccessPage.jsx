@@ -118,8 +118,40 @@ export default function OrderSuccessPage() {
   if (!order) return <Navigate to="/" replace />;
 
   const paymentFailed = ["expired", "cancelled", "failed"].includes(paymentStatus);
+  const paymentPaid = paymentStatus === "paid";
   const paymentPending = order.paymentMethod === "bank" && paymentStatus !== "paid" && !paymentFailed;
   const transferContent = order.paymentCode || order.trackingCode || String(order.id).replace(/[^a-zA-Z0-9]/g, "");
+  const successContent = paymentPending
+    ? {
+      eyebrow: "Đơn hàng đã tạo · Chờ thanh toán",
+      title: <>Thanh toán đơn hàng.<br />Quét QR để tiếp tục.</>,
+      description: "Trạng thái chỉ chuyển sang “Đã thanh toán” sau khi SePay xác nhận tiền đã về tài khoản.",
+      symbol: "₫",
+      modifier: "success-mark--pending",
+    }
+    : paymentPaid
+      ? {
+        eyebrow: "Thanh toán thành công",
+        title: <>Đơn hàng đã được xác nhận.<br />Cảm ơn bạn!</>,
+        description: "Chúng tôi đang chuẩn bị đơn và sẽ cập nhật từng chặng giao hàng trong tài khoản của bạn.",
+        symbol: "✓",
+        modifier: "success-mark--paid",
+      }
+      : paymentFailed
+        ? {
+          eyebrow: "Thanh toán chưa hoàn tất",
+          title: <>Phiên thanh toán<br />đã kết thúc.</>,
+          description: "Đơn không còn giữ hàng. Bạn có thể quay lại cửa hàng và tạo một đơn mới.",
+          symbol: "!",
+          modifier: "success-mark--failed",
+        }
+        : {
+          eyebrow: "Đặt hàng thành công",
+          title: <>Đơn hàng đã được ghi nhận.<br />Cảm ơn bạn!</>,
+          description: "Chúng tôi đang chuẩn bị đơn và sẽ cập nhật từng chặng giao hàng trong tài khoản của bạn.",
+          symbol: "✓",
+          modifier: "success-mark--paid",
+        };
   const copy = async (value, key) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -132,10 +164,10 @@ export default function OrderSuccessPage() {
 
   return (
     <div className="success-page">
-      <div className="success-mark"><span>✓</span></div>
-      <p className="eyebrow">{paymentPending ? "Payment pending" : "Order confirmed"}</p>
-      <h1>{paymentPending ? <>Hoàn tất thanh toán.<br />Đơn hàng đang được giữ cho bạn.</> : <>Cảm ơn bạn.<br />Đơn hàng đã được ghi nhận!</>}</h1>
-      <p>{paymentPending ? "Quét mã QR bên dưới và chuyển đúng nội dung để hệ thống tự động xác nhận." : "Chúng tôi sẽ liên hệ xác nhận và chuẩn bị đơn trong thời gian sớm nhất."}</p>
+      <div className={`success-mark ${successContent.modifier}`}><span>{successContent.symbol}</span></div>
+      <p className="eyebrow">{successContent.eyebrow}</p>
+      <h1>{successContent.title}</h1>
+      <p>{successContent.description}</p>
       <div className="success-order">
         <div><span>Mã đơn hàng</span><strong>{order.id}</strong></div>
         <div><span>Mã tra cứu</span><strong>{order.trackingCode}</strong></div>
@@ -145,7 +177,7 @@ export default function OrderSuccessPage() {
       {order.paymentMethod !== "cod" && (
         <section className={`sepay-payment-card ${paymentStatus === "paid" ? "sepay-payment-card--paid" : ""} ${paymentFailed ? "sepay-payment-card--failed" : ""}`}>
           <div className="sepay-payment-state" role="status">
-            <span>{paymentStatus === "paid" ? "✓" : paymentFailed ? "!" : ""}</span>
+            <span>{paymentStatus === "paid" ? "✓" : paymentFailed ? "!" : "₫"}</span>
             <div>
               <strong>{PAYMENT_STATUS[paymentStatus]?.label || "Đang chờ thanh toán"}</strong>
               <small>{paymentStatus === "paid" ? "Đơn hàng đã được tự động xác nhận." : paymentFailed ? "Đơn không còn nhận chuyển khoản. Tồn kho đã được giải phóng; vui lòng đặt đơn mới." : `Trang tự cập nhật khi SePay báo tiền về${secondsLeft !== null ? ` · Còn ${formatCountdown(secondsLeft)}` : ""}.`}</small>

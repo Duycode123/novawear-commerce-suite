@@ -74,11 +74,13 @@ describe("CheckoutPage recipient information", () => {
       },
     });
 
-    const { container, getByText } = renderCheckout(user);
+    const { container, getByText, getByRole } = renderCheckout(user);
 
     await waitFor(() => {
-      expect(container.querySelector('input[name="address"]')).toHaveValue("12 Trần Duy Hưng, Cầu Giấy, Hà Nội");
+      expect(getByRole("radio", { name: /Địa chỉ đã lưu/i })).toBeChecked();
     });
+    expect(getByText("12 Trần Duy Hưng, Cầu Giấy, Hà Nội")).toBeInTheDocument();
+    expect(container.querySelector('input[name="address"]')).not.toBeInTheDocument();
     expect(container.querySelector('input[name="name"]')).toHaveValue("Nguyễn Duy");
     expect(container.querySelector('input[name="phone"]')).toHaveValue("0934457124");
     expect(container.querySelector('input[name="email"]')).toHaveValue("duy@example.com");
@@ -124,7 +126,7 @@ describe("CheckoutPage recipient information", () => {
     expect(addressInput).toHaveValue("Địa chỉ dùng riêng cho đơn này");
   });
 
-  test("requires map review and sends the confirmed address with an authenticated order", async () => {
+  test("uses the saved address immediately without another map review", async () => {
     const user = {
       id: "user-1",
       name: "Nguyễn Duy",
@@ -140,17 +142,43 @@ describe("CheckoutPage recipient information", () => {
     api.post.mockResolvedValue({ message: "Đã tạo đơn.", data: { id: "ORD-TEST" } });
     const view = renderCheckout(user);
 
-    await waitFor(() => expect(view.container.querySelector('input[name="address"]')).toHaveValue(address));
-    fireEvent.click(view.getByRole("button", { name: "Kiểm tra trên bản đồ" }));
-    fireEvent.click(view.getByRole("button", { name: "Đúng địa chỉ này" }));
-    expect(view.getByRole("button", { name: "✓ Đã xác nhận trên bản đồ" })).toBeInTheDocument();
+    await waitFor(() => expect(view.getByRole("radio", { name: /Địa chỉ đã lưu/i })).toBeChecked());
 
     const submitButton = view.container.querySelector('button[type="submit"]');
     fireEvent.submit(view.container.querySelector("form"));
-    await waitFor(() => expect(submitButton).not.toBeDisabled());
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+    expect(submitButton).not.toBeDisabled();
     expect(api.post).toHaveBeenCalledWith("/orders", expect.objectContaining({
-      addressConfirmation: { address, confirmed: true },
+      customer: expect.objectContaining({ address }),
+      addressSource: "saved",
     }));
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty("addressConfirmation");
+  });
+
+  test("lets a signed-in customer use another address for only this order", async () => {
+    const user = {
+      id: "user-1",
+      name: "Nguyễn Duy",
+      email: "duy@example.com",
+      phone: "0934457124",
+    };
+    const savedAddress = "01 Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh";
+    const customAddress = "25 Trần Hưng Đạo, Hoàn Kiếm, Hà Nội";
+    api.get.mockResolvedValue({ user, customer: { phone: user.phone, address: savedAddress } });
+    api.post.mockResolvedValue({ message: "Đã tạo đơn.", data: { id: "ORD-CUSTOM" } });
+    const view = renderCheckout(user);
+
+    await waitFor(() => expect(view.getByRole("radio", { name: /Địa chỉ đã lưu/i })).toBeChecked());
+    fireEvent.click(view.getByRole("radio", { name: /Giao tới địa chỉ khác/i }));
+    const addressInput = view.container.querySelector('input[name="address"]');
+    fireEvent.change(addressInput, { target: { name: "address", value: customAddress } });
+    fireEvent.submit(view.container.querySelector("form"));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/orders", expect.objectContaining({
+      customer: expect.objectContaining({ address: customAddress }),
+      addressSource: "custom",
+    })));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
   });
 
   test("opens the SePay handoff before clearing the cart", async () => {
@@ -174,9 +202,7 @@ describe("CheckoutPage recipient information", () => {
     api.post.mockResolvedValue({ message: "Đã tạo đơn.", data: order });
     const view = renderCheckout(user, { sepay: true });
 
-    await waitFor(() => expect(view.container.querySelector('input[name="address"]')).toHaveValue(address));
-    fireEvent.click(view.getByRole("button", { name: "Kiểm tra trên bản đồ" }));
-    fireEvent.click(view.getByRole("button", { name: "Đúng địa chỉ này" }));
+    await waitFor(() => expect(view.getByRole("radio", { name: /Địa chỉ đã lưu/i })).toBeChecked());
     fireEvent.click(view.getByRole("radio", { name: /Chuyển khoản qua SePay/i }));
     fireEvent.submit(view.container.querySelector("form"));
 

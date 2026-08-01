@@ -546,7 +546,7 @@ test("customer can sign in, place an order and read order history", async () => 
   assert.ok(history.body.data.some((item) => item.id === order.body.data.id));
 });
 
-test("membership benefits are calculated and checkout requires the exact reviewed address", async () => {
+test("membership benefits are calculated and checkout reuses or overrides the saved address", async () => {
   const tiers = await request("/membership/tiers");
   assert.equal(tiers.response.status, 200);
   assert.deepEqual(tiers.body.data.map((item) => item.key), ["Member", "Silver", "Gold"]);
@@ -562,7 +562,7 @@ test("membership benefits are calculated and checkout requires the exact reviewe
   assert.equal(profile.body.membership.discountPercent, 0);
   assert.ok(Array.isArray(profile.body.membership.benefits));
 
-  const blocked = await request("/orders", {
+  const savedAddressOrder = await request("/orders", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
@@ -570,19 +570,90 @@ test("membership benefits are calculated and checkout requires the exact reviewe
         name: "Nguyễn Minh Anh",
         email: "demo@novawear.vn",
         phone: "0901234567",
-        address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
+        address: "Địa chỉ bị sửa ở phía trình duyệt",
       },
-      addressConfirmation: {
-        confirmed: true,
-        address: "Một địa chỉ khác chưa được xem trên bản đồ",
-      },
+      addressSource: "saved",
       items: [{ productId: "prd-001", quantity: 1, size: "M", color: "Than chì" }],
       paymentMethod: "cod",
-      requestId: "customer-checkout-address-review-0001",
+      requestId: "customer-checkout-saved-address-0001",
     }),
   });
+  assert.equal(savedAddressOrder.response.status, 201);
+  assert.equal(savedAddressOrder.body.data.customer.address, profile.body.customer.address);
+  assert.equal(savedAddressOrder.body.data.deliveryAddressSource, "saved");
+
+  const customAddress = "25 Trần Hưng Đạo, Hoàn Kiếm, Hà Nội";
+  const customAddressOrder = await request("/orders", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      customer: {
+        name: "Người nhận khác",
+        email: "demo@novawear.vn",
+        phone: "0987654321",
+        address: customAddress,
+      },
+      addressSource: "custom",
+      items: [{ productId: "prd-002", quantity: 1, size: "M", color: "Kem" }],
+      paymentMethod: "cod",
+      requestId: "customer-checkout-custom-address-0001",
+    }),
+  });
+  assert.equal(customAddressOrder.response.status, 201);
+  assert.equal(customAddressOrder.body.data.customer.address, customAddress);
+  assert.equal(customAddressOrder.body.data.deliveryAddressSource, "custom");
+  const profileAfterCustomOrder = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(profileAfterCustomOrder.body.customer.address, profile.body.customer.address);
+  assert.equal(profileAfterCustomOrder.body.customer.name, profile.body.customer.name);
+  assert.equal(profileAfterCustomOrder.body.customer.phone, profile.body.customer.phone);
+});
+
+test("changing the saved profile address requires one explicit location review", async () => {
+  const token = await loginAs("demo@novawear.vn", "Demo@123");
+  const before = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const originalAddress = before.body.customer.address;
+  const nextAddress = "88 Nguyễn Trãi, Thanh Xuân, Hà Nội";
+  const profileBody = {
+    name: before.body.user.name,
+    phone: before.body.user.phone,
+    address: nextAddress,
+  };
+
+  const blocked = await request("/auth/me", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(profileBody),
+  });
   assert.equal(blocked.response.status, 400);
-  assert.equal(blocked.body.code, "ADDRESS_CONFIRMATION_REQUIRED");
+  assert.equal(blocked.body.code, "PROFILE_ADDRESS_CONFIRMATION_REQUIRED");
+
+  const updated = await request("/auth/me", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      ...profileBody,
+      addressConfirmation: { confirmed: true, address: nextAddress },
+    }),
+  });
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.body.customer.address, nextAddress);
+  assert.ok(updated.body.customer.addressVerifiedAt);
+
+  const restored = await request("/auth/me", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      ...profileBody,
+      address: originalAddress,
+      addressConfirmation: { confirmed: true, address: originalAddress },
+    }),
+  });
+  assert.equal(restored.response.status, 200);
+  assert.equal(restored.body.customer.address, originalAddress);
 });
 
 test("SePay webhook verifies, deduplicates and confirms a bank transfer", async () => {
@@ -1176,7 +1247,14 @@ test("customer self-service, coupon and support flows work end to end", async ()
   const profile = await request("/auth/me", {
     method: "PUT",
     headers: { Authorization: `Bearer ${verified.body.token}` },
-    body: JSON.stringify({ name: "Updated Customer", address: "District 1, Ho Chi Minh City" }),
+    body: JSON.stringify({
+      name: "Updated Customer",
+      address: "District 1, Ho Chi Minh City",
+      addressConfirmation: {
+        confirmed: true,
+        address: "District 1, Ho Chi Minh City",
+      },
+    }),
   });
   assert.equal(profile.response.status, 200);
   assert.equal(profile.body.user.name, "Updated Customer");

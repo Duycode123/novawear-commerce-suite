@@ -344,6 +344,9 @@ h1, h2, h3, h4 { font-family: var(--serif); }
 
 .success-page { max-width: 1080px; padding: 70px 24px 90px; }
 .success-page > h1 { font-size: clamp(2.4rem, 4vw, 4rem); }
+.success-mark--pending { border: 1px solid #d3ad55; color: #8e6812; background: #fff4cf; }
+.success-mark--paid { color: #173b2b; background: #c8f35d; }
+.success-mark--failed { border: 1px solid #d1a6a0; color: #8b2d28; background: #fff0ed; }
 .sepay-payment-card { display: grid; width: 100%; margin: 28px 0; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: #fff; grid-template-columns: 250px 1fr; gap: 26px; text-align: left; }
 .sepay-payment-state { display: flex; align-items: center; padding: 12px 14px; border: 1px solid #e6d3a1; border-radius: 6px; background: #fff9e8; grid-column: 1 / -1; gap: 11px; }
 .sepay-payment-state > span { display: grid; width: 28px; height: 28px; border: 1px solid #d3ad55; border-radius: 50%; color: #8e6812; place-items: center; }

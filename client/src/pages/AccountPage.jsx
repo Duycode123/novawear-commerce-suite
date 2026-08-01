@@ -5,6 +5,10 @@ import { formatDate, formatMoney, PAYMENT_STATUS } from "../config/site";
 import { useShop } from "../context/ShopContext";
 import { ErrorState, Modal, SmartImage, StatusPill } from "../components/Common";
 
+function normalizeAddress(value = "") {
+  return String(value).trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 export default function AccountPage() {
   const { user, logout, notify, updateLocalUser, integrations } = useShop();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -12,6 +16,8 @@ export default function AccountPage() {
   const [orders, setOrders] = useState([]);
   const [membership, setMembership] = useState(null);
   const [profile, setProfile] = useState({ name: user?.name || "", phone: user?.phone || "", address: "" });
+  const [savedProfileAddress, setSavedProfileAddress] = useState("");
+  const [addressCheckOpen, setAddressCheckOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -37,11 +43,13 @@ export default function AccountPage() {
         const targetId = openId || current?.id;
         return targetId ? history.data.find((item) => item.id === targetId) || null : current;
       });
+      const profileAddress = me.customer?.address || me.employee?.address || "";
       setProfile({
         name: me.user.name,
         phone: me.user.phone || "",
-        address: me.customer?.address || me.employee?.address || "",
+        address: profileAddress,
       });
+      setSavedProfileAddress(profileAddress);
     } catch (requestError) {
       if (!silent) setError(requestError.message);
     } finally {
@@ -92,12 +100,16 @@ export default function AccountPage() {
 
   if (!user) return <Navigate to="/dang-nhap" state={{ from: "/tai-khoan" }} replace />;
 
-  const saveProfile = async (event) => {
-    event.preventDefault();
+  const persistProfile = async (addressConfirmation = null) => {
     setSaving(true);
     try {
-      const result = await api.put("/auth/me", profile);
+      const result = await api.put("/auth/me", {
+        ...profile,
+        ...(addressConfirmation ? { addressConfirmation } : {}),
+      });
       updateLocalUser(result.user);
+      setSavedProfileAddress(result.customer?.address ?? result.employee?.address ?? profile.address);
+      setAddressCheckOpen(false);
       notify(result.message);
     } catch (requestError) {
       notify(requestError.message, "error");
@@ -105,6 +117,26 @@ export default function AccountPage() {
       setSaving(false);
     }
   };
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    const addressChanged = normalizeAddress(profile.address) !== normalizeAddress(savedProfileAddress);
+    if (addressChanged && profile.address.trim()) {
+      if (profile.address.trim().length < 10) {
+        notify("Vui lòng nhập địa chỉ đầy đủ hơn.", "error");
+        return;
+      }
+      setAddressCheckOpen(true);
+      return;
+    }
+    await persistProfile();
+  };
+
+  const mapsEmbedKey = process.env.REACT_APP_GOOGLE_MAPS_EMBED_KEY || "";
+  const profileMapEmbedUrl = mapsEmbedKey
+    ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsEmbedKey)}&q=${encodeURIComponent(profile.address)}&language=vi&region=VN`
+    : "";
+  const profileMapSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}`;
 
   const cancelOrder = async (order) => {
     try {
@@ -329,7 +361,7 @@ export default function AccountPage() {
                   <label className="field"><span>Họ và tên</span><input required minLength={2} value={profile.name} onChange={(event) => setProfile((current) => ({ ...current, name: event.target.value }))} /></label>
                   <label className="field"><span>Số điện thoại</span><input required value={profile.phone} onChange={(event) => setProfile((current) => ({ ...current, phone: event.target.value }))} /></label>
                   <label className="field field--wide"><span>Email</span><input value={user.email} disabled /><small>Email đăng nhập chưa thể thay đổi trực tuyến.</small></label>
-                  <label className="field field--wide"><span>Địa chỉ mặc định</span><textarea rows={3} value={profile.address} onChange={(event) => setProfile((current) => ({ ...current, address: event.target.value }))} placeholder="Địa chỉ thường nhận hàng" /></label>
+                  <label className="field field--wide"><span>Địa chỉ mặc định</span><textarea rows={3} value={profile.address} onChange={(event) => setProfile((current) => ({ ...current, address: event.target.value }))} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" /><small>Chỉ cần kiểm tra vị trí khi bạn thay đổi địa chỉ này.</small></label>
                 </div>
                 <button className="button button--dark" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
               </form>
@@ -389,6 +421,33 @@ export default function AccountPage() {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal open={addressCheckOpen} title="Kiểm tra địa chỉ mặc định" onClose={() => !saving && setAddressCheckOpen(false)} size="medium">
+        <div className="checkout-address-map">
+          <div>
+            <span>ĐỊA CHỈ MỚI</span>
+            <strong>{profile.address}</strong>
+            <p>Đối chiếu số nhà, tên đường và khu vực. Sau khi lưu, checkout sẽ tự chọn địa chỉ này cho những lần đặt tiếp theo.</p>
+          </div>
+          {profileMapEmbedUrl ? (
+            <iframe title="Bản đồ kiểm tra địa chỉ mặc định" src={profileMapEmbedUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+          ) : (
+            <div className="checkout-address-map__fallback">
+              <span aria-hidden="true">⌖</span>
+              <strong>Kiểm tra vị trí trên Google Maps</strong>
+              <p>Mở Maps để đối chiếu nhanh vị trí trước khi lưu làm địa chỉ mặc định.</p>
+              <a className="button button--outline" href={profileMapSearchUrl} target="_blank" rel="noreferrer">Mở Google Maps ↗</a>
+            </div>
+          )}
+          <div className="checkout-address-map__actions">
+            {profileMapEmbedUrl && <a href={profileMapSearchUrl} target="_blank" rel="noreferrer">Mở Google Maps ↗</a>}
+            <button className="button button--dark" type="button" disabled={saving} onClick={() => persistProfile({
+              confirmed: true,
+              address: profile.address,
+            })}>{saving ? "Đang lưu..." : "Xác nhận và lưu"}</button>
+          </div>
+        </div>
       </Modal>
 
       <Modal open={Boolean(reviewTarget)} title="Đánh giá sản phẩm" onClose={closeReview} size="medium">

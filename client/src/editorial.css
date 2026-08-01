@@ -3952,42 +3952,65 @@ button {
   }
 }
 
-/* Checkout address review and membership pricing */
-.checkout-address-review {
-  display: flex;
-  align-items: center;
-  margin-top: 10px;
+/* Checkout address selection and membership pricing */
+.checkout-address-field {
+  display: grid;
+  gap: 10px;
+}
+
+.checkout-address-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkout-address-options > label {
+  display: grid;
+  min-height: 104px;
+  padding: 16px;
+  border: 1px solid #d9d6cf;
+  background: #fff;
+  cursor: pointer;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
 }
 
-.checkout-address-review button {
-  min-height: 40px;
-  padding: 0 15px;
-  border: 1px solid #171717;
+.checkout-address-options > label.is-active {
+  border-color: #171717;
+  box-shadow: inset 0 0 0 1px #171717;
+}
+
+.checkout-address-options input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #8b2d28;
+}
+
+.checkout-address-options label > span,
+.checkout-address-options label > span strong,
+.checkout-address-options label > span small {
+  display: block;
+}
+
+.checkout-address-options label > span strong {
+  margin-bottom: 6px;
   color: #171717;
-  background: #fff;
-  font: inherit;
-  font-size: .68rem;
-  font-weight: 750;
-  cursor: pointer;
+  font-size: .72rem;
 }
 
-.checkout-address-review button:disabled {
-  border-color: #cfcdc7;
-  color: #98958e;
-  cursor: not-allowed;
-}
-
-.checkout-address-review.is-confirmed button {
-  border-color: #56714a;
-  color: #35552a;
-  background: #f2f6ef;
-}
-
-.checkout-address-review small {
+.checkout-address-options label > span small,
+.checkout-address-field > small {
   color: #77746e;
   font-size: .62rem;
-  line-height: 1.45;
+  line-height: 1.5;
+}
+
+.checkout-address-options label > b {
+  color: #8b2d28;
+  font-size: .58rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .checkout-address-map {
@@ -4238,13 +4261,15 @@ button {
     justify-self: start;
   }
 
-  .checkout-address-review,
+  .checkout-address-options {
+    grid-template-columns: 1fr;
+  }
+
   .checkout-address-map__actions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .checkout-address-review button,
   .checkout-address-map__actions .button {
     width: 100%;
   }

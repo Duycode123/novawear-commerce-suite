@@ -47,6 +47,9 @@ describe("OrderSuccessPage SePay handoff", () => {
     const view = render(<OrderSuccessPage />);
 
     await waitFor(() => expect(view.getByAltText(`Mã QR thanh toán cho đơn ${order.id}`)).toBeInTheDocument());
+    expect(view.getByText(/Thanh toán đơn hàng/i)).toBeInTheDocument();
+    expect(view.queryByText("Hoàn tất thanh toán.")).not.toBeInTheDocument();
+    expect(view.getByText(/Trạng thái chỉ chuyển sang “Đã thanh toán”/i)).toBeInTheDocument();
     expect(view.getByText("123456")).toBeInTheDocument();
     expect(view.getAllByText("NVA26ABC123").length).toBeGreaterThan(0);
     expect(api.get).toHaveBeenCalledWith(

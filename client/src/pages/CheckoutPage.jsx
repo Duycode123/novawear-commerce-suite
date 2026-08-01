@@ -3,11 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { formatMoney, SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
-import { Modal, SmartImage } from "../components/Common";
-
-function normalizeAddress(value = "") {
-  return String(value).trim().replace(/\s+/g, " ").toLowerCase();
-}
+import { SmartImage } from "../components/Common";
 
 const ORDER_HANDOFF_KEY = "novawear_checkout_order";
 
@@ -48,9 +44,11 @@ export default function CheckoutPage() {
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
   const [membership, setMembership] = useState(null);
-  const [addressCheckOpen, setAddressCheckOpen] = useState(false);
-  const [confirmedAddress, setConfirmedAddress] = useState("");
+  const [savedAddress, setSavedAddress] = useState(user?.address || "");
+  const [addressMode, setAddressMode] = useState(user?.address ? "saved" : "custom");
+  const [customAddress, setCustomAddress] = useState("");
   const touchedRecipientFields = useRef(new Set());
+  const addressModeTouched = useRef(false);
   const activeUserId = useRef(user?.id || null);
   const checkoutCompleted = useRef(false);
   const checkoutRequestId = useRef(
@@ -74,14 +72,6 @@ export default function CheckoutPage() {
     Math.max(0, cartSubtotal - membershipDiscount),
   );
   const total = Math.max(0, cartSubtotal + shippingFee - membershipDiscount - couponDiscount);
-  const normalizedAddress = normalizeAddress(form.address);
-  const addressConfirmed = normalizedAddress.length >= 10 && confirmedAddress === normalizedAddress;
-  const mapsEmbedKey = process.env.REACT_APP_GOOGLE_MAPS_EMBED_KEY || "";
-  const mapEmbedUrl = mapsEmbedKey
-    ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsEmbedKey)}&q=${encodeURIComponent(form.address)}&language=vi&region=VN`
-    : "";
-  const mapSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.address)}`;
-
   useEffect(() => {
     let active = true;
 
@@ -98,24 +88,36 @@ export default function CheckoutPage() {
       }
       activeUserId.current = null;
       setMembership(null);
+      setSavedAddress("");
+      setAddressMode("custom");
       setProfileLoading(false);
       return undefined;
     }
 
     if (activeUserId.current !== user.id) {
       touchedRecipientFields.current = new Set();
+      addressModeTouched.current = false;
+      setCustomAddress("");
     }
     activeUserId.current = user.id;
 
     const mergeProfile = (profile) => {
       if (!active) return;
+      const nextSavedAddress = profile.address || "";
+      setSavedAddress(nextSavedAddress);
+      if (!touchedRecipientFields.current.has("address") && !addressModeTouched.current) {
+        setAddressMode(nextSavedAddress ? "saved" : "custom");
+      }
       setForm((current) => {
         const next = { ...current };
-        ["name", "email", "phone", "address"].forEach((field) => {
+        ["name", "email", "phone"].forEach((field) => {
           if (!touchedRecipientFields.current.has(field)) {
             next[field] = profile[field] || "";
           }
         });
+        if (!touchedRecipientFields.current.has("address") && !addressModeTouched.current) {
+          next.address = nextSavedAddress;
+        }
         return next;
       });
     };
@@ -161,10 +163,20 @@ export default function CheckoutPage() {
     if (["name", "email", "phone", "address"].includes(name)) {
       touchedRecipientFields.current.add(name);
     }
+    if (name === "address") setCustomAddress(value);
     setForm((current) => ({ ...current, [name]: value }));
     if (name === "email" && !user) {
       setEmailVerification({ requested: false, code: "", checkoutToken: "", verifiedEmail: "" });
     }
+  };
+
+  const selectAddressMode = (mode) => {
+    addressModeTouched.current = true;
+    setAddressMode(mode);
+    setForm((current) => ({
+      ...current,
+      address: mode === "saved" ? savedAddress : customAddress,
+    }));
   };
 
   const requestEmailCode = async () => {
@@ -230,9 +242,8 @@ export default function CheckoutPage() {
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!addressConfirmed) {
-      notify("Vui lòng kiểm tra và xác nhận địa chỉ giao hàng trên bản đồ.", "error");
-      setAddressCheckOpen(true);
+    if (form.address.trim().length < 10) {
+      notify("Vui lòng nhập địa chỉ nhận hàng đầy đủ.", "error");
       return;
     }
     if (!user && (!emailVerification.checkoutToken
@@ -258,11 +269,8 @@ export default function CheckoutPage() {
         couponCode: coupon?.code || "",
         shippingMethod: form.shippingMethod,
         paymentMethod: form.paymentMethod,
+        addressSource: user ? addressMode : "guest",
         note: form.note,
-        addressConfirmation: {
-          address: form.address,
-          confirmed: true,
-        },
         checkoutToken: emailVerification.checkoutToken,
         requestId: checkoutRequestId.current,
       });
@@ -325,16 +333,27 @@ export default function CheckoutPage() {
                 <span>Email nhận xác nhận *</span>
                 <input name="email" type="email" autoComplete="email" required readOnly={Boolean(user)} value={form.email} onChange={change} placeholder="ban@email.com" />
               </label>
-              <label className="field field--wide">
+              <div className="field field--wide checkout-address-field">
                 <span>Địa chỉ nhận hàng *</span>
-                <input name="address" autoComplete="street-address" required value={form.address} onChange={change} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" />
-                <div className={`checkout-address-review ${addressConfirmed ? "is-confirmed" : ""}`}>
-                  <button type="button" onClick={() => setAddressCheckOpen(true)} disabled={normalizedAddress.length < 10}>
-                    {addressConfirmed ? "✓ Đã xác nhận trên bản đồ" : "Kiểm tra trên bản đồ"}
-                  </button>
-                  <small>{addressConfirmed ? "Địa chỉ đã khớp với vị trí bạn vừa kiểm tra." : "Bắt buộc kiểm tra số nhà, đường và khu vực trước khi đặt."}</small>
-                </div>
-              </label>
+                {user && savedAddress && (
+                  <div className="checkout-address-options">
+                    <label className={addressMode === "saved" ? "is-active" : ""}>
+                      <input type="radio" name="addressMode" value="saved" checked={addressMode === "saved"} onChange={() => selectAddressMode("saved")} />
+                      <span><strong>Địa chỉ đã lưu</strong><small>{savedAddress}</small></span>
+                      <b>{addressMode === "saved" ? "Đang chọn" : "Chọn"}</b>
+                    </label>
+                    <label className={addressMode === "custom" ? "is-active" : ""}>
+                      <input type="radio" name="addressMode" value="custom" checked={addressMode === "custom"} onChange={() => selectAddressMode("custom")} />
+                      <span><strong>Giao tới địa chỉ khác</strong><small>Chỉ dùng cho đơn hàng này</small></span>
+                      <b>{addressMode === "custom" ? "Đang chọn" : "Chọn"}</b>
+                    </label>
+                  </div>
+                )}
+                {(!user || !savedAddress || addressMode === "custom") && (
+                  <input name="address" autoComplete="street-address" required minLength={10} value={form.address} onChange={change} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" />
+                )}
+                {user && savedAddress && addressMode === "saved" && <small>Muốn đổi địa chỉ mặc định? Cập nhật một lần trong trang Tài khoản.</small>}
+              </div>
               <label className="field field--wide">
                 <span>Ghi chú cho đơn hàng</span>
                 <textarea name="note" rows={3} value={form.note} onChange={change} maxLength={500} placeholder="Ví dụ: gọi trước khi giao..." />
@@ -442,35 +461,6 @@ export default function CheckoutPage() {
           <p className="checkout-terms">Khi đặt hàng, bạn đồng ý với <Link to="/ho-tro">điều khoản mua hàng</Link> và chính sách bảo mật.</p>
         </aside>
       </form>
-      <Modal open={addressCheckOpen} title="Kiểm tra địa chỉ giao hàng" onClose={() => setAddressCheckOpen(false)} size="medium">
-        <div className="checkout-address-map">
-          <div>
-            <span>ĐỊA CHỈ ĐANG KIỂM TRA</span>
-            <strong>{form.address || "Chưa nhập địa chỉ"}</strong>
-            <p>Kiểm tra vị trí gợi ý trên bản đồ và đối chiếu đủ số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành.</p>
-          </div>
-          {normalizedAddress.length >= 10 && mapEmbedUrl ? (
-            <iframe title="Bản đồ kiểm tra địa chỉ giao hàng" src={mapEmbedUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
-          ) : normalizedAddress.length >= 10 ? (
-            <div className="checkout-address-map__fallback">
-              <span aria-hidden="true">⌖</span>
-              <strong>Mở Google Maps để đối chiếu vị trí</strong>
-              <p>Kiểm tra ghim vị trí, số nhà và tên đường trước khi xác nhận. Cửa sổ Maps sẽ mở ở thẻ mới.</p>
-              <a className="button button--outline" href={mapSearchUrl} target="_blank" rel="noreferrer">Kiểm tra trên Google Maps ↗</a>
-            </div>
-          ) : (
-            <div className="checkout-address-map__empty">Hãy nhập địa chỉ đầy đủ trước khi kiểm tra.</div>
-          )}
-          <div className="checkout-address-map__actions">
-            {normalizedAddress.length >= 10 && mapEmbedUrl && <a href={mapSearchUrl} target="_blank" rel="noreferrer">Mở Google Maps ↗</a>}
-            <button className="button button--dark" type="button" disabled={normalizedAddress.length < 10} onClick={() => {
-              setConfirmedAddress(normalizedAddress);
-              setAddressCheckOpen(false);
-              notify("Đã xác nhận địa chỉ giao hàng.");
-            }}>Đúng địa chỉ này</button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
