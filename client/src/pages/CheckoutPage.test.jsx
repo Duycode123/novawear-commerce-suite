@@ -34,19 +34,21 @@ const cart = [{
   color: "Đen",
 }];
 
-const renderCheckout = (user) => {
+const renderCheckout = (user, options = {}) => {
   const notify = jest.fn();
+  const clearCart = jest.fn();
   useShop.mockReturnValue({
     cart,
     cartSubtotal: 289000,
     user,
-    clearCart: jest.fn(),
+    clearCart,
     notify,
-    integrations: { sepay: false },
+    integrations: { sepay: Boolean(options.sepay) },
   });
 
   return {
     notify,
+    clearCart,
     ...render(<CheckoutPage />),
   };
 };
@@ -54,6 +56,7 @@ const renderCheckout = (user) => {
 describe("CheckoutPage recipient information", () => {
   afterEach(() => {
     jest.clearAllMocks();
+    sessionStorage.clear();
   });
 
   test("prefills recipient fields from the authenticated customer profile", async () => {
@@ -148,5 +151,41 @@ describe("CheckoutPage recipient information", () => {
     expect(api.post).toHaveBeenCalledWith("/orders", expect.objectContaining({
       addressConfirmation: { address, confirmed: true },
     }));
+  });
+
+  test("opens the SePay handoff before clearing the cart", async () => {
+    const user = {
+      id: "user-1",
+      name: "Nguyễn Duy",
+      email: "duy@example.com",
+      phone: "0934457124",
+    };
+    const address = "01 Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh";
+    const order = {
+      id: "ORD-2026-999",
+      trackingCode: "NVA26ABC123",
+      total: 319000,
+      paymentMethod: "bank",
+      paymentStatus: "awaiting",
+      paymentCode: "NVA26ABC123",
+      paymentExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    };
+    api.get.mockResolvedValue({ user, customer: { address, phone: user.phone } });
+    api.post.mockResolvedValue({ message: "Đã tạo đơn.", data: order });
+    const view = renderCheckout(user, { sepay: true });
+
+    await waitFor(() => expect(view.container.querySelector('input[name="address"]')).toHaveValue(address));
+    fireEvent.click(view.getByRole("button", { name: "Kiểm tra trên bản đồ" }));
+    fireEvent.click(view.getByRole("button", { name: "Đúng địa chỉ này" }));
+    fireEvent.click(view.getByRole("radio", { name: /Chuyển khoản qua SePay/i }));
+    fireEvent.submit(view.container.querySelector("form"));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(
+      "/dat-hang-thanh-cong",
+      { replace: true, state: { order } },
+    ));
+    expect(view.clearCart).toHaveBeenCalledTimes(1);
+    expect(mockNavigate.mock.invocationCallOrder[0]).toBeLessThan(view.clearCart.mock.invocationCallOrder[0]);
+    expect(JSON.parse(sessionStorage.getItem("novawear_checkout_order"))).toEqual(order);
   });
 });

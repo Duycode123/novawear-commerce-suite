@@ -9,6 +9,20 @@ function normalizeAddress(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+const ORDER_HANDOFF_KEY = "novawear_checkout_order";
+
+function createOrderHandoff(order = {}) {
+  return {
+    id: order.id,
+    trackingCode: order.trackingCode,
+    total: order.total,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    paymentCode: order.paymentCode,
+    paymentExpiresAt: order.paymentExpiresAt,
+  };
+}
+
 export default function CheckoutPage() {
   const { cart, cartSubtotal, user, clearCart, notify, integrations } = useShop();
   const navigate = useNavigate();
@@ -38,6 +52,7 @@ export default function CheckoutPage() {
   const [confirmedAddress, setConfirmedAddress] = useState("");
   const touchedRecipientFields = useRef(new Set());
   const activeUserId = useRef(user?.id || null);
+  const checkoutCompleted = useRef(false);
   const checkoutRequestId = useRef(
     window.crypto?.randomUUID?.()
       || `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
@@ -61,7 +76,10 @@ export default function CheckoutPage() {
   const total = Math.max(0, cartSubtotal + shippingFee - membershipDiscount - couponDiscount);
   const normalizedAddress = normalizeAddress(form.address);
   const addressConfirmed = normalizedAddress.length >= 10 && confirmedAddress === normalizedAddress;
-  const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(form.address)}&output=embed`;
+  const mapsEmbedKey = process.env.REACT_APP_GOOGLE_MAPS_EMBED_KEY || "";
+  const mapEmbedUrl = mapsEmbedKey
+    ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsEmbedKey)}&q=${encodeURIComponent(form.address)}&language=vi&region=VN`
+    : "";
   const mapSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.address)}`;
 
   useEffect(() => {
@@ -136,7 +154,7 @@ export default function CheckoutPage() {
     };
   }, [notify, user]);
 
-  if (!cart.length) return <Navigate to="/gio-hang" replace />;
+  if (!cart.length && !checkoutCompleted.current) return <Navigate to="/gio-hang" replace />;
 
   const change = (event) => {
     const { name, value } = event.target;
@@ -248,9 +266,21 @@ export default function CheckoutPage() {
         checkoutToken: emailVerification.checkoutToken,
         requestId: checkoutRequestId.current,
       });
-      notify(result.message, result.warning ? "info" : "success");
-      clearCart();
+      const orderHandoff = createOrderHandoff(result.data);
+      checkoutCompleted.current = true;
+      try {
+        sessionStorage.setItem(ORDER_HANDOFF_KEY, JSON.stringify(orderHandoff));
+      } catch (_storageError) {
+        // Route state still carries the order when browser storage is unavailable.
+      }
+      notify(
+        form.paymentMethod === "bank"
+          ? "Đơn hàng đã được tạo. Vui lòng quét QR để hoàn tất thanh toán."
+          : result.message,
+        result.warning ? "info" : "success",
+      );
       navigate("/dat-hang-thanh-cong", { replace: true, state: { order: result.data } });
+      clearCart();
     } catch (requestError) {
       notify(requestError.message, "error");
     } finally {
@@ -419,8 +449,15 @@ export default function CheckoutPage() {
             <strong>{form.address || "Chưa nhập địa chỉ"}</strong>
             <p>Kiểm tra vị trí gợi ý trên bản đồ và đối chiếu đủ số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành.</p>
           </div>
-          {normalizedAddress.length >= 10 ? (
+          {normalizedAddress.length >= 10 && mapEmbedUrl ? (
             <iframe title="Bản đồ kiểm tra địa chỉ giao hàng" src={mapEmbedUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+          ) : normalizedAddress.length >= 10 ? (
+            <div className="checkout-address-map__fallback">
+              <span aria-hidden="true">⌖</span>
+              <strong>Mở Google Maps để đối chiếu vị trí</strong>
+              <p>Kiểm tra ghim vị trí, số nhà và tên đường trước khi xác nhận. Cửa sổ Maps sẽ mở ở thẻ mới.</p>
+              <a className="button button--outline" href={mapSearchUrl} target="_blank" rel="noreferrer">Kiểm tra trên Google Maps ↗</a>
+            </div>
           ) : (
             <div className="checkout-address-map__empty">Hãy nhập địa chỉ đầy đủ trước khi kiểm tra.</div>
           )}

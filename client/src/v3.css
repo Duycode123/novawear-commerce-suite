@@ -357,6 +357,9 @@ h1, h2, h3, h4 { font-family: var(--serif); }
 .sepay-payment-card__qr > span { margin-bottom: 10px; font-size: 0.65rem; }
 .sepay-payment-card__qr img { width: 178px; height: 178px; object-fit: contain; background: #fff; }
 .sepay-payment-card__qr small { margin-top: 8px; color: var(--muted); font-size: 0.56rem; }
+.sepay-payment-card__error { display: grid; width: 100%; min-height: 178px; padding: 20px; border: 1px solid #d7c9bf; color: var(--ink); background: #fff; text-align: center; place-content: center; gap: 8px; }
+.sepay-payment-card__error strong, .sepay-payment-card__error small { display: block; margin: 0; }
+.sepay-payment-card__error button { justify-self: center; margin-top: 6px; padding: 8px 12px; border: 1px solid var(--ink); color: #fff; background: var(--ink); font: inherit; font-size: .58rem; cursor: pointer; }
 .sepay-payment-card__info h2 { margin-bottom: 18px; color: var(--accent); font-size: 2rem; }
 .sepay-payment-card__info > div { display: grid; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); grid-template-columns: 130px 1fr auto; gap: 10px; }
 .sepay-payment-card__info span { color: var(--muted); font-size: 0.6rem; }
