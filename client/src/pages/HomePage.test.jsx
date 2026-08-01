@@ -62,8 +62,10 @@ function mockHomeApi({
   sale = [saleProduct],
   promotions = [activePromotion],
   summary = saleSummary,
+  recent = [],
 } = {}) {
   api.get.mockImplementation((path) => {
+    if (path.startsWith("/products?search=")) return Promise.resolve({ data: recent });
     if (path === "/products?sale=true&sort=discount-desc&limit=4") {
       return Promise.resolve({ data: sale });
     }
@@ -76,6 +78,7 @@ function mockHomeApi({
 describe("HomePage promotion banners", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.clear();
     useShop.mockReturnValue({
       addToCart: jest.fn(),
       toggleWishlist: jest.fn(),
@@ -119,5 +122,27 @@ describe("HomePage promotion banners", () => {
     await waitFor(() => expect(view.queryAllByLabelText("Đang tải sản phẩm")).toHaveLength(0));
     expect(view.queryByRole("region", { name: "Ưu đãi nổi bật" })).not.toBeInTheDocument();
     expect(view.queryByText(/Ưu đãi đang chờ bạn/i)).not.toBeInTheDocument();
+  });
+
+  test("uses real matching products when a recent search exists", async () => {
+    window.localStorage.setItem("novawear_recent_search", JSON.stringify({ term: "áo thun" }));
+    mockHomeApi({
+      recent: [{
+        id: "tee-1",
+        slug: "ao-thun-thu-nghiem",
+        name: "Áo thun thử nghiệm",
+        image: "/tee.jpg",
+        price: 299000,
+        category: { name: "Áo thun nam" },
+      }],
+    });
+    let view;
+    await act(async () => {
+      view = render(<HomePage />);
+    });
+
+    await waitFor(() => expect(view.getByRole("heading", { name: "Tiếp tục từ “áo thun”." })).toBeInTheDocument());
+    expect(api.get).toHaveBeenCalledWith("/products?search=%C3%A1o%20thun&sort=featured&limit=3");
+    expect(view.getByRole("link", { name: /Áo thun thử nghiệm/i })).toHaveAttribute("href", "/san-pham/ao-thun-thu-nghiem");
   });
 });

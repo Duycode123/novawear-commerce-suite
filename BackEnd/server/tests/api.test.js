@@ -15,6 +15,10 @@ let tempDir;
 const sentEmails = [];
 const sepayPollingResults = new Map();
 
+function confirmAddress(customer) {
+  return { confirmed: true, address: customer.address };
+}
+
 test.before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "novawear-api-"));
   application = createApp({
@@ -213,6 +217,7 @@ test("guest checkout requires a verified email and sends an order confirmation",
     method: "POST",
     body: JSON.stringify({
       customer,
+      addressConfirmation: confirmAddress(customer),
       items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
       paymentMethod: "cod",
     }),
@@ -241,6 +246,7 @@ test("guest checkout requires a verified email and sends an order confirmation",
     method: "POST",
     body: JSON.stringify({
       customer,
+      addressConfirmation: confirmAddress(customer),
       checkoutToken: verified.body.checkoutToken,
       items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
       paymentMethod: "cod",
@@ -259,6 +265,7 @@ test("guest checkout requires a verified email and sends an order confirmation",
     method: "POST",
     body: JSON.stringify({
       customer,
+      addressConfirmation: confirmAddress(customer),
       checkoutToken: verified.body.checkoutToken,
       items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
       paymentMethod: "cod",
@@ -302,6 +309,7 @@ test("a guest checkout token cannot bypass a newly created account", async () =>
         phone: "0908887776",
         address: "15 Nguyen Hue, District 1, Ho Chi Minh City",
       },
+      addressConfirmation: { confirmed: true, address: "15 Nguyen Hue, District 1, Ho Chi Minh City" },
       checkoutToken: verified.body.checkoutToken,
       items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Trắng kem" }],
       paymentMethod: "cod",
@@ -503,6 +511,7 @@ test("customer can sign in, place an order and read order history", async () => 
       phone: "0901234567",
       address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
     },
+    addressConfirmation: { confirmed: true, address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh" },
     items: [{ productId: "prd-001", quantity: 1, size: "M", color: "Than chì" }],
     paymentMethod: "cod",
     couponCode: "",
@@ -514,7 +523,7 @@ test("customer can sign in, place an order and read order history", async () => 
     body: JSON.stringify(orderPayload),
   });
   assert.equal(order.response.status, 201);
-  assert.equal(order.body.data.status, "pending");
+  assert.equal(order.body.data.status, "confirmed");
   assert.equal(order.body.data.items[0].price, 289000);
   assert.equal(Object.hasOwn(order.body.data, "checkoutRequestId"), false);
 
@@ -537,6 +546,45 @@ test("customer can sign in, place an order and read order history", async () => 
   assert.ok(history.body.data.some((item) => item.id === order.body.data.id));
 });
 
+test("membership benefits are calculated and checkout requires the exact reviewed address", async () => {
+  const tiers = await request("/membership/tiers");
+  assert.equal(tiers.response.status, 200);
+  assert.deepEqual(tiers.body.data.map((item) => item.key), ["Member", "Silver", "Gold"]);
+  assert.equal(tiers.body.data.find((item) => item.key === "Silver").discountPercent, 2);
+  assert.equal(tiers.body.data.find((item) => item.key === "Gold").freeShippingThreshold, 0);
+
+  const token = await loginAs("demo@novawear.vn", "Demo@123");
+  const profile = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(profile.response.status, 200);
+  assert.equal(profile.body.membership.tier, "Member");
+  assert.equal(profile.body.membership.discountPercent, 0);
+  assert.ok(Array.isArray(profile.body.membership.benefits));
+
+  const blocked = await request("/orders", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      customer: {
+        name: "Nguyễn Minh Anh",
+        email: "demo@novawear.vn",
+        phone: "0901234567",
+        address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
+      },
+      addressConfirmation: {
+        confirmed: true,
+        address: "Một địa chỉ khác chưa được xem trên bản đồ",
+      },
+      items: [{ productId: "prd-001", quantity: 1, size: "M", color: "Than chì" }],
+      paymentMethod: "cod",
+      requestId: "customer-checkout-address-review-0001",
+    }),
+  });
+  assert.equal(blocked.response.status, 400);
+  assert.equal(blocked.body.code, "ADDRESS_CONFIRMATION_REQUIRED");
+});
+
 test("SePay webhook verifies, deduplicates and confirms a bank transfer", async () => {
   const token = await loginAs("demo@novawear.vn", "Demo@123");
   const created = await request("/orders", {
@@ -549,6 +597,7 @@ test("SePay webhook verifies, deduplicates and confirms a bank transfer", async 
         phone: "0912345678",
         address: "28 Nguyen Van Trang, District 1, Ho Chi Minh City",
       },
+      addressConfirmation: { confirmed: true, address: "28 Nguyen Van Trang, District 1, Ho Chi Minh City" },
       items: [{ productId: "prd-002", quantity: 1, size: "M", color: "Kem" }],
       paymentMethod: "bank",
       shippingMethod: "standard",
@@ -626,6 +675,7 @@ test("SePay transaction polling confirms a bank transfer without changing anothe
         phone: "0912345678",
         address: "28 Nguyen Van Trang, District 1, Ho Chi Minh City",
       },
+      addressConfirmation: { confirmed: true, address: "28 Nguyen Van Trang, District 1, Ho Chi Minh City" },
       items: [{ productId: "prd-002", quantity: 1, size: "M", color: "Kem" }],
       paymentMethod: "bank",
       shippingMethod: "standard",
@@ -744,7 +794,7 @@ test("staff portal is protected and supports order workflow", async () => {
       tier: "Gold",
     }),
   });
-  assert.equal(deniedElevatedCustomer.response.status, 403);
+  assert.equal(deniedElevatedCustomer.response.status, 400);
 
   const staffCreatedCustomer = await request("/admin/customers", {
     method: "POST",
@@ -764,7 +814,7 @@ test("staff portal is protected and supports order workflow", async () => {
     headers: staffAuth,
     body: JSON.stringify({ tier: "Silver" }),
   });
-  assert.equal(deniedTierUpdate.response.status, 403);
+  assert.equal(deniedTierUpdate.response.status, 400);
 
   const invalidAdminTier = await request("/admin/customers", {
     method: "POST",
@@ -785,19 +835,18 @@ test("staff portal is protected and supports order workflow", async () => {
       name: "Khách do quản trị viên tạo",
       email: "admin-created-customer@novawear.vn",
       phone: "0911222666",
-      tier: "Gold",
+      tier: "Member",
     }),
   });
   assert.equal(adminCreatedCustomer.response.status, 201);
-  assert.equal(adminCreatedCustomer.body.data.tier, "Gold");
+  assert.equal(adminCreatedCustomer.body.data.tier, "Member");
 
   const adminUpdatedTier = await request(`/admin/customers/${adminCreatedCustomer.body.data.id}`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${adminToken}` },
     body: JSON.stringify({ tier: "Silver" }),
   });
-  assert.equal(adminUpdatedTier.response.status, 200);
-  assert.equal(adminUpdatedTier.body.data.tier, "Silver");
+  assert.equal(adminUpdatedTier.response.status, 400);
 
   const beforeUpdate = await request("/admin/orders/ORD-2026-004", {
     headers: staffAuth,
@@ -848,6 +897,7 @@ test("order state machine synchronizes delivery, inventory and notifications", a
         phone: "0901234567",
         address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh",
       },
+      addressConfirmation: { confirmed: true, address: "12 Nguyễn Đình Chiểu, Quận 3, TP. Hồ Chí Minh" },
       items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Xanh sương" }],
       paymentMethod: "cod",
       shippingMethod: "standard",
@@ -867,7 +917,7 @@ test("order state machine synchronizes delivery, inventory and notifications", a
   });
   assert.equal(skipped.response.status, 409);
 
-  for (const status of ["confirmed", "packing", "ready_to_ship"]) {
+  for (const status of ["packing", "ready_to_ship"]) {
     const updated = await request(`/admin/orders/${order.id}`, {
       method: "PATCH",
       headers: adminAuth,
@@ -1027,6 +1077,7 @@ test("cancellation and payment expiry restore stock exactly once", async () => {
     headers: auth,
     body: JSON.stringify({
       customer,
+      addressConfirmation: confirmAddress(customer),
       items: [{ productId: "prd-004", quantity: 1, size: "M", color: "Xám khói" }],
       paymentMethod: "cod",
     }),
@@ -1058,6 +1109,7 @@ test("cancellation and payment expiry restore stock exactly once", async () => {
     headers: auth,
     body: JSON.stringify({
       customer,
+      addressConfirmation: confirmAddress(customer),
       items: [{ productId: "prd-004", quantity: 1, size: "M", color: "Xám khói" }],
       paymentMethod: "bank",
     }),
@@ -1377,6 +1429,7 @@ test("coupon schedule and usage limits are enforced and restored after cancellat
         phone: customerRecord.phone,
         address: customerRecord.address || "Hà Nội",
       },
+      addressConfirmation: { confirmed: true, address: customerRecord.address || "Hà Nội" },
       items: [{
         productId: product.id,
         quantity: 1,

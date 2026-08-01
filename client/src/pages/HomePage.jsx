@@ -4,6 +4,7 @@ import { api } from "../services/api";
 import { ErrorState, ProductCard, ProductGridSkeleton, SmartImage } from "../components/Common";
 import { formatMoney } from "../config/site";
 import { useShop } from "../context/ShopContext";
+import { getRecentSearch } from "../services/searchHistory";
 
 const categoryPriority = [
   "ao-thun-nam",
@@ -47,9 +48,12 @@ function HomeProductSection({ id, eyebrow, title, copy, href, products, loading 
 }
 
 function HomeDiscovery({ content, loading }) {
-  const newest = content.newest[0];
-  const topRated = content.topRated[0];
-  const sale = content.sale[0];
+  const recentTerm = content.recentSearch?.term || "";
+  const recentProducts = content.recentSearch?.products || [];
+  const hasRecentResults = Boolean(recentTerm && recentProducts.length);
+  const newest = recentProducts[0] || content.newest[0];
+  const topRated = recentProducts[1] || content.topRated[0];
+  const sale = recentProducts[2] || content.sale[0];
   const productHref = (product, fallback) => (
     product ? `/san-pham/${product.slug || product.id}` : fallback
   );
@@ -58,10 +62,10 @@ function HomeDiscovery({ content, loading }) {
     <section className="home-v4-discovery" id="home-discovery">
       <header className="home-v4-heading">
         <div>
-          <p className="eyebrow">NOVA CURATED</p>
-          <h2>Bắt đầu từ điều bạn đang tìm.</h2>
+          <p className="eyebrow">{hasRecentResults ? "TÌM KIẾM GẦN ĐÂY" : "NOVA CURATED"}</p>
+          <h2>{hasRecentResults ? `Tiếp tục từ “${recentTerm}”.` : "Một vài gợi ý để bắt đầu."}</h2>
         </div>
-        <Link to="/cua-hang">Khám phá cửa hàng <span>→</span></Link>
+        <Link to={hasRecentResults ? `/cua-hang?search=${encodeURIComponent(recentTerm)}` : "/cua-hang"}>{hasRecentResults ? "Xem toàn bộ kết quả" : "Khám phá cửa hàng"} <span>→</span></Link>
       </header>
 
       <div className={`home-v4-discovery__grid ${loading ? "is-loading" : ""}`}>
@@ -70,21 +74,23 @@ function HomeDiscovery({ content, loading }) {
             src={newest?.image || "/Images/nova-v3/home-story.png"}
             alt={newest?.name || "Bộ sưu tập mới của NOVAWEAR"}
           />
-          <span className="home-v4-discovery__index">01 / NEW ARRIVAL</span>
+          <span className="home-v4-discovery__index">{hasRecentResults ? "01 / KẾT QUẢ PHÙ HỢP" : "01 / NEW ARRIVAL"}</span>
           <div>
-            <small>VỪA LÊN KỆ</small>
+            <small>{hasRecentResults ? "TỪ LẦN TÌM GẦN NHẤT" : "VỪA LÊN KỆ"}</small>
             <h3>{newest?.name || "Những thiết kế vừa lên kệ"}</h3>
-            <b>Xem hàng mới →</b>
+            <b>{hasRecentResults ? "Xem sản phẩm →" : "Xem hàng mới →"}</b>
           </div>
         </Link>
 
         <div className="home-v4-discovery__rail">
           <Link to={productHref(topRated, "/cua-hang?sort=rating")}>
             <div>
-              <span>02 / ĐƯỢC TIN CHỌN</span>
+              <span>{recentProducts[1] ? "02 / CÙNG TÌM KIẾM" : "02 / ĐƯỢC TIN CHỌN"}</span>
               <h3>{topRated?.name || "Sản phẩm được đánh giá cao"}</h3>
               <p>
-                {topRated
+                {recentProducts[1]
+                  ? `${topRated.category?.name || "Sản phẩm phù hợp"} · ${formatMoney(topRated.price)}`
+                  : topRated
                   ? `${topRated.rating} sao từ ${topRated.reviewCount} đánh giá đã xuất bản`
                   : "Khám phá lựa chọn từ đánh giá của khách đã nhận hàng"}
               </p>
@@ -97,10 +103,12 @@ function HomeDiscovery({ content, loading }) {
 
           <Link to={productHref(sale, "/uu-dai")}>
             <div>
-              <span>03 / NOVA OFFERS</span>
+              <span>{recentProducts[2] ? "03 / CÙNG TÌM KIẾM" : "03 / NOVA OFFERS"}</span>
               <h3>{sale?.name || "Ưu đãi đang diễn ra"}</h3>
               <p>
-                {sale?.comparePrice > sale?.price
+                {recentProducts[2]
+                  ? `${sale.category?.name || "Sản phẩm phù hợp"} · ${formatMoney(sale.price)}`
+                  : sale?.comparePrice > sale?.price
                   ? `Tiết kiệm ${Math.round((1 - sale.price / sale.comparePrice) * 100)}% trên giá niêm yết`
                   : "Ưu đãi mới sẽ sớm được cập nhật"}
               </p>
@@ -138,6 +146,7 @@ export default function HomePage() {
     news: [],
     promotions: [],
     saleSummary: null,
+    recentSearch: null,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -149,7 +158,8 @@ export default function HomePage() {
     setLoading(true);
     setError("");
     try {
-      const [topRated, newest, popular, sale, categories, news, promotions, saleSummary] = await Promise.all([
+      const recentSearch = getRecentSearch();
+      const requests = [
         api.get("/products?sort=rating&limit=100"),
         api.get("/products?sort=newest&limit=4"),
         api.get("/products?sort=popular&limit=100"),
@@ -158,7 +168,11 @@ export default function HomePage() {
         api.get("/news"),
         api.get("/promotions"),
         api.get("/promotions/catalog-summary"),
-      ]);
+      ];
+      if (recentSearch?.term) {
+        requests.push(api.get(`/products?search=${encodeURIComponent(recentSearch.term)}&sort=featured&limit=3`));
+      }
+      const [topRated, newest, popular, sale, categories, news, promotions, saleSummary, recentResult] = await Promise.all(requests);
       const popularProducts = (popular.data || []).filter((product) => Number(product.sold) > 0);
       setContent({
         topRated: (topRated.data || []).filter((product) => Number(product.reviewCount) > 0 && Number(product.rating) > 0),
@@ -172,6 +186,9 @@ export default function HomePage() {
         news: news.data || [],
         promotions: promotions.data || [],
         saleSummary: saleSummary.data || null,
+        recentSearch: recentSearch && recentResult?.data?.length
+          ? { ...recentSearch, products: recentResult.data }
+          : null,
       });
     } catch (requestError) {
       setError(requestError.message);

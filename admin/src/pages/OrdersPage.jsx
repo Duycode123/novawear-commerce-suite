@@ -7,7 +7,7 @@ import { Empty, ErrorPanel, Loading, Modal, PageHeader, ProductImage, Status } f
 
 const primaryTransition = {
   pending: { status: "confirmed", label: "Xác nhận đơn" },
-  confirmed: { status: "packing", label: "Bắt đầu đóng gói" },
+  confirmed: { status: "packing", label: "Nhận đơn & bắt đầu đóng gói" },
   packing: { status: "ready_to_ship", label: "Đóng gói hoàn tất" },
   ready_to_ship: { status: "shipping", label: "Bàn giao vận chuyển" },
   delivery_failed: { status: "shipping", label: "Giao lại đơn hàng" },
@@ -41,6 +41,7 @@ export default function OrdersPage() {
   const [status, setStatus] = useState("all");
   const [selected, setSelected] = useState(null);
   const [operation, setOperation] = useState(blankOperation());
+  const [exceptionAction, setExceptionAction] = useState("");
   const [updating, setUpdating] = useState(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -86,6 +87,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     setOperation(blankOperation(selected));
+    setExceptionAction("");
   // Polling replaces object identity; keep in-progress form input until the server version changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, selected?.version]);
@@ -147,6 +149,7 @@ export default function OrdersPage() {
       };
     }
     await updateOrder(changes);
+    setExceptionAction("");
   };
 
   const completeRefund = async () => {
@@ -196,14 +199,14 @@ export default function OrdersPage() {
       <PageHeader
         eyebrow="Sales pipeline"
         title="Đơn hàng"
-        copy="Một luồng xử lý thống nhất từ tiếp nhận, kho, vận chuyển đến giao hàng và hoàn tiền."
+        copy="Đơn COD được xác nhận ngay; đơn chuyển khoản tự xác nhận khi SePay ghi nhận đủ tiền. Nhân viên bắt đầu từ khâu đóng gói."
         actions={<button className="ops-secondary-button" type="button" onClick={() => load()}>↻ Làm mới</button>}
       />
 
       <section className="ops-order-summary-cards">
         {[
-          ["pending", "Mới tiếp nhận", "Cần kiểm tra"],
-          ["confirmed", "Đã xác nhận", "Chờ kho xử lý"],
+          ["pending", "Chờ thanh toán", "SePay tự xác nhận"],
+          ["confirmed", "Đã sẵn sàng", "Chờ nhân viên nhận"],
           ["packing", "Đang đóng gói", "Tại kho"],
           ["ready_to_ship", "Chờ bàn giao", "Sẵn sàng gửi"],
           ["shipping", "Đang giao", "Theo dõi vận đơn"],
@@ -288,7 +291,9 @@ export default function OrdersPage() {
                 <div className="ops-order-money">
                   <div><span>Tạm tính</span><strong>{formatMoney(selected.subtotal)}</strong></div>
                   <div><span>Giao hàng</span><strong>{selected.shippingFee ? formatMoney(selected.shippingFee) : "Miễn phí"}</strong></div>
-                  {selected.discount > 0 && <div><span>Ưu đãi {selected.couponCode}</span><strong>−{formatMoney(selected.discount)}</strong></div>}
+                  {selected.membershipDiscount > 0 && <div><span>Quyền lợi hạng {selected.membershipTier}</span><strong>−{formatMoney(selected.membershipDiscount)}</strong></div>}
+                  {selected.couponDiscount > 0 && <div><span>Mã ưu đãi {selected.couponCode}</span><strong>−{formatMoney(selected.couponDiscount)}</strong></div>}
+                  {!selected.membershipDiscount && !selected.couponDiscount && selected.discount > 0 && <div><span>Ưu đãi {selected.couponCode}</span><strong>−{formatMoney(selected.discount)}</strong></div>}
                   <div><span>Tổng thanh toán</span><strong>{formatMoney(selected.total)}</strong></div>
                 </div>
 
@@ -302,20 +307,26 @@ export default function OrdersPage() {
                         <label><span>Dự kiến giao</span><input type="datetime-local" value={operation.estimatedDeliveryAt} onChange={(event) => setOperation((current) => ({ ...current, estimatedDeliveryAt: event.target.value }))} /></label>
                       </div>
                     )}
-                    <div className="ops-workflow-fields">
-                      <label><span>Thông báo cho khách</span><textarea rows="2" value={operation.publicNote} onChange={(event) => setOperation((current) => ({ ...current, publicNote: event.target.value }))} placeholder="Ví dụ: Đơn đã được đóng gói an toàn." /></label>
-                      <label><span>Ghi chú nội bộ</span><textarea rows="2" value={operation.internalNote} onChange={(event) => setOperation((current) => ({ ...current, internalNote: event.target.value }))} placeholder="Chỉ nhân viên nhìn thấy" /></label>
-                    </div>
-                    {(selected.status === "shipping" || cancellableStatuses.includes(selected.status)) && (
-                      <label className="ops-workflow-reason"><span>Lý do (bắt buộc khi giao thất bại hoặc hủy)</span><input value={operation.reason} onChange={(event) => setOperation((current) => ({ ...current, reason: event.target.value }))} placeholder="Ghi rõ lý do để hai bên cùng nắm" /></label>
+                    <details className="ops-workflow-notes">
+                      <summary>Thêm thông báo hoặc ghi chú nội bộ</summary>
+                      <div className="ops-workflow-fields">
+                        <label><span>Thông báo cho khách</span><textarea rows="2" value={operation.publicNote} onChange={(event) => setOperation((current) => ({ ...current, publicNote: event.target.value }))} placeholder="Bỏ trống để dùng thông báo mặc định theo trạng thái." /></label>
+                        <label><span>Ghi chú nội bộ</span><textarea rows="2" value={operation.internalNote} onChange={(event) => setOperation((current) => ({ ...current, internalNote: event.target.value }))} placeholder="Chỉ nhân viên nhìn thấy" /></label>
+                      </div>
+                    </details>
+                    {exceptionAction && (
+                      <div className="ops-workflow-exception">
+                        <label className="ops-workflow-reason"><span>{exceptionAction === "cancelled" ? "Lý do hủy đơn *" : "Lý do giao chưa thành công *"}</span><input autoFocus value={operation.reason} onChange={(event) => setOperation((current) => ({ ...current, reason: event.target.value }))} placeholder="Ghi rõ lý do để khách hàng cùng nắm" /></label>
+                        <div><button className="ops-secondary-button" type="button" onClick={() => setExceptionAction("")}>Quay lại</button><button className="ops-danger-button" type="button" disabled={updating || operation.reason.trim().length < 5} onClick={() => moveTo(exceptionAction)}>{exceptionAction === "cancelled" ? "Xác nhận hủy đơn" : "Xác nhận giao chưa thành công"}</button></div>
+                      </div>
                     )}
                     {bankWaiting && <p className="ops-workflow-warning">Đơn chuyển khoản chỉ được xác nhận sau khi hệ thống SePay ghi nhận đủ tiền.</p>}
-                    <div className="ops-workflow-actions">
-                      {cancellableStatuses.includes(selected.status) && <button className="ops-danger-button" type="button" disabled={updating || operation.reason.trim().length < 5} onClick={() => moveTo("cancelled")}>Hủy đơn</button>}
-                      {selected.status === "shipping" && <button className="ops-danger-button" type="button" disabled={updating || operation.reason.trim().length < 5} onClick={() => moveTo("delivery_failed")}>Giao chưa thành công</button>}
+                    {!exceptionAction && <div className="ops-workflow-actions">
+                      {cancellableStatuses.includes(selected.status) && <button className="ops-danger-button" type="button" disabled={updating} onClick={() => setExceptionAction("cancelled")}>Hủy đơn</button>}
+                      {selected.status === "shipping" && <button className="ops-danger-button" type="button" disabled={updating} onClick={() => setExceptionAction("delivery_failed")}>Giao chưa thành công</button>}
                       {selected.status === "shipping" && <button className="ops-primary-button" type="button" disabled={updating} onClick={() => moveTo("delivered")}>Xác nhận giao thành công</button>}
                       {nextAction && <button className="ops-primary-button" type="button" disabled={updating || bankWaiting || (nextAction.status === "shipping" && (!operation.carrier.trim() || !operation.trackingNumber.trim()))} onClick={() => moveTo(nextAction.status)}>{updating ? "Đang cập nhật..." : `${nextAction.label} →`}</button>}
-                    </div>
+                    </div>}
                   </div>
                 )}
 

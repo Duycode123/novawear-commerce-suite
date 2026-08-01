@@ -69,7 +69,29 @@ const ALLOWED_RETURN_TRANSITIONS = {
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^[0-9+\s.-]{9,15}$/;
-const CUSTOMER_TIERS = new Set(["Member", "Silver", "Gold"]);
+const MEMBERSHIP_TIERS = [
+  {
+    key: "Member",
+    minSpend: 0,
+    discountPercent: 0,
+    freeShippingThreshold: 699000,
+    benefits: ["Theo dõi đơn hàng tập trung", "Đổi size miễn phí lần đầu trong 30 ngày"],
+  },
+  {
+    key: "Silver",
+    minSpend: 2000000,
+    discountPercent: 2,
+    freeShippingThreshold: 499000,
+    benefits: ["Tự động giảm 2% giá sản phẩm", "Miễn phí giao tiêu chuẩn từ 499.000đ", "Nhận ưu đãi thành viên sớm"],
+  },
+  {
+    key: "Gold",
+    minSpend: 5000000,
+    discountPercent: 5,
+    freeShippingThreshold: 0,
+    benefits: ["Tự động giảm 5% giá sản phẩm", "Miễn phí giao tiêu chuẩn mọi đơn", "Ưu tiên hỗ trợ và nhận ưu đãi sớm"],
+  },
+];
 const appTimeZone = process.env.APP_TIME_ZONE || "Asia/Ho_Chi_Minh";
 
 function localDateKey(value = new Date()) {
@@ -234,7 +256,7 @@ function ratingStats(productId, reviews) {
 }
 
 function completedOrder(order) {
-  return order.status === "delivered" && order.paymentStatus === "paid";
+  return order.status === "delivered" && ["paid", "partially_refunded"].includes(order.paymentStatus);
 }
 
 function orderSalesByProduct(orders) {
@@ -248,9 +270,30 @@ function orderSalesByProduct(orders) {
 }
 
 function customerTier(totalSpent) {
-  if (totalSpent >= 5000000) return "Gold";
-  if (totalSpent >= 2000000) return "Silver";
-  return "Member";
+  return [...MEMBERSHIP_TIERS]
+    .reverse()
+    .find((item) => Number(totalSpent || 0) >= item.minSpend)?.key || "Member";
+}
+
+function membershipProfile(totalSpent = 0) {
+  const safeTotal = Math.max(0, Number(totalSpent || 0));
+  const tier = customerTier(safeTotal);
+  const tierIndex = MEMBERSHIP_TIERS.findIndex((item) => item.key === tier);
+  const current = MEMBERSHIP_TIERS[tierIndex] || MEMBERSHIP_TIERS[0];
+  const next = MEMBERSHIP_TIERS[tierIndex + 1] || null;
+  const progressStart = current.minSpend;
+  const progressRange = next ? Math.max(1, next.minSpend - progressStart) : 1;
+  return {
+    ...current,
+    tier: current.key,
+    totalSpent: safeTotal,
+    nextTier: next?.key || null,
+    nextTierMinSpend: next?.minSpend || null,
+    amountToNextTier: next ? Math.max(0, next.minSpend - safeTotal) : 0,
+    progressPercent: next
+      ? Math.min(100, Math.max(0, Math.round(((safeTotal - progressStart) / progressRange) * 100)))
+      : 100,
+  };
 }
 
 function rebuildCustomerMetrics(store, customerId) {
@@ -259,8 +302,9 @@ function rebuildCustomerMetrics(store, customerId) {
   const completed = store.data.orders.filter((order) => (
     order.customerId === customerId && completedOrder(order)
   ));
-  customer.totalSpent = completed.reduce((sum, order) => sum + Number(order.total || 0), 0);
-  customer.orderCount = completed.length;
+  const orderValue = (order) => Math.max(0, Number(order.total || 0) - Number(order.refundedAmount || 0));
+  customer.totalSpent = completed.reduce((sum, order) => sum + orderValue(order), 0);
+  customer.orderCount = completed.filter((order) => orderValue(order) > 0).length;
   customer.tier = customerTier(customer.totalSpent);
 }
 
@@ -983,6 +1027,7 @@ function createApp(options = {}) {
     || path.join(__dirname, "data", "store.json");
   const store = options.store || new JsonStore(dataFile);
   ensureDataShape(store);
+  store.data.customers.forEach((customer) => rebuildCustomerMetrics(store, customer.id));
   const configuredJwtSecret = String(options.jwtSecret || process.env.JWT_SECRET || "").trim();
   const unsafeProductionSecret = configuredJwtSecret.length < 32
     || /replace|change-me|example|secret/i.test(configuredJwtSecret);
@@ -2116,7 +2161,18 @@ function createApp(options = {}) {
     const employee = user.employeeId
       ? store.data.employees.find((item) => item.id === user.employeeId)
       : null;
-    res.json({ user: sanitizeUser(user), customer, employee });
+    res.json({
+      user: sanitizeUser(user),
+      customer,
+      employee,
+      membership: customer ? membershipProfile(customer.totalSpent) : null,
+    });
+  });
+
+  app.get("/api/membership/tiers", (_req, res) => {
+    return res.json({
+      data: MEMBERSHIP_TIERS.map((item) => ({ ...item })),
+    });
   });
 
   app.put("/api/auth/me", requireAuth, (req, res) => {
@@ -2825,6 +2881,14 @@ function createApp(options = {}) {
     if (!customer.email) {
       return res.status(400).json({ message: "Email nhận xác nhận đơn hàng là bắt buộc." });
     }
+    const addressConfirmation = req.body.addressConfirmation;
+    if (!addressConfirmation?.confirmed
+      || normalizeText(addressConfirmation.address) !== normalizeText(customer.address)) {
+      return res.status(400).json({
+        message: "Vui lòng kiểm tra và xác nhận đúng địa chỉ nhận hàng trên bản đồ.",
+        code: "ADDRESS_CONFIRMATION_REQUIRED",
+      });
+    }
     const checkoutRequestId = String(req.body.requestId || "").trim();
     if (checkoutRequestId && !/^[A-Za-z0-9_-]{16,128}$/.test(checkoutRequestId)) {
       return res.status(400).json({ message: "Mã yêu cầu đặt hàng không hợp lệ." });
@@ -2920,10 +2984,25 @@ function createApp(options = {}) {
       });
     }
 
+    let customerRecord = null;
+    if (req.user?.customerId) {
+      customerRecord = store.data.customers.find((item) => item.id === req.user.customerId);
+    }
+    if (!customerRecord && customer.email) {
+      customerRecord = store.data.customers.find((item) => normalizeText(item.email) === customer.email);
+    }
+
+    const membership = membershipProfile(customerRecord?.totalSpent || 0);
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const shippingMethod = req.body.shippingMethod === "express" ? "express" : "standard";
-    let shippingFee = shippingMethod === "express" ? 60000 : (subtotal >= 699000 ? 0 : 30000);
-    let discount = 0;
+    let shippingFee = shippingMethod === "express"
+      ? 60000
+      : (membership.freeShippingThreshold === 0 || subtotal >= membership.freeShippingThreshold ? 0 : 30000);
+    const membershipDiscount = Math.min(
+      subtotal,
+      Math.round(subtotal * membership.discountPercent / 100),
+    );
+    let couponDiscount = 0;
     let couponCode = "";
     let appliedCoupon = null;
     if (req.body.couponCode) {
@@ -2939,9 +3018,10 @@ function createApp(options = {}) {
       couponCode = coupon.code;
       appliedCoupon = coupon;
       const benefit = couponBenefit(coupon, subtotal, shippingFee);
-      discount = benefit.discount;
+      couponDiscount = Math.min(benefit.discount, Math.max(0, subtotal - membershipDiscount));
       shippingFee = benefit.shippingFee;
     }
+    const discount = membershipDiscount + couponDiscount;
 
     const orderNumber = store.data.orders.reduce((max, item) => {
       const match = item.id.match(/(\d+)$/);
@@ -2961,13 +3041,6 @@ function createApp(options = {}) {
       });
     }
 
-    let customerRecord = null;
-    if (req.user?.customerId) {
-      customerRecord = store.data.customers.find((item) => item.id === req.user.customerId);
-    }
-    if (!customerRecord && customer.email) {
-      customerRecord = store.data.customers.find((item) => normalizeText(item.email) === customer.email);
-    }
     if (!customerRecord) {
       customerRecord = {
         id: store.nextId("customers", "cus-"),
@@ -2982,6 +3055,7 @@ function createApp(options = {}) {
     } else {
       Object.assign(customerRecord, customer);
     }
+    customerRecord.tier = membership.tier;
 
     const order = {
       id,
@@ -2993,6 +3067,9 @@ function createApp(options = {}) {
       subtotal,
       shippingFee,
       discount,
+      membershipTier: membership.tier,
+      membershipDiscount,
+      couponDiscount,
       total: subtotal + shippingFee - discount,
       couponCode,
       couponUsageCountedAt: appliedCoupon ? createdAt : null,
@@ -3007,6 +3084,12 @@ function createApp(options = {}) {
         : null,
       status: "pending",
       note: String(req.body.note || "").trim().slice(0, 500),
+      addressConfirmation: {
+        address: customer.address,
+        confirmed: true,
+        method: "customer_map_review",
+        confirmedAt: createdAt,
+      },
       checkoutRequestId: checkoutRequestId || null,
       guestCheckoutJti,
       assigneeId: null,
@@ -3024,11 +3107,24 @@ function createApp(options = {}) {
       label: ORDER_STATUS_LABELS.pending,
       note: paymentMethod === "bank"
         ? "Đơn hàng đã được tiếp nhận và đang chờ thanh toán chuyển khoản."
-        : "Đơn hàng đã được tiếp nhận và đang chờ xác nhận.",
+        : "Đơn hàng đã được tiếp nhận.",
       actor: req.user || { name: customer.name, role: "customer" },
       source: req.user ? "customer" : "guest",
       at: createdAt,
     });
+    let customerFacingEvent = createdEvent;
+    if (paymentMethod === "cod") {
+      order.status = "confirmed";
+      customerFacingEvent = appendOrderEvent(order, {
+        status: "confirmed",
+        paymentStatus: order.paymentStatus,
+        label: ORDER_STATUS_LABELS.confirmed,
+        note: "Đơn COD được tự động xác nhận sau khi thông tin liên hệ và địa chỉ giao hàng đã được kiểm tra.",
+        actor: { name: "Hệ thống NOVAWEAR", role: "system" },
+        source: "system",
+        at: createdAt,
+      });
+    }
     adjustOrderInventory(store, order, -1, `Giữ hàng cho đơn ${order.id}`, req.user || { name: customer.name });
     order.stockReservedAt = createdAt;
     if (guestCheckoutJti) {
@@ -3044,9 +3140,9 @@ function createApp(options = {}) {
       appliedCoupon.usedCount = Number(appliedCoupon.usedCount || 0) + 1;
     }
     store.data.orders.unshift(order);
-    notifyOrderChange(store, order, createdEvent, {
+    notifyOrderChange(store, order, customerFacingEvent, {
       type: "order_created",
-      message: createdEvent.note,
+      message: customerFacingEvent.note,
       operationsMessage: `${customer.name} vừa đặt ${items.length} sản phẩm, tổng ${order.total.toLocaleString("vi-VN")} ₫.`,
     });
     store.audit("create", "order", order.id, req.user || { name: customer.name });
@@ -4109,11 +4205,8 @@ function createApp(options = {}) {
 
   admin.post("/customers", (req, res) => {
     const requestedTier = String(req.body.tier || "Member").trim();
-    if (!CUSTOMER_TIERS.has(requestedTier)) {
-      return res.status(400).json({ message: "Hạng thành viên không hợp lệ." });
-    }
-    if (req.user.role !== "admin" && requestedTier !== "Member") {
-      return res.status(403).json({ message: "Chỉ quản trị viên được thiết lập hạng thành viên." });
+    if (requestedTier !== "Member") {
+      return res.status(400).json({ message: "Hạng thành viên do hệ thống tự tính từ các đơn đã giao và đã thanh toán." });
     }
     const customer = {
       id: store.nextId("customers", "cus-"),
@@ -4121,7 +4214,7 @@ function createApp(options = {}) {
       email: normalizeText(req.body.email),
       phone: String(req.body.phone || "").trim(),
       address: String(req.body.address || "").trim(),
-      tier: requestedTier,
+      tier: "Member",
       totalSpent: 0,
       orderCount: 0,
       status: "active",
@@ -4145,22 +4238,23 @@ function createApp(options = {}) {
   admin.put("/customers/:id", (req, res) => {
     const customer = store.data.customers.find((item) => item.id === req.params.id);
     if (!customer) return notFound(res, "Khách hàng");
-    const changesProtectedFields = req.user.role !== "admin" && (
-      (req.body.status !== undefined && String(req.body.status) !== String(customer.status))
-      || (req.body.tier !== undefined && String(req.body.tier) !== String(customer.tier))
-    );
+    if (req.body.tier !== undefined && String(req.body.tier) !== String(customer.tier)) {
+      return res.status(400).json({ message: "Hạng thành viên do hệ thống tự tính từ các đơn đã giao và đã thanh toán." });
+    }
+    const changesProtectedFields = req.user.role !== "admin"
+      && req.body.status !== undefined
+      && String(req.body.status) !== String(customer.status);
     if (changesProtectedFields) {
-      return res.status(403).json({ message: "Chỉ quản trị viên được thay đổi hạng hoặc khóa tài khoản khách hàng." });
+      return res.status(403).json({ message: "Chỉ quản trị viên được khóa hoặc mở tài khoản khách hàng." });
     }
     const linkedUser = store.data.users.find((item) => item.customerId === customer.id) || null;
     const nextName = String(req.body.name ?? customer.name).trim();
     const nextEmail = normalizeText(req.body.email ?? customer.email);
     const nextPhone = String(req.body.phone ?? customer.phone).trim();
-    const nextTier = String(req.body.tier ?? customer.tier).trim();
     const nextStatus = ["active", "inactive"].includes(String(req.body.status))
       ? String(req.body.status)
       : customer.status;
-    if (!nextName || !phonePattern.test(nextPhone) || (nextEmail && !emailPattern.test(nextEmail)) || !CUSTOMER_TIERS.has(nextTier)) {
+    if (!nextName || !phonePattern.test(nextPhone) || (nextEmail && !emailPattern.test(nextEmail))) {
       return res.status(400).json({ message: "Thông tin khách hàng chưa hợp lệ." });
     }
     if (linkedUser && nextEmail !== normalizeText(linkedUser.email)) {
@@ -4178,7 +4272,6 @@ function createApp(options = {}) {
     customer.email = nextEmail;
     customer.phone = nextPhone;
     customer.status = nextStatus;
-    customer.tier = nextTier;
     if (req.body.address !== undefined) customer.address = String(req.body.address).trim();
     if (linkedUser) {
       linkedUser.name = nextName;
@@ -4189,6 +4282,7 @@ function createApp(options = {}) {
       }
       if (previousStatus !== nextStatus) linkedUser.tokenVersion = Number(linkedUser.tokenVersion || 0) + 1;
     }
+    rebuildCustomerMetrics(store, customer.id);
     store.audit("update", "customer", customer.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật khách hàng.", data: customer });

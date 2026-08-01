@@ -120,4 +120,33 @@ describe("CheckoutPage recipient information", () => {
     });
     expect(addressInput).toHaveValue("Địa chỉ dùng riêng cho đơn này");
   });
+
+  test("requires map review and sends the confirmed address with an authenticated order", async () => {
+    const user = {
+      id: "user-1",
+      name: "Nguyễn Duy",
+      email: "duy@example.com",
+      phone: "0934457124",
+    };
+    const address = "01 Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh";
+    api.get.mockResolvedValue({
+      user,
+      customer: { phone: user.phone, address },
+      membership: { tier: "Silver", discountPercent: 2, freeShippingThreshold: 499000 },
+    });
+    api.post.mockResolvedValue({ message: "Đã tạo đơn.", data: { id: "ORD-TEST" } });
+    const view = renderCheckout(user);
+
+    await waitFor(() => expect(view.container.querySelector('input[name="address"]')).toHaveValue(address));
+    fireEvent.click(view.getByRole("button", { name: "Kiểm tra trên bản đồ" }));
+    fireEvent.click(view.getByRole("button", { name: "Đúng địa chỉ này" }));
+    expect(view.getByRole("button", { name: "✓ Đã xác nhận trên bản đồ" })).toBeInTheDocument();
+
+    const submitButton = view.container.querySelector('button[type="submit"]');
+    fireEvent.submit(view.container.querySelector("form"));
+    await waitFor(() => expect(submitButton).not.toBeDisabled());
+    expect(api.post).toHaveBeenCalledWith("/orders", expect.objectContaining({
+      addressConfirmation: { address, confirmed: true },
+    }));
+  });
 });

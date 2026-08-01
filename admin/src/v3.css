@@ -199,6 +199,11 @@ body { background: var(--ops-bg); font-size: 13px; }
 .ops-workflow-fields input,.ops-workflow-fields textarea,.ops-workflow-fields select,.ops-workflow-reason input { width:100%; min-height:39px; padding:9px 10px; border:1px solid var(--ops-line-dark); border-radius:4px; outline:0; background:#fff; font:inherit; font-size:.58rem; resize:vertical; }
 .ops-workflow-fields input:focus,.ops-workflow-fields textarea:focus,.ops-workflow-fields select:focus,.ops-workflow-reason input:focus { border-color:var(--ops-ink); }
 .ops-workflow-actions { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.ops-workflow-notes { border-top:1px solid #dedcd6; border-bottom:1px solid #dedcd6; }
+.ops-workflow-notes summary { padding:11px 0; color:#66645f; cursor:pointer; font-size:.57rem; font-weight:750; list-style-position:inside; }
+.ops-workflow-notes[open] { padding-bottom:12px; }
+.ops-workflow-exception { display:grid; padding:14px; border:1px solid #e0b6ad; background:#fff4f1; gap:12px; }
+.ops-workflow-exception>div { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
 .ops-workflow-warning { margin:0; padding:10px 12px; border-left:3px solid var(--ops-amber); color:#765a13; background:#fff9e6; font-size:.55rem; }
 .ops-refund-workflow { border-color:#d9c8e5; background:#faf6fd; }
 .ops-detail-timeline p { margin:3px 0; color:var(--ops-muted); font-size:.52rem; line-height:1.45; }
@@ -220,7 +225,7 @@ body { background: var(--ops-bg); font-size: 13px; }
 .ops-return-timeline em { color:#8a6b25; }
 .return-state { white-space:nowrap; }
 @media (max-width:1180px) { .ops-order-summary-cards { grid-template-columns:repeat(3,1fr); }.ops-workflow-fields--three { grid-template-columns:1fr 1fr; } }
-@media (max-width:720px) { .ops-order-summary-cards,.ops-workflow-fields,.ops-workflow-fields--three { grid-template-columns:1fr; }.ops-notification-menu { position:fixed; top:68px; right:14px; }.ops-workflow-actions { align-items:stretch; flex-direction:column; }.ops-workflow-actions button { width:100%; } }
+@media (max-width:720px) { .ops-order-summary-cards { display:grid; overflow:visible; grid-template-columns:repeat(2,minmax(0,1fr)); }.ops-order-summary-cards>button { min-width:0; }.ops-workflow-fields,.ops-workflow-fields--three { grid-template-columns:1fr; }.ops-notification-menu { position:fixed; top:68px; right:14px; }.ops-workflow-actions,.ops-workflow-exception>div { align-items:stretch; flex-direction:column; }.ops-workflow-actions button,.ops-workflow-exception button { width:100%; } }
 
 /* Support inbox — direct customer chat and contact requests */
 .ops-support-inbox {
@@ -633,5 +638,29 @@ body { background: var(--ops-bg); font-size: 13px; }
 
   .ops-chat-composer button {
     width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .ops-primary-button,
+  .ops-secondary-button,
+  .ops-danger-button {
+    min-height: 44px;
+  }
+
+  .ops-menu-trigger,
+  .ops-brand > button,
+  .ops-orders-table td:last-child button,
+  .ops-work-card > header button {
+    display: inline-grid;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    place-items: center;
+  }
+
+  .ops-support-inbox > aside > header nav button {
+    min-height: 40px;
   }
 }

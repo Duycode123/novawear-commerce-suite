@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
 import { ErrorState, ProductCard, ProductGridSkeleton } from "../components/Common";
+import { saveRecentSearch } from "../services/searchHistory";
 
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,7 +33,7 @@ export default function CatalogPage() {
     Object.entries(filters).forEach(([key, value]) => {
       if (value) query.set(key, value);
     });
-    query.set("limit", "12");
+    query.set("limit", "16");
     try {
       const result = await api.get(`/products?${query.toString()}`);
       setProducts(result.data);
@@ -51,6 +52,10 @@ export default function CatalogPage() {
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (filters.search) saveRecentSearch(filters.search);
+  }, [filters.search]);
 
   const setFilter = (key, value) => {
     const next = new URLSearchParams(searchParams);
@@ -194,7 +199,7 @@ export default function CatalogPage() {
             </div>
           )}
 
-          {loading && <ProductGridSkeleton count={8} />}
+          {loading && <ProductGridSkeleton count={16} />}
           {error && <ErrorState message={error} onRetry={loadProducts} />}
           {!loading && !error && products.length > 0 && (
             <>

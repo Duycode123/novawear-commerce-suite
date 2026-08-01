@@ -111,7 +111,7 @@ export default function CustomersPage() {
             <label className="ops-field"><span>Số điện thoại *</span><input required value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} /></label>
             <label className="ops-field"><span>Email</span><input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label>
             <label className="ops-field ops-field--wide"><span>Địa chỉ</span><textarea rows={3} value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} /></label>
-            <label className="ops-field"><span>Hạng thành viên</span><select disabled={user.role !== "admin"} value={form.tier} onChange={(event) => setForm((current) => ({ ...current, tier: event.target.value }))}><option>Member</option><option>Silver</option><option>Gold</option></select></label>
+            <label className="ops-field"><span>Hạng hệ thống</span><input value={form.tier} disabled /><small>Tự động tính từ tổng giá trị đơn đã giao và đã thanh toán.</small></label>
             <label className="ops-field"><span>Trạng thái</span><select disabled={user.role !== "admin"} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}><option value="active">Hoạt động</option><option value="inactive">Ngừng hoạt động</option></select></label>
           </div>
           {selected && <div className="ops-customer-insight"><div><span>Số đơn</span><strong>{selected.orderCount}</strong></div><div><span>Tổng chi tiêu</span><strong>{formatMoney(selected.totalSpent)}</strong></div></div>}

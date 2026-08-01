@@ -10,6 +10,7 @@ export default function AccountPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(() => searchParams.get("tab") || "overview");
   const [orders, setOrders] = useState([]);
+  const [membership, setMembership] = useState(null);
   const [profile, setProfile] = useState({ name: user?.name || "", phone: user?.phone || "", address: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -30,6 +31,7 @@ export default function AccountPage() {
     try {
       const [me, history] = await Promise.all([api.get("/auth/me"), api.get("/orders/my")]);
       setOrders(history.data);
+      setMembership(me.membership || null);
       const openId = searchParams.get("order");
       setSelectedOrder((current) => {
         const targetId = openId || current?.id;
@@ -212,9 +214,10 @@ export default function AccountPage() {
   };
 
   const activeOrders = orders.filter((order) => !["delivered", "cancelled"].includes(order.status));
-  const totalSpent = orders
+  const orderTotalSpent = orders
     .filter((order) => order.status === "delivered" && ["paid", "partially_refunded"].includes(order.paymentStatus))
     .reduce((sum, order) => sum + Math.max(0, order.total - Number(order.refundedAmount || 0)), 0);
+  const totalSpent = Number(membership?.totalSpent ?? orderTotalSpent);
 
   return (
     <div className="account-page section">
@@ -278,8 +281,18 @@ export default function AccountPage() {
                 )}
               </section>
               <section className="member-banner">
-                <div><p className="eyebrow">NOVA MEMBER</p><h2>Tích lũy theo cách tự nhiên.</h2><p>Mỗi đơn hàng đưa bạn gần hơn tới các đặc quyền thành viên.</p></div>
-                <div><strong>{Math.min(100, Math.round(totalSpent / 50000))}%</strong><span>Tiến độ lên hạng Gold</span></div>
+                <div className="member-banner__intro">
+                  <p className="eyebrow">NOVA {membership?.tier?.toUpperCase() || "MEMBER"}</p>
+                  <h2>{membership?.nextTier ? `Tiến gần hơn tới hạng ${membership.nextTier}.` : "Bạn đã đạt hạng thành viên cao nhất."}</h2>
+                  <p>Hạng được tính tự động từ tổng giá trị các đơn đã giao và đã thanh toán.</p>
+                  {membership?.benefits?.length > 0 && <ul>{membership.benefits.map((benefit) => <li key={benefit}>✓ {benefit}</li>)}</ul>}
+                </div>
+                <div className="member-banner__progress">
+                  <strong>{membership?.progressPercent ?? 0}%</strong>
+                  <span>{membership?.nextTier ? `Tiến độ lên hạng ${membership.nextTier}` : "Hạng cao nhất"}</span>
+                  <i><b style={{ width: `${membership?.progressPercent ?? 0}%` }} /></i>
+                  <small>{membership?.nextTier ? `Còn ${formatMoney(membership.amountToNextTier)} để nâng hạng` : `Tổng chi tiêu ${formatMoney(totalSpent)}`}</small>
+                </div>
               </section>
             </>
           )}
@@ -362,6 +375,13 @@ export default function AccountPage() {
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="order-detail-breakdown">
+              <div><span>Tạm tính</span><strong>{formatMoney(selectedOrder.subtotal)}</strong></div>
+              <div><span>Phí giao hàng</span><strong>{selectedOrder.shippingFee ? formatMoney(selectedOrder.shippingFee) : "Miễn phí"}</strong></div>
+              {selectedOrder.membershipDiscount > 0 && <div><span>Quyền lợi hạng {selectedOrder.membershipTier}</span><strong>−{formatMoney(selectedOrder.membershipDiscount)}</strong></div>}
+              {selectedOrder.couponDiscount > 0 && <div><span>Mã ưu đãi {selectedOrder.couponCode}</span><strong>−{formatMoney(selectedOrder.couponDiscount)}</strong></div>}
+              {!selectedOrder.membershipDiscount && !selectedOrder.couponDiscount && selectedOrder.discount > 0 && <div><span>Ưu đãi {selectedOrder.couponCode}</span><strong>−{formatMoney(selectedOrder.discount)}</strong></div>}
             </div>
             <div className="order-detail-total"><span>Tổng thanh toán</span><strong>{formatMoney(selectedOrder.total)}</strong></div>
             {["pending", "confirmed"].includes(selectedOrder.status) && (

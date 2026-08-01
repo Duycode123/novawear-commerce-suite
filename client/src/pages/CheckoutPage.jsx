@@ -3,7 +3,11 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { formatMoney, SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
-import { SmartImage } from "../components/Common";
+import { Modal, SmartImage } from "../components/Common";
+
+function normalizeAddress(value = "") {
+  return String(value).trim().replace(/\s+/g, " ").toLowerCase();
+}
 
 export default function CheckoutPage() {
   const { cart, cartSubtotal, user, clearCart, notify, integrations } = useShop();
@@ -29,6 +33,9 @@ export default function CheckoutPage() {
   });
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
+  const [membership, setMembership] = useState(null);
+  const [addressCheckOpen, setAddressCheckOpen] = useState(false);
+  const [confirmedAddress, setConfirmedAddress] = useState("");
   const touchedRecipientFields = useRef(new Set());
   const activeUserId = useRef(user?.id || null);
   const checkoutRequestId = useRef(
@@ -36,13 +43,26 @@ export default function CheckoutPage() {
       || `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
   );
 
+  const memberShippingThreshold = membership?.freeShippingThreshold ?? SITE.freeShippingThreshold;
+  const membershipDiscount = Math.min(
+    cartSubtotal,
+    Math.round(cartSubtotal * Number(membership?.discountPercent || 0) / 100),
+  );
   const standardShippingFee = useMemo(() => {
-    if (cartSubtotal >= SITE.freeShippingThreshold) return 0;
-    return Math.max(0, 30000 - Number(coupon?.shippingDiscount || 0));
-  }, [cartSubtotal, coupon]);
-  const shippingFee = form.shippingMethod === "express" ? 60000 : standardShippingFee;
-  const discount = Number(coupon?.discount || 0);
-  const total = cartSubtotal + shippingFee - discount;
+    if (memberShippingThreshold === 0 || cartSubtotal >= memberShippingThreshold) return 0;
+    return 30000;
+  }, [cartSubtotal, memberShippingThreshold]);
+  const baseShippingFee = form.shippingMethod === "express" ? 60000 : standardShippingFee;
+  const shippingFee = Math.max(0, baseShippingFee - Number(coupon?.shippingDiscount || 0));
+  const couponDiscount = Math.min(
+    Number(coupon?.discount || 0),
+    Math.max(0, cartSubtotal - membershipDiscount),
+  );
+  const total = Math.max(0, cartSubtotal + shippingFee - membershipDiscount - couponDiscount);
+  const normalizedAddress = normalizeAddress(form.address);
+  const addressConfirmed = normalizedAddress.length >= 10 && confirmedAddress === normalizedAddress;
+  const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(form.address)}&output=embed`;
+  const mapSearchUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.address)}`;
 
   useEffect(() => {
     let active = true;
@@ -59,6 +79,7 @@ export default function CheckoutPage() {
         }));
       }
       activeUserId.current = null;
+      setMembership(null);
       setProfileLoading(false);
       return undefined;
     }
@@ -93,6 +114,7 @@ export default function CheckoutPage() {
       .then((result) => {
         const account = result.user || user;
         const customerProfile = result.customer || result.employee || {};
+        setMembership(result.membership || null);
         mergeProfile({
           name: account.name || user.name,
           email: account.email || user.email,
@@ -190,6 +212,11 @@ export default function CheckoutPage() {
 
   const submit = async (event) => {
     event.preventDefault();
+    if (!addressConfirmed) {
+      notify("Vui lòng kiểm tra và xác nhận địa chỉ giao hàng trên bản đồ.", "error");
+      setAddressCheckOpen(true);
+      return;
+    }
     if (!user && (!emailVerification.checkoutToken
       || emailVerification.verifiedEmail !== form.email.trim().toLowerCase())) {
       notify("Vui lòng xác minh email trước khi đặt hàng.", "error");
@@ -214,6 +241,10 @@ export default function CheckoutPage() {
         shippingMethod: form.shippingMethod,
         paymentMethod: form.paymentMethod,
         note: form.note,
+        addressConfirmation: {
+          address: form.address,
+          confirmed: true,
+        },
         checkoutToken: emailVerification.checkoutToken,
         requestId: checkoutRequestId.current,
       });
@@ -267,6 +298,12 @@ export default function CheckoutPage() {
               <label className="field field--wide">
                 <span>Địa chỉ nhận hàng *</span>
                 <input name="address" autoComplete="street-address" required value={form.address} onChange={change} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" />
+                <div className={`checkout-address-review ${addressConfirmed ? "is-confirmed" : ""}`}>
+                  <button type="button" onClick={() => setAddressCheckOpen(true)} disabled={normalizedAddress.length < 10}>
+                    {addressConfirmed ? "✓ Đã xác nhận trên bản đồ" : "Kiểm tra trên bản đồ"}
+                  </button>
+                  <small>{addressConfirmed ? "Địa chỉ đã khớp với vị trí bạn vừa kiểm tra." : "Bắt buộc kiểm tra số nhà, đường và khu vực trước khi đặt."}</small>
+                </div>
               </label>
               <label className="field field--wide">
                 <span>Ghi chú cho đơn hàng</span>
@@ -347,6 +384,13 @@ export default function CheckoutPage() {
               </div>
             ))}
           </div>
+          {membership && (
+            <div className="checkout-membership-benefit">
+              <span>HẠNG {membership.tier}</span>
+              <strong>{membership.discountPercent > 0 ? `Giảm thêm ${membership.discountPercent}%` : "Quyền lợi thành viên"}</strong>
+              <p>{membership.freeShippingThreshold === 0 ? "Miễn phí giao tiêu chuẩn mọi đơn." : `Miễn phí giao tiêu chuẩn từ ${formatMoney(membership.freeShippingThreshold)}.`}</p>
+            </div>
+          )}
           <div className="coupon-box">
             <label htmlFor="coupon">Mã ưu đãi</label>
             <div>
@@ -358,15 +402,38 @@ export default function CheckoutPage() {
           <div className="checkout-totals">
             <div><span>Tạm tính</span><strong>{formatMoney(cartSubtotal)}</strong></div>
             <div><span>Phí giao hàng</span><strong>{shippingFee ? formatMoney(shippingFee) : "Miễn phí"}</strong></div>
-            {discount > 0 && <div className="discount-line"><span>Ưu đãi</span><strong>−{formatMoney(discount)}</strong></div>}
+            {membershipDiscount > 0 && <div className="discount-line"><span>Quyền lợi hạng {membership.tier}</span><strong>−{formatMoney(membershipDiscount)}</strong></div>}
+            {couponDiscount > 0 && <div className="discount-line"><span>Mã {coupon?.code}</span><strong>−{formatMoney(couponDiscount)}</strong></div>}
             <div className="checkout-total"><span>Tổng thanh toán<small>Đã gồm VAT</small></span><strong>{formatMoney(total)}</strong></div>
           </div>
-          <button className="button button--accent button--wide" type="submit" disabled={submitting}>
+          <button className="button button--accent button--wide" type="submit" disabled={submitting || profileLoading}>
             {submitting ? "Đang tạo đơn..." : `Đặt hàng · ${formatMoney(total)}`}
           </button>
           <p className="checkout-terms">Khi đặt hàng, bạn đồng ý với <Link to="/ho-tro">điều khoản mua hàng</Link> và chính sách bảo mật.</p>
         </aside>
       </form>
+      <Modal open={addressCheckOpen} title="Kiểm tra địa chỉ giao hàng" onClose={() => setAddressCheckOpen(false)} size="medium">
+        <div className="checkout-address-map">
+          <div>
+            <span>ĐỊA CHỈ ĐANG KIỂM TRA</span>
+            <strong>{form.address || "Chưa nhập địa chỉ"}</strong>
+            <p>Kiểm tra vị trí gợi ý trên bản đồ và đối chiếu đủ số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành.</p>
+          </div>
+          {normalizedAddress.length >= 10 ? (
+            <iframe title="Bản đồ kiểm tra địa chỉ giao hàng" src={mapEmbedUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+          ) : (
+            <div className="checkout-address-map__empty">Hãy nhập địa chỉ đầy đủ trước khi kiểm tra.</div>
+          )}
+          <div className="checkout-address-map__actions">
+            {normalizedAddress.length >= 10 && <a href={mapSearchUrl} target="_blank" rel="noreferrer">Mở Google Maps ↗</a>}
+            <button className="button button--dark" type="button" disabled={normalizedAddress.length < 10} onClick={() => {
+              setConfirmedAddress(normalizedAddress);
+              setAddressCheckOpen(false);
+              notify("Đã xác nhận địa chỉ giao hàng.");
+            }}>Đúng địa chỉ này</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

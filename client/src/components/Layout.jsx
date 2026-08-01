@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { formatDate, SITE } from "../config/site";
 import { useShop } from "../context/ShopContext";
+import { saveRecentSearch } from "../services/searchHistory";
 import { Logo } from "./Common";
 import Icon from "./Icon";
 import ShopChat from "./ShopChat";
@@ -214,6 +215,7 @@ export default function Layout() {
   const submitSearch = (event) => {
     event.preventDefault();
     const term = search.trim();
+    if (term) saveRecentSearch(term);
     navigate(term ? `/cua-hang?search=${encodeURIComponent(term)}` : "/cua-hang");
   };
 
