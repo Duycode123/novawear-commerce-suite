@@ -4249,7 +4249,8 @@ button {
     width: 100%;
   }
 
-  .checkout-address-map iframe { height: 260px; }
+  .checkout-address-map iframe,
+  .checkout-address-map__fallback { height: 260px; }
 
   .member-banner__progress {
     width: 100%;

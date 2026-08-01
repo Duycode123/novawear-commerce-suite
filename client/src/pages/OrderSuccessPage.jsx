@@ -17,6 +17,7 @@ function readOrderHandoff() {
 }
 
 function secondsUntil(value) {
+  if (!value) return null;
   const expiresAt = new Date(value || 0).getTime();
   return Number.isFinite(expiresAt) ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) : null;
 }

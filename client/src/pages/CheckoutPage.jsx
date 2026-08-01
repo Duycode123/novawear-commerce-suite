@@ -462,7 +462,7 @@ export default function CheckoutPage() {
             <div className="checkout-address-map__empty">Hãy nhập địa chỉ đầy đủ trước khi kiểm tra.</div>
           )}
           <div className="checkout-address-map__actions">
-            {normalizedAddress.length >= 10 && <a href={mapSearchUrl} target="_blank" rel="noreferrer">Mở Google Maps ↗</a>}
+            {normalizedAddress.length >= 10 && mapEmbedUrl && <a href={mapSearchUrl} target="_blank" rel="noreferrer">Mở Google Maps ↗</a>}
             <button className="button button--dark" type="button" disabled={normalizedAddress.length < 10} onClick={() => {
               setConfirmedAddress(normalizedAddress);
               setAddressCheckOpen(false);
