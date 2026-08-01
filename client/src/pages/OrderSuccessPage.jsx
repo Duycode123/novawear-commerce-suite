@@ -121,6 +121,7 @@ export default function OrderSuccessPage() {
   const paymentPaid = paymentStatus === "paid";
   const paymentPending = order.paymentMethod === "bank" && paymentStatus !== "paid" && !paymentFailed;
   const transferContent = order.paymentCode || order.trackingCode || String(order.id).replace(/[^a-zA-Z0-9]/g, "");
+  const paymentDetailFallback = (value) => value || (paymentLoading ? "Đang tải..." : paymentError ? "Chưa tải được" : "Chưa cấu hình");
   const successContent = paymentPending
     ? {
       eyebrow: "Đơn hàng đã tạo · Chờ thanh toán",
@@ -163,17 +164,11 @@ export default function OrderSuccessPage() {
   };
 
   return (
-    <div className="success-page">
+    <div className={`success-page ${paymentPending ? "success-page--pending" : ""}`}>
       <div className={`success-mark ${successContent.modifier}`}><span>{successContent.symbol}</span></div>
       <p className="eyebrow">{successContent.eyebrow}</p>
       <h1>{successContent.title}</h1>
       <p>{successContent.description}</p>
-      <div className="success-order">
-        <div><span>Mã đơn hàng</span><strong>{order.id}</strong></div>
-        <div><span>Mã tra cứu</span><strong>{order.trackingCode}</strong></div>
-        <div><span>Tổng thanh toán</span><strong>{formatMoney(order.total)}</strong></div>
-        <div><span>Phương thức</span><strong>{order.paymentMethod === "cod" ? "Thanh toán khi nhận" : order.paymentMethod === "bank" ? "Chuyển khoản" : "Ví điện tử / QR"}</strong></div>
-      </div>
       {order.paymentMethod !== "cod" && (
         <section className={`sepay-payment-card ${paymentStatus === "paid" ? "sepay-payment-card--paid" : ""} ${paymentFailed ? "sepay-payment-card--failed" : ""}`}>
           <div className="sepay-payment-state" role="status">
@@ -183,7 +178,7 @@ export default function OrderSuccessPage() {
               <small>{paymentStatus === "paid" ? "Đơn hàng đã được tự động xác nhận." : paymentFailed ? "Đơn không còn nhận chuyển khoản. Tồn kho đã được giải phóng; vui lòng đặt đơn mới." : `Trang tự cập nhật khi SePay báo tiền về${secondsLeft !== null ? ` · Còn ${formatCountdown(secondsLeft)}` : ""}.`}</small>
             </div>
           </div>
-          {!paymentFailed && <div className="sepay-payment-card__qr">
+          {paymentPending && <div className="sepay-payment-card__qr">
             <span>Thanh toán qua <b>SePay</b></span>
             {paymentLoading && <div className="skeleton skeleton--panel" aria-label="Đang tải mã QR" />}
             {!paymentLoading && paymentDetails?.qrUrl && (
@@ -205,17 +200,31 @@ export default function OrderSuccessPage() {
             )}
             <small>Quét bằng ứng dụng ngân hàng</small>
           </div>}
-          {!paymentFailed && <div className="sepay-payment-card__info">
+          {paymentPending && <div className="sepay-payment-card__info">
             <p className="eyebrow">Chờ thanh toán</p>
             <h2>{formatMoney(order.total)}</h2>
-            <div><span>Ngân hàng</span><strong>{paymentDetails?.bankCode || (paymentError ? "Chưa tải được" : "Đang tải...")}</strong></div>
-            <div><span>Số tài khoản</span><strong>{paymentDetails?.accountNumber || (paymentError ? "Chưa tải được" : "Đang tải...")}</strong>{paymentDetails?.accountNumber && <button type="button" onClick={() => copy(paymentDetails.accountNumber, "account")}>{copied === "account" ? "Đã chép" : "Sao chép"}</button>}</div>
-            <div><span>Chủ tài khoản</span><strong>{paymentDetails?.accountName || (paymentError ? "Chưa tải được" : "Đang tải...")}</strong></div>
+            <div><span>Ngân hàng</span><strong>{paymentDetailFallback(paymentDetails?.bankCode)}</strong></div>
+            <div><span>Số tài khoản</span><strong>{paymentDetailFallback(paymentDetails?.accountNumber)}</strong>{paymentDetails?.accountNumber && <button type="button" onClick={() => copy(paymentDetails.accountNumber, "account")}>{copied === "account" ? "Đã chép" : "Sao chép"}</button>}</div>
+            <div><span>Chủ tài khoản</span><strong>{paymentDetailFallback(paymentDetails?.accountName)}</strong></div>
             <div><span>Nội dung chuyển khoản</span><strong>{transferContent}</strong><button type="button" onClick={() => copy(transferContent, "content")}>{copied === "content" ? "Đã chép" : "Sao chép"}</button></div>
             <p className="sepay-payment-card__notice">Sau khi chuyển khoản, hệ thống sẽ tự động xác nhận trong khoảng 1–5 phút.</p>
           </div>}
+          {paymentPaid && <div className="sepay-payment-complete">
+            <strong>Đã nhận thanh toán</strong>
+            <p>SePay đã đối soát giao dịch. Đơn hàng chuyển sang trạng thái đã xác nhận và đang được chuẩn bị.</p>
+          </div>}
+          {paymentFailed && <div className="sepay-payment-complete">
+            <strong>Không thể tiếp tục thanh toán</strong>
+            <p>Đơn hàng đã hết thời gian giữ chỗ. Vui lòng quay lại cửa hàng để tạo đơn mới.</p>
+          </div>}
         </section>
       )}
+      <div className="success-order">
+        <div><span>Mã đơn hàng</span><strong>{order.id}</strong></div>
+        <div><span>Mã tra cứu</span><strong>{order.trackingCode}</strong></div>
+        <div><span>Tổng thanh toán</span><strong>{formatMoney(order.total)}</strong></div>
+        <div><span>Phương thức</span><strong>{order.paymentMethod === "cod" ? "Thanh toán khi nhận" : order.paymentMethod === "bank" ? "Chuyển khoản" : "Ví điện tử / QR"}</strong></div>
+      </div>
       <div className="success-actions">
         <Link className="button button--dark" to={`/tra-cuu`}>Theo dõi đơn hàng</Link>
         <Link className="button button--outline" to="/cua-hang">Tiếp tục mua sắm</Link>

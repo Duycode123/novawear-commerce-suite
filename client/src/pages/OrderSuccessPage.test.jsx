@@ -57,4 +57,31 @@ describe("OrderSuccessPage SePay handoff", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
+
+  test("shows a clear configuration state when SePay has no account owner name", async () => {
+    const order = {
+      id: "ORD-2026-1000",
+      trackingCode: "NVA26ACCOUNTNAME",
+      total: 319000,
+      paymentMethod: "bank",
+      paymentStatus: "awaiting",
+      paymentCode: "NVA26ACCOUNTNAME",
+      paymentExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    };
+    api.get.mockImplementation((path) => path.includes("/checkout?")
+      ? Promise.resolve({ data: {
+        qrUrl: "https://qr.sepay.vn/img?acc=123456&bank=MB&amount=319000&des=NVA26ACCOUNTNAME",
+        bankCode: "MB",
+        accountNumber: "123456",
+        accountName: null,
+      } })
+      : Promise.resolve({ data: { paymentStatus: "awaiting" } }));
+
+    sessionStorage.setItem("novawear_checkout_order", JSON.stringify(order));
+    const view = render(<OrderSuccessPage />);
+
+    await waitFor(() => expect(view.getByAltText(`Mã QR thanh toán cho đơn ${order.id}`)).toBeInTheDocument());
+    expect(view.getByText("Chưa cấu hình")).toBeInTheDocument();
+    expect(view.queryByText("Đang tải...")).not.toBeInTheDocument();
+  });
 });

@@ -342,12 +342,15 @@ h1, h2, h3, h4 { font-family: var(--serif); }
 .support-shortcuts, .policy-strip, .faq-section, .contact-section, .tracking-result, .tracking-help, .size-calculator, .size-table-section, .measure-guide { max-width: 1344px; margin-right: auto; margin-left: auto; }
 .support-shortcuts > a, .faq-list details, .tracking-result, .size-calculator, .size-table-wrap { border-radius: 8px; box-shadow: none; }
 
-.success-page { max-width: 1080px; padding: 70px 24px 90px; }
-.success-page > h1 { font-size: clamp(2.4rem, 4vw, 4rem); }
+.success-page { max-width: 1120px; padding: 40px 24px 72px; }
+.success-page--pending { max-width: 1160px; padding-top: 30px; }
+.success-page--pending > h1 { font-size: clamp(2.45rem, 4vw, 3.75rem); }
+.success-page--pending > p:not(.eyebrow):not(.success-help) { max-width: 720px; margin-right: auto; margin-left: auto; }
+.success-mark--pending { margin-bottom: 18px; }
 .success-mark--pending { border: 1px solid #d3ad55; color: #8e6812; background: #fff4cf; }
 .success-mark--paid { color: #173b2b; background: #c8f35d; }
 .success-mark--failed { border: 1px solid #d1a6a0; color: #8b2d28; background: #fff0ed; }
-.sepay-payment-card { display: grid; width: 100%; margin: 28px 0; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: #fff; grid-template-columns: 250px 1fr; gap: 26px; text-align: left; }
+.sepay-payment-card { display: grid; width: 100%; margin: 22px 0 18px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: #fff; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); gap: 20px; text-align: left; }
 .sepay-payment-state { display: flex; align-items: center; padding: 12px 14px; border: 1px solid #e6d3a1; border-radius: 6px; background: #fff9e8; grid-column: 1 / -1; gap: 11px; }
 .sepay-payment-state > span { display: grid; width: 28px; height: 28px; border: 1px solid #d3ad55; border-radius: 50%; color: #8e6812; place-items: center; }
 .sepay-payment-state strong, .sepay-payment-state small { display: block; }
@@ -356,9 +359,11 @@ h1, h2, h3, h4 { font-family: var(--serif); }
 .sepay-payment-card--paid { border-color: #abd3bf; }
 .sepay-payment-card--paid .sepay-payment-state { border-color: #abd3bf; background: #edf8f2; }
 .sepay-payment-card--paid .sepay-payment-state > span { border-color: #58a67c; color: #197147; }
+.sepay-payment-card--failed .sepay-payment-complete { border-color: #d1a6a0; color: #8b2d28; background: #fff0ed; }
+.sepay-payment-card--failed .sepay-payment-complete p { color: #76504c; }
 .sepay-payment-card__qr { display: flex; align-items: center; padding: 16px; border: 1px solid #d9e5f7; border-radius: 7px; background: #f5f9ff; flex-direction: column; }
 .sepay-payment-card__qr > span { margin-bottom: 10px; font-size: 0.65rem; }
-.sepay-payment-card__qr img { width: 178px; height: 178px; object-fit: contain; background: #fff; }
+.sepay-payment-card__qr img { width: min(230px, 100%); height: auto; aspect-ratio: 1; object-fit: contain; background: #fff; }
 .sepay-payment-card__qr small { margin-top: 8px; color: var(--muted); font-size: 0.56rem; }
 .sepay-payment-card__error { display: grid; width: 100%; min-height: 178px; padding: 20px; border: 1px solid #d7c9bf; color: var(--ink); background: #fff; text-align: center; place-content: center; gap: 8px; }
 .sepay-payment-card__error strong, .sepay-payment-card__error small { display: block; margin: 0; }
@@ -370,6 +375,10 @@ h1, h2, h3, h4 { font-family: var(--serif); }
 .sepay-payment-card__info button { padding: 4px 7px; border: 1px solid var(--line); background: #fff; font-size: 0.56rem; }
 .sepay-payment-card__notice { margin-top: 12px; padding: 10px; color: #2c6174; background: #e9f6fb; font-size: 0.6rem; }
 .sepay-payment-card__demo { margin-bottom: 12px; padding: 10px; border: 1px solid #e6d3a1; color: #7d5b12; background: #fff9e8; font-size: 0.6rem; }
+.sepay-payment-complete { grid-column: 1 / -1; padding: 22px; border: 1px solid #abd3bf; border-radius: 7px; color: #173b2b; background: #edf8f2; }
+.sepay-payment-complete strong { display: block; font-family: var(--sans); font-size: .9rem; }
+.sepay-payment-complete p { margin: 7px 0 0; color: #4d675a; font-size: .68rem; }
+.success-page--pending .success-order { margin-top: 14px; }
 .filter-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .filter-chips button { padding: 7px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); background: #fff; font: inherit; font-size: .62rem; }
 .filter-chips button.is-active { border-color: var(--ink); color: #fff; background: var(--ink); }
