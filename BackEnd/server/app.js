@@ -1088,10 +1088,31 @@ function createApp(options = {}) {
   );
   const checkoutRequestWindowSeconds = asPositiveInt(process.env.CHECKOUT_REQUEST_WINDOW_SECONDS, 900);
   const checkoutMaxCodeRequests = asPositiveInt(process.env.CHECKOUT_MAX_CODE_REQUESTS, 5);
-  const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
+  const configuredOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
     .split(",")
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((item) => {
+      if (item === "*") return item;
+      try {
+        return new URL(item).origin;
+      } catch (_error) {
+        return item.replace(/\/$/, "");
+      }
+    });
+  // Keep the public frontend origin in the allow-list even when CORS_ORIGINS
+  // was copied from a local environment. This avoids a successful login being
+  // blocked by the browser's preflight request after moving the API to Render.
+  let frontendOrigin = "";
+  try {
+    frontendOrigin = new URL(String(process.env.FRONTEND_BASE_URL || "")).origin;
+  } catch (_error) {
+    frontendOrigin = "";
+  }
+  const allowedOrigins = [...new Set([
+    ...configuredOrigins,
+    ...(frontendOrigin ? [frontendOrigin] : []),
+  ])];
   const authAttempts = new Map();
   const guestVerificationAttempts = new Map();
   const usedGuestCheckoutTokens = new Map();

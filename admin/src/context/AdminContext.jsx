@@ -75,6 +75,9 @@ export function AdminProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const result = await api.post("/auth/login", { email, password, portal: "admin" });
+    if (!result?.operationsHandoffCode) {
+      throw new Error("Không tạo được phiên đăng nhập khu vực vận hành. Vui lòng thử lại.");
+    }
     const exchanged = await api.post("/auth/operations-exchange", {
       code: result.operationsHandoffCode,
     });

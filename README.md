@@ -37,6 +37,28 @@ Nhấn `Ctrl+C` để dừng cả ba phần.
 
 Trước khi deploy production, đặt `NODE_ENV=production`, `DB_TYPE=postgres`, `DB_SSL=true`, `DB_SSL_REJECT_UNAUTHORIZED=true`, khai báo `CORS_ORIGINS` bằng các URL HTTPS thật và tạo bootstrap admin bằng nhóm `BOOTSTRAP_ADMIN_*`. API sẽ từ chối khởi động nếu thiếu các giá trị bảo mật bắt buộc hoặc đang cấu hình kho JSON.
 
+### Nối Vercel với API Render
+
+Bản giao diện Vercel là ứng dụng tĩnh, còn đăng nhập và dữ liệu chạy trên API Render. Vì vậy biến môi trường phải được đặt ở đúng dịch vụ (không dán mật khẩu vào mã nguồn):
+
+**Vercel → Project Settings → Environment Variables**
+
+```text
+REACT_APP_API_URL=https://<ten-service-render-cua-ban>.onrender.com/api
+REACT_APP_OPS_URL=/ops
+```
+
+Sau khi lưu, cần **Redeploy** để CRA đóng gói địa chỉ API mới. Không để `REACT_APP_API_URL` là `localhost` hoặc bỏ trống trên bản online; nếu bỏ trống, giao diện sẽ gọi `/api` của Vercel và nhận về trang HTML thay vì API.
+
+**Render → Environment**
+
+```text
+FRONTEND_BASE_URL=https://<ten-mien-vercel-cua-ban>
+CORS_ORIGINS=https://<ten-mien-vercel-cua-ban>
+```
+
+API đã tự thêm `FRONTEND_BASE_URL` vào CORS, nhưng vẫn nên khai báo cả hai để cấu hình dễ kiểm tra. Kiểm tra sau deploy bằng `https://<ten-service-render-cua-ban>.onrender.com/api/health`; phải nhận JSON có `status: "ok"`. Khi bấm đăng nhập mà API chưa được nối, giao diện sẽ hiện rõ lỗi cấu hình thay vì đứng im.
+
 Các trang chính sách có route riêng để khách hàng luôn tra cứu được:
 
 - `/chinh-sach/bao-mat`

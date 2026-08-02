@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
-import { api, API_BASE } from "../services/api";
+import { ApiError, api, API_BASE } from "../services/api";
 
 export default function AuthPage({ mode = "login" }) {
   const isLogin = mode === "login";
@@ -45,6 +45,11 @@ export default function AuthPage({ mode = "login" }) {
       if (isLogin) {
         const result = await login({ email: form.email, password: form.password });
         if (["admin", "staff"].includes(result.user.role)) {
+          if (!result.operationsHandoffCode) {
+            throw new ApiError("Không tạo được phiên chuyển tới khu vực vận hành. Vui lòng thử lại.", 502, {
+              code: "OPERATIONS_HANDOFF_MISSING",
+            });
+          }
           const handoff = new URLSearchParams({
             code: result.operationsHandoffCode,
           });

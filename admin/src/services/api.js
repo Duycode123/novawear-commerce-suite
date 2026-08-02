@@ -2,7 +2,15 @@ const defaultBase = window.location.hostname === "localhost"
   ? "http://localhost:5000/api"
   : "/api";
 
-const API_BASE = (process.env.REACT_APP_API_URL || defaultBase).replace(/\/$/, "");
+const configuredBase = String(process.env.REACT_APP_API_URL || "").trim();
+const API_BASE = (configuredBase || defaultBase).replace(/\/$/, "");
+
+function apiConnectionMessage() {
+  if (process.env.NODE_ENV === "production" && API_BASE === "/api") {
+    return "API chưa được nối với bản giao diện online. Hãy cấu hình REACT_APP_API_URL trỏ tới địa chỉ Render rồi build lại giao diện.";
+  }
+  return "Không thể kết nối máy chủ. Vui lòng thử lại sau.";
+}
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -26,9 +34,17 @@ export async function request(path, options = {}) {
       },
     });
   } catch (_error) {
-    throw new ApiError("Không thể kết nối. Vui lòng thử lại sau.", 0);
+    throw new ApiError(apiConnectionMessage(), 0);
   }
 
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    await response.text();
+    throw new ApiError(
+      response.ok ? apiConnectionMessage() : "Máy chủ API trả về phản hồi không hợp lệ.",
+      response.status || 502,
+    );
+  }
   const payload = await response.json().catch(() => ({ message: "Phản hồi không hợp lệ." }));
   if (!response.ok) {
     if (response.status === 401 && token) {

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { api } from "../services/api";
+import { ApiError, api } from "../services/api";
 
 const ShopContext = createContext(null);
 
@@ -144,6 +144,11 @@ export function ShopProvider({ children }) {
 
   const login = useCallback(async (credentials) => {
     const result = await api.post("/auth/login", credentials);
+    if (!result?.user) {
+      throw new ApiError("Máy chủ xác thực trả về dữ liệu không đầy đủ. Vui lòng thử lại sau.", 502, {
+        code: "AUTH_RESPONSE_INVALID",
+      });
+    }
     if (result.user.role === "customer") {
       sessionStorage.setItem("novawear_token", result.token);
       sessionStorage.setItem("novawear_user", JSON.stringify(result.user));

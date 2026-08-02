@@ -2,7 +2,15 @@ const defaultBase = window.location.hostname === "localhost"
   ? "http://localhost:5000/api"
   : "/api";
 
-export const API_BASE = (process.env.REACT_APP_API_URL || defaultBase).replace(/\/$/, "");
+const configuredBase = String(process.env.REACT_APP_API_URL || "").trim();
+export const API_BASE = (configuredBase || defaultBase).replace(/\/$/, "");
+
+function apiConnectionMessage() {
+  if (process.env.NODE_ENV === "production" && API_BASE === "/api") {
+    return "API chưa được nối với bản giao diện online. Hãy cấu hình REACT_APP_API_URL trỏ tới địa chỉ Render rồi build lại giao diện.";
+  }
+  return "Không thể kết nối máy chủ. Vui lòng thử lại sau.";
+}
 
 export class ApiError extends Error {
   constructor(message, status, details) {
@@ -32,13 +40,30 @@ export async function apiRequest(path, options = {}) {
     });
   } catch (error) {
     if (error.name === "AbortError") throw error;
-    throw new ApiError("Không thể kết nối. Vui lòng thử lại sau.", 0);
+    throw new ApiError(apiConnectionMessage(), 0, { code: "API_UNREACHABLE" });
   }
 
   const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json")
-    ? await response.json()
-    : { message: await response.text() };
+  if (!contentType.toLowerCase().includes("application/json")) {
+    // A static Vercel fallback returns index.html with status 200 when /api
+    // was not wired to Render. Treat that as a failed API call instead of
+    // letting callers read result.user from an HTML response.
+    await response.text();
+    throw new ApiError(
+      response.ok ? apiConnectionMessage() : "Máy chủ API trả về phản hồi không hợp lệ.",
+      response.status || 502,
+      { code: "API_RESPONSE_INVALID", contentType },
+    );
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    throw new ApiError("Máy chủ API trả về dữ liệu không hợp lệ.", response.status || 502, {
+      code: "API_RESPONSE_INVALID",
+    });
+  }
 
   if (!response.ok) {
     if (response.status === 401 && token) {
