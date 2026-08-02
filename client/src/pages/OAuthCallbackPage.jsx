@@ -15,7 +15,7 @@ export default function OAuthCallbackPage() {
     completeOAuth(code)
       .then(() => {
         notify("Đăng nhập thành công.");
-        navigate("/tai-khoan", { replace: true });
+        navigate("/", { replace: true });
       })
       .catch((error) => {
         notify(error.message, "error");
@@ -23,7 +23,7 @@ export default function OAuthCallbackPage() {
       });
   }, [code, completeOAuth, navigate, notify]);
 
-  if (user) return <Navigate to="/tai-khoan" replace />;
+  if (user) return <Navigate to="/" replace />;
   if (!code) return <Navigate to="/dang-nhap" replace />;
   return (
     <main className="oauth-callback">

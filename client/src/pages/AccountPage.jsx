@@ -9,10 +9,17 @@ function normalizeAddress(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+const ACCOUNT_TABS = new Set(["overview", "orders", "profile", "security", "settings"]);
+const DEFAULT_PREFERENCES = { orderStatusEmails: true, reducedMotion: false };
+
+function validAccountTab(value) {
+  return ACCOUNT_TABS.has(value) ? value : "overview";
+}
+
 export default function AccountPage() {
   const { user, logout, notify, updateLocalUser, integrations } = useShop();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(() => searchParams.get("tab") || "overview");
+  const [tab, setTab] = useState(() => validAccountTab(searchParams.get("tab")));
   const [orders, setOrders] = useState([]);
   const [membership, setMembership] = useState(null);
   const [profile, setProfile] = useState({ name: user?.name || "", phone: user?.phone || "", address: "" });
@@ -29,6 +36,10 @@ export default function AccountPage() {
   const [reviewForm, setReviewForm] = useState({ rating: 5, content: "", images: [] });
   const [submittingReview, setSubmittingReview] = useState(false);
   const [uploadingReviewImage, setUploadingReviewImage] = useState(false);
+  const [preferences, setPreferences] = useState({
+    ...DEFAULT_PREFERENCES,
+    ...(user?.preferences || {}),
+  });
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!user) return;
@@ -50,6 +61,7 @@ export default function AccountPage() {
         address: profileAddress,
       });
       setSavedProfileAddress(profileAddress);
+      setPreferences({ ...DEFAULT_PREFERENCES, ...(me.user.preferences || {}) });
     } catch (requestError) {
       if (!silent) setError(requestError.message);
     } finally {
@@ -60,6 +72,11 @@ export default function AccountPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const nextTab = validAccountTab(searchParams.get("tab"));
+    setTab(nextTab);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -165,6 +182,21 @@ export default function AccountPage() {
     }
     catch (requestError) { notify(requestError.message, "error"); }
     finally { setSaving(false); }
+  };
+
+  const savePreferences = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const result = await api.put("/auth/preferences", preferences);
+      updateLocalUser(result.user);
+      setPreferences({ ...DEFAULT_PREFERENCES, ...(result.user.preferences || {}) });
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const uploadAvatar = async (event) => {
@@ -276,9 +308,10 @@ export default function AccountPage() {
           <button className={tab === "orders" ? "is-active" : ""} onClick={() => changeTab("orders")} type="button"><span>02</span>Đơn hàng <b>{orders.length}</b></button>
           <button className={tab === "profile" ? "is-active" : ""} onClick={() => changeTab("profile")} type="button"><span>03</span>Thông tin cá nhân</button>
           <button className={tab === "security" ? "is-active" : ""} onClick={() => changeTab("security")} type="button"><span>04</span>Bảo mật</button>
+          <button className={tab === "settings" ? "is-active" : ""} onClick={() => changeTab("settings")} type="button"><span>05</span>Cài đặt</button>
           <p>Dịch vụ</p>
-          <Link to="/doi-tra"><span>05</span>Đổi trả & hoàn tiền</Link>
-          <Link to="/ho-tro"><span>06</span>Trợ giúp</Link>
+          <Link to="/doi-tra"><span>06</span>Đổi trả & hoàn tiền</Link>
+          <Link to="/ho-tro"><span>07</span>Trợ giúp</Link>
         </aside>
 
         <main className="account-content">
@@ -370,6 +403,31 @@ export default function AccountPage() {
           {!loading && !error && tab === "security" && (
             <section className="account-panel profile-panel"><div className="panel-heading"><div><p className="eyebrow">Bảo mật</p><h2>Đổi mật khẩu</h2></div></div>
               <form onSubmit={changePassword} className="password-form"><label className="field"><span>Mật khẩu hiện tại</span><input type="password" required value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} /></label><label className="field"><span>Mật khẩu mới</span><input type="password" minLength={10} maxLength={128} pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,128}" required value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} /><small>Từ 10 ký tự, gồm chữ hoa, chữ thường và số.</small></label><label className="field"><span>Xác nhận mật khẩu mới</span><input type="password" minLength={10} maxLength={128} required value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))} /></label><button className="button button--dark" type="submit" disabled={saving}>{saving ? "Đang cập nhật..." : "Cập nhật mật khẩu"}</button></form>
+            </section>
+          )}
+          {!loading && !error && tab === "settings" && (
+            <section className="account-panel account-settings-panel">
+              <div className="panel-heading"><div><p className="eyebrow">Cài đặt</p><h2>Trải nghiệm của bạn</h2></div></div>
+              <form onSubmit={savePreferences}>
+                <div className="account-setting-list">
+                  <label className="account-setting-row">
+                    <span><strong>Cập nhật đơn hàng qua email</strong><small>Nhận email khi đơn được xác nhận, giao cho vận chuyển hoặc hoàn tất.</small></span>
+                    <input type="checkbox" checked={preferences.orderStatusEmails} onChange={(event) => setPreferences((current) => ({ ...current, orderStatusEmails: event.target.checked }))} />
+                  </label>
+                  <label className="account-setting-row">
+                    <span><strong>Giảm hiệu ứng chuyển động</strong><small>Hiển thị nội dung ngay và hạn chế animation trên toàn bộ cửa hàng.</small></span>
+                    <input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => setPreferences((current) => ({ ...current, reducedMotion: event.target.checked }))} />
+                  </label>
+                </div>
+                <div className="account-connection-summary">
+                  <span>Trạng thái tài khoản</span>
+                  <strong>{user.verified ? "Email đã xác minh" : "Email chưa xác minh"}</strong>
+                  <small>{user.linkedProviders?.length
+                    ? `Đã liên kết: ${user.linkedProviders.map((provider) => provider === "google" ? "Google" : "Facebook").join(", ")}`
+                    : "Đăng nhập bằng email và mật khẩu"}</small>
+                </div>
+                <button className="button button--dark" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu cài đặt"}</button>
+              </form>
             </section>
           )}
         </main>

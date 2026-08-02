@@ -31,6 +31,10 @@
       "continue": true
     },
     {
+      "src": "/api/(.*)",
+      "dest": "https://novawear-api-duycode123.onrender.com/api/$1"
+    },
+    {
       "handle": "filesystem"
     },
     {

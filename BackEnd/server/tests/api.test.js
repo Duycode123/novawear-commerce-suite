@@ -584,6 +584,41 @@ test("authenticated image uploads enforce roles and persist avatars", async () =
   assert.match(profile.body.user.avatar, /^https:\/\/res\.cloudinary\.example\//);
 });
 
+test("customers can persist account experience preferences", async () => {
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const before = await request("/auth/me", {
+    headers: { Authorization: `Bearer ${customerToken}` },
+  });
+  assert.deepEqual(before.body.user.preferences, {
+    orderStatusEmails: true,
+    reducedMotion: false,
+  });
+
+  const updated = await request("/auth/preferences", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: JSON.stringify({ orderStatusEmails: false, reducedMotion: true }),
+  });
+  assert.equal(updated.response.status, 200);
+  assert.deepEqual(updated.body.user.preferences, {
+    orderStatusEmails: false,
+    reducedMotion: true,
+  });
+
+  const invalid = await request("/auth/preferences", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: JSON.stringify({ role: "admin" }),
+  });
+  assert.equal(invalid.response.status, 400);
+
+  await request("/auth/preferences", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: JSON.stringify({ orderStatusEmails: true, reducedMotion: false }),
+  });
+});
+
 test("customer can sign in, place an order and read order history", async () => {
   const login = await request("/auth/login", {
     method: "POST",

@@ -82,27 +82,15 @@ export default function Layout() {
   useEffect(() => {
     const root = document.getElementById("main-content");
     if (!root) return undefined;
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const queuedVisible = new Set();
-    let outerFrame = 0;
-    let innerFrame = 0;
+    const reducedMotion = Boolean(
+      user?.preferences?.reducedMotion
+      || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    );
     let safetyTimer = 0;
 
     const revealElement = (element) => {
       if (!element?.isConnected) return;
       element.classList.add("is-revealed");
-    };
-
-    const flushVisibleQueue = () => {
-      if (outerFrame) return;
-      outerFrame = window.requestAnimationFrame(() => {
-        innerFrame = window.requestAnimationFrame(() => {
-          queuedVisible.forEach(revealElement);
-          queuedVisible.clear();
-          outerFrame = 0;
-          innerFrame = 0;
-        });
-      });
     };
 
     const revealObserver = !reducedMotion && "IntersectionObserver" in window
@@ -206,39 +194,32 @@ export default function Layout() {
           const bounds = element.getBoundingClientRect();
           const isAlreadyVisible = bounds.top < window.innerHeight * 0.98 && bounds.bottom > 0;
           if (isAlreadyVisible) {
-            queuedVisible.add(element);
+            // Never hide content already in the viewport. This avoids a stale,
+            // washed-out page when a route mounts after authentication or API hydration.
+            revealElement(element);
           } else {
             revealObserver.observe(element);
           }
         });
       });
-      flushVisibleQueue();
-      window.clearTimeout(safetyTimer);
-      safetyTimer = window.setTimeout(() => {
-        root.querySelectorAll("[data-nova-motion]:not(.is-revealed)").forEach((element) => {
-          const bounds = element.getBoundingClientRect();
-          if (bounds.top < window.innerHeight * 1.15 && bounds.bottom > -100) {
-            revealElement(element);
-          }
-        });
-      }, 1800);
     };
 
     root.classList.add("nova-motion-ready");
     const frame = window.requestAnimationFrame(registerRevealElements);
     const mutationObserver = new MutationObserver(registerRevealElements);
     mutationObserver.observe(root, { childList: true, subtree: true });
+    safetyTimer = window.setTimeout(() => {
+      root.querySelectorAll("[data-nova-motion]:not(.is-revealed)").forEach(revealElement);
+    }, 2400);
 
     return () => {
       root.classList.remove("nova-motion-ready");
       window.cancelAnimationFrame(frame);
-      window.cancelAnimationFrame(outerFrame);
-      window.cancelAnimationFrame(innerFrame);
       window.clearTimeout(safetyTimer);
       mutationObserver.disconnect();
       revealObserver?.disconnect();
     };
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, user?.preferences?.reducedMotion]);
 
   const submitSearch = (event) => {
     event.preventDefault();

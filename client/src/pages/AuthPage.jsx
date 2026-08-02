@@ -1,7 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
-import { ApiError, api, API_BASE } from "../services/api";
+import { ApiError, api, OAUTH_BASE } from "../services/api";
+
+const OAUTH_ERROR_MESSAGES = {
+  provider_email_not_verified: "Email của tài khoản liên kết chưa được nhà cung cấp xác minh.",
+  provider_profile_invalid: "Tài khoản liên kết chưa cung cấp email hợp lệ.",
+  invalid_state: "Phiên đăng nhập liên kết đã hết hạn. Vui lòng thử lại.",
+  authorization_cancelled: "Bạn đã hủy đăng nhập liên kết.",
+  provider_error: "Nhà cung cấp đăng nhập đang tạm thời không phản hồi.",
+  provider_account_mismatch: "Tài khoản liên kết không khớp với lần đăng nhập trước.",
+  employee_account_not_supported: "Tài khoản nội bộ cần đăng nhập bằng email và mật khẩu.",
+  account_locked: "Tài khoản đang bị khóa. Vui lòng liên hệ hỗ trợ.",
+  email_delivery_unavailable: "Chưa thể gửi email xác minh. Vui lòng thử lại sau.",
+};
 
 export default function AuthPage({ mode = "login" }) {
   const isLogin = mode === "login";
@@ -21,17 +33,20 @@ export default function AuthPage({ mode = "login" }) {
     api.get("/auth/oauth/config")
       .then((result) => setOauth(result.data || {}))
       .catch(() => setOauth({ google: false, facebook: false }));
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const errorCode = params.get("oauthError");
     const verifyEmail = params.get("verifyEmail");
     if (verifyEmail) {
       setVerification({ email: verifyEmail, code: "", demoCode: "" });
       notify("Hãy nhập mã đã gửi tới email để hoàn tất đăng nhập liên kết.", "info");
     }
-    if (errorCode) notify("Không thể đăng nhập bằng tài khoản liên kết. Vui lòng thử lại.", "error");
-  }, [notify]);
+    if (errorCode) notify(OAUTH_ERROR_MESSAGES[errorCode] || "Không thể đăng nhập bằng tài khoản liên kết. Vui lòng thử lại.", "error");
+    if (errorCode || verifyEmail) {
+      window.history.replaceState({}, "", location.pathname);
+    }
+  }, [location.pathname, location.search, notify]);
 
-  if (user) return <Navigate to="/tai-khoan" replace />;
+  if (user) return <Navigate to="/" replace />;
 
   const change = (event) => setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   const submit = async (event) => {
@@ -70,7 +85,7 @@ export default function AuthPage({ mode = "login" }) {
         }
         notify("Tài khoản đã được tạo.");
       }
-      navigate(location.state?.from || "/tai-khoan", { replace: true });
+      navigate("/", { replace: true });
     } catch (requestError) {
       if (requestError.details?.code === "ACCOUNT_NOT_VERIFIED") {
         setVerification({
@@ -94,7 +109,7 @@ export default function AuthPage({ mode = "login" }) {
         code: verification.code,
       });
       notify(result.message);
-      navigate(location.state?.from || "/tai-khoan", { replace: true });
+      navigate("/", { replace: true });
     } catch (requestError) {
       notify(requestError.message, "error");
     } finally {
@@ -266,8 +281,8 @@ export default function AuthPage({ mode = "login" }) {
           {isLogin && !verification && !passwordReset && (oauth.google || oauth.facebook) && (
             <div className="auth-social">
               <span>hoặc</span>
-              {oauth.google && <button type="button" onClick={() => window.location.assign(`${API_BASE}/auth/oauth/google/start`)}><b>G</b> Đăng nhập với Google</button>}
-              {oauth.facebook && <button type="button" onClick={() => window.location.assign(`${API_BASE}/auth/oauth/facebook/start`)}><b>f</b> Đăng nhập với Facebook</button>}
+              {oauth.google && <button type="button" onClick={() => window.location.assign(`${OAUTH_BASE}/auth/oauth/google/start`)}><b>G</b> Đăng nhập với Google</button>}
+              {oauth.facebook && <button type="button" onClick={() => window.location.assign(`${OAUTH_BASE}/auth/oauth/facebook/start`)}><b>f</b> Đăng nhập với Facebook</button>}
             </div>
           )}
           {isLogin && !verification && !passwordReset && process.env.NODE_ENV !== "production" && (

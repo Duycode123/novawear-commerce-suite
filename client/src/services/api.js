@@ -4,6 +4,7 @@ const defaultBase = window.location.hostname === "localhost"
 
 const configuredBase = String(process.env.REACT_APP_API_URL || "").trim();
 export const API_BASE = (configuredBase || defaultBase).replace(/\/$/, "");
+export const OAUTH_BASE = window.location.hostname === "localhost" ? API_BASE : "/api";
 const publicGetCache = new Map();
 let refreshPromise = null;
 const CACHEABLE_PUBLIC_PATH = /^\/(products(?:\?|\/)|categories(?:\?|$)|news(?:\?|\/|$)|promotions(?:\?|\/|$)|config(?:\?|$))/;

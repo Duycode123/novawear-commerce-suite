@@ -4,6 +4,20 @@ function enabled(value) {
   return String(value || "false").toLowerCase() === "true";
 }
 
+function publicCallbackUri(provider, configuredUri) {
+  const configuredOrigin = String(process.env.OAUTH_PUBLIC_ORIGIN || "").trim().replace(/\/$/, "");
+  let publicOrigin = configuredOrigin;
+  if (!publicOrigin) {
+    try {
+      const successUrl = new URL(String(process.env.OAUTH_SUCCESS_URL || ""));
+      if (!["localhost", "127.0.0.1"].includes(successUrl.hostname)) publicOrigin = successUrl.origin;
+    } catch (_error) {
+      publicOrigin = "";
+    }
+  }
+  return publicOrigin ? `${publicOrigin}/api/auth/${provider}/callback` : configuredUri;
+}
+
 function createOAuthService(options = {}) {
   const request = options.fetch || global.fetch;
   const providers = {
@@ -11,13 +25,13 @@ function createOAuthService(options = {}) {
       enabled: enabled(process.env.GOOGLE_OAUTH_ENABLED),
       clientId: String(process.env.GOOGLE_CLIENT_ID || "").trim(),
       clientSecret: String(process.env.GOOGLE_CLIENT_SECRET || "").trim(),
-      redirectUri: String(process.env.GOOGLE_REDIRECT_URI || "").trim(),
+      redirectUri: publicCallbackUri("google", String(process.env.GOOGLE_REDIRECT_URI || "").trim()),
     },
     facebook: {
       enabled: enabled(process.env.FACEBOOK_OAUTH_ENABLED),
       clientId: String(process.env.FACEBOOK_CLIENT_ID || "").trim(),
       clientSecret: String(process.env.FACEBOOK_CLIENT_SECRET || "").trim(),
-      redirectUri: String(process.env.FACEBOOK_REDIRECT_URI || "").trim(),
+      redirectUri: publicCallbackUri("facebook", String(process.env.FACEBOOK_REDIRECT_URI || "").trim()),
       graphVersion: String(process.env.FACEBOOK_GRAPH_VERSION || "v20.0").trim(),
     },
   };

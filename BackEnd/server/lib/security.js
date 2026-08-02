@@ -41,6 +41,10 @@ function sanitizeUser(user) {
   return {
     ...safeUser,
     verified: Boolean(user.emailVerifiedAt),
+    linkedProviders: [
+      user.googleId ? "google" : null,
+      user.facebookId ? "facebook" : null,
+    ].filter(Boolean),
   };
 }
 

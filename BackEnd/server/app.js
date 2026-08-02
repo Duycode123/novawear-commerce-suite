@@ -603,6 +603,10 @@ function ensureDataShape(store) {
   });
   store.data.users.forEach((user) => {
     if (user.tokenVersion === undefined) user.tokenVersion = 0;
+    user.preferences = {
+      orderStatusEmails: user.preferences?.orderStatusEmails !== false,
+      reducedMotion: Boolean(user.preferences?.reducedMotion),
+    };
     if (user.emailVerifiedAt === undefined) {
       user.emailVerifiedAt = user.status === "active"
         ? (user.createdAt || new Date().toISOString())
@@ -1323,6 +1327,10 @@ function createApp(options = {}) {
 
   function queueOrderStatusEmail(order, event) {
     if (!order.customer?.email || typeof mailer.sendOrderStatusUpdate !== "function") return;
+    const account = order.userId
+      ? store.data.users.find((item) => item.id === order.userId)
+      : store.data.users.find((item) => item.customerId && item.customerId === order.customerId);
+    if (account?.preferences?.orderStatusEmails === false) return;
     Promise.resolve(mailer.sendOrderStatusUpdate({
       to: order.customer.email,
       order,
@@ -2555,6 +2563,32 @@ function createApp(options = {}) {
       user: sanitizeUser(user),
       customer,
       employee,
+    });
+  });
+
+  app.put("/api/auth/preferences", requireAuth, (req, res) => {
+    const user = store.data.users.find((item) => item.id === req.user.id);
+    if (!user) return res.status(404).json({ message: "Tài khoản không tồn tại." });
+
+    const allowedKeys = ["orderStatusEmails", "reducedMotion"];
+    const providedKeys = Object.keys(req.body || {});
+    if (!providedKeys.length || providedKeys.some((key) => !allowedKeys.includes(key))) {
+      return res.status(400).json({ message: "Tùy chọn tài khoản chưa hợp lệ." });
+    }
+    if (providedKeys.some((key) => typeof req.body[key] !== "boolean")) {
+      return res.status(400).json({ message: "Giá trị tùy chọn phải là bật hoặc tắt." });
+    }
+
+    user.preferences = {
+      orderStatusEmails: user.preferences?.orderStatusEmails !== false,
+      reducedMotion: Boolean(user.preferences?.reducedMotion),
+      ...Object.fromEntries(providedKeys.map((key) => [key, req.body[key]])),
+    };
+    store.audit("update_preferences", "user", user.id, req.user);
+    store.save();
+    return res.json({
+      message: "Đã lưu cài đặt tài khoản.",
+      user: sanitizeUser(user),
     });
   });
 

@@ -2004,6 +2004,62 @@ button {
   border-color: var(--editorial-oxblood);
 }
 
+.account-setting-list {
+  display: grid;
+  margin-bottom: 24px;
+  border-top: 1px solid var(--editorial-line);
+}
+
+.account-setting-row {
+  display: flex;
+  min-height: 92px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--editorial-line);
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  cursor: pointer;
+}
+
+.account-setting-row > span {
+  display: grid;
+  gap: 7px;
+}
+
+.account-setting-row strong {
+  font-size: .95rem;
+}
+
+.account-setting-row small,
+.account-connection-summary small {
+  color: var(--editorial-muted);
+  line-height: 1.55;
+}
+
+.account-setting-row input {
+  width: 46px;
+  height: 24px;
+  flex: 0 0 auto;
+  accent-color: var(--editorial-oxblood);
+}
+
+.account-connection-summary {
+  display: grid;
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid var(--editorial-line);
+  background: var(--editorial-paper-soft);
+  gap: 6px;
+}
+
+.account-connection-summary > span {
+  color: var(--editorial-oxblood);
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
 .order-detail-item__actions {
   display: flex;
   min-width: 150px;
@@ -3145,6 +3201,48 @@ button {
   .nova-reveal-image {
     opacity: 1 !important;
     transform: none !important;
+  }
+}
+
+@media (max-width: 820px) {
+  .account-layout .account-nav {
+    position: static;
+    display: flex;
+    overflow-x: auto;
+    padding: 8px;
+    flex-direction: row;
+    gap: 4px;
+    scrollbar-width: none;
+  }
+
+  .account-layout .account-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .account-layout .account-nav > p {
+    display: none;
+  }
+
+  .account-layout .account-nav button,
+  .account-layout .account-nav a {
+    min-height: 44px;
+    padding: 0 14px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    grid-template-columns: 20px auto auto;
+  }
+
+  .account-layout .account-nav button.is-active,
+  .account-layout .account-nav button:hover,
+  .account-layout .account-nav a:hover {
+    border-left-color: transparent;
+    border-bottom-color: var(--editorial-oxblood);
+  }
+
+  .account-setting-row {
+    align-items: flex-start;
   }
 }
 
