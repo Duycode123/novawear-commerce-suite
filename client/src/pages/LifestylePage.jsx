@@ -72,7 +72,7 @@ export default function LifestylePage() {
     setLoading(true);
     setError("");
     try {
-      const result = await api.get("/products?sort=rating&limit=100&inStock=true");
+      const result = await api.get("/products?sort=rating&limit=100&inStock=true&view=card");
       const source = result.data || [];
       const matched = source.filter((product) => productMatches(product, config));
       setProducts(matched.slice(0, 8));

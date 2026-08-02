@@ -32,7 +32,16 @@ export function SectionHeading({ eyebrow, title, copy, action, align = "left" })
   );
 }
 
-function cloudinaryVariant(src, width) {
+function optimizedLocalSource(src) {
+  if (typeof src !== "string") return src;
+  const isNovaAsset = src.startsWith("/Images/nova-v3/");
+  const isLookbookAsset = /^\/Images\/homepage-irl[135]\.png$/i.test(src);
+  return (isNovaAsset || isLookbookAsset) && src.toLowerCase().endsWith(".png")
+    ? src.replace(/\.png$/i, ".webp")
+    : src;
+}
+
+function cloudinaryVariant(src, width, quality = "good") {
   const marker = "/image/upload/";
   if (!width || typeof src !== "string" || !src.includes("res.cloudinary.com") || !src.includes(marker)) {
     return src;
@@ -41,7 +50,7 @@ function cloudinaryVariant(src, width) {
   // secure_url returned by an untouched upload is versioned. Avoid stacking
   // transformations on hand-written or already transformed Cloudinary URLs.
   if (!/^v\d+\//.test(suffix || "")) return src;
-  return `${prefix}${marker}c_limit,w_${Math.round(width)}/q_auto:best/f_auto/${suffix}`;
+  return `${prefix}${marker}c_limit,w_${Math.round(width)},q_auto:${quality},f_auto/${suffix}`;
 }
 
 export function SmartImage({
@@ -51,16 +60,21 @@ export function SmartImage({
   widthHint,
   responsiveWidths,
   sizes,
+  quality = "good",
+  loading = "lazy",
+  fetchPriority,
+  onError,
   ...props
 }) {
+  const optimizedSrc = optimizedLocalSource(src);
   const widths = widthHint
     ? (responsiveWidths || [Math.max(320, Math.round(widthHint / 2)), widthHint, Math.min(2400, widthHint * 1.5)])
       .map((value) => Math.round(value))
       .filter((value, index, values) => value > 0 && values.indexOf(value) === index)
     : [];
-  const renderedSrc = cloudinaryVariant(src, widthHint);
-  const generatedSrcSet = widths.length > 1 && renderedSrc !== src
-    ? widths.map((width) => `${cloudinaryVariant(src, width)} ${width}w`).join(", ")
+  const renderedSrc = cloudinaryVariant(optimizedSrc, widthHint, quality);
+  const generatedSrcSet = widths.length > 1 && renderedSrc !== optimizedSrc
+    ? widths.map((width) => `${cloudinaryVariant(optimizedSrc, width, quality)} ${width}w`).join(", ")
     : undefined;
   return (
     <img
@@ -69,12 +83,15 @@ export function SmartImage({
       sizes={generatedSrcSet ? (sizes || "100vw") : undefined}
       alt={alt}
       className={className}
-      loading="lazy"
+      loading={loading}
+      fetchpriority={fetchPriority || (loading === "eager" ? "high" : undefined)}
       decoding="async"
       onError={(event) => {
         event.currentTarget.removeAttribute("srcset");
         event.currentTarget.removeAttribute("sizes");
-        event.currentTarget.src = "/Images/nova-v3/product-tee-black.png";
+        const fallback = "/Images/nova-v3/product-tee-black.webp";
+        if (!event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
+        onError?.(event);
       }}
       {...props}
     />
@@ -96,6 +113,7 @@ export function ProductCard({ product, compact = false }) {
             widthHint={900}
             responsiveWidths={[420, 720, 900, 1200]}
             sizes="(max-width: 640px) 50vw, (max-width: 1100px) 33vw, 25vw"
+            quality="eco"
           />
         </Link>
         {product.badge && <span className="product-card__badge">{product.badge}</span>}

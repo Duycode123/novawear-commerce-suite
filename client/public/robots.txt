@@ -1,3 +1,11 @@
-# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /ops/
+Disallow: /tai-khoan
+Disallow: /thanh-toan
+Disallow: /gio-hang
+Disallow: /dang-nhap
+Disallow: /dang-ky
+Disallow: /oauth/
+
+Sitemap: https://novawear-duycode123.vercel.app/sitemap.xml

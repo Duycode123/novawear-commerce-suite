@@ -23,6 +23,11 @@ function runBuild(directory, extraEnv = {}) {
 }
 
 runBuild("client");
+spawnSync(process.execPath, [join(workspaceRoot, "scripts", "generate-sitemap.js")], {
+  cwd: workspaceRoot,
+  env: process.env,
+  stdio: "inherit",
+});
 runBuild("admin", {
   PUBLIC_URL: "/ops",
   REACT_APP_BASENAME: "/ops",

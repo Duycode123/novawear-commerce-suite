@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
 import { ErrorState, ProductCard, ProductGridSkeleton } from "../components/Common";
 import { saveRecentSearch } from "../services/searchHistory";
+import { Seo } from "../components/Seo";
 
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,6 +35,7 @@ export default function CatalogPage() {
       if (value) query.set(key, value);
     });
     query.set("limit", "16");
+    query.set("view", "card");
     try {
       const result = await api.get(`/products?${query.toString()}`);
       setProducts(result.data);
@@ -92,9 +94,32 @@ export default function CatalogPage() {
     next.delete("page");
     setSearchParams(next);
   };
+  const noIndex = Boolean(
+    filters.search || filters.minPrice || filters.maxPrice || filters.color || filters.size
+    || filters.inStock || filters.page !== "1" || filters.sort !== "featured",
+  );
+  const canonicalParams = new URLSearchParams();
+  if (filters.category) canonicalParams.set("category", filters.category);
+  else if (filters.audience) canonicalParams.set("audience", filters.audience);
+  const canonicalPath = `/cua-hang${canonicalParams.toString() ? `?${canonicalParams.toString()}` : ""}`;
+  const seoTitle = selectedCategory?.name
+    ? `${selectedCategory.name} | NOVAWEAR`
+    : filters.audience === "men"
+      ? "Thời trang nam | NOVAWEAR"
+      : filters.audience === "women"
+        ? "Thời trang nữ | NOVAWEAR"
+        : "Cửa hàng thời trang nam nữ | NOVAWEAR";
+  const seoDescription = selectedCategory?.description
+    || "Mua sắm áo, quần, đồ thể thao, phụ kiện và nhiều danh mục thời trang nam nữ tại NOVAWEAR.";
 
   return (
     <div className="catalog-page">
+      <Seo
+        title={seoTitle}
+        description={seoDescription}
+        canonical={canonicalPath}
+        robots={noIndex ? "noindex,follow" : undefined}
+      />
       <header className="catalog-hero">
         <p className="eyebrow">NOVA collection</p>
         <h1>{selectedCategory?.name || (filters.search ? `Kết quả cho “${filters.search}”` : "Cửa hàng")}</h1>

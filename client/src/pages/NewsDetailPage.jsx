@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../services/api";
 import { SmartImage } from "../components/Common";
+import { Seo, absoluteUrl } from "../components/Seo";
 
 const fallbackContent = {
   "news-001": `## Mặc theo lớp, không mặc thật dày
@@ -125,8 +126,28 @@ export default function NewsDetailPage() {
   if (loading) return <div className="journal-article-loading"><span /></div>;
   if (error || !article) return <section className="journal-article-error"><p>{error || "Không tìm thấy bài viết."}</p><Link to="/tin-tuc">← Quay lại Blog</Link></section>;
 
+  const articlePath = `/tin-tuc/${article.id}`;
+
   return (
     <main className="journal-article-page">
+      <Seo
+        title={`${article.title} | NOVA Journal`}
+        description={article.excerpt}
+        canonical={articlePath}
+        image={article.image}
+        type="article"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Article",
+          headline: article.title,
+          description: article.excerpt,
+          image: absoluteUrl(article.image),
+          datePublished: article.publishedAt,
+          mainEntityOfPage: absoluteUrl(articlePath),
+          author: { "@type": "Organization", name: "NOVAWEAR" },
+          publisher: { "@type": "Organization", name: "NOVAWEAR", logo: { "@type": "ImageObject", url: absoluteUrl("/brand-icon.svg") } },
+        }}
+      />
       <nav className="journal-article-breadcrumb"><Link to="/">Trang chủ</Link><span>/</span><Link to="/tin-tuc">Blog</Link><span>/</span><b>{article.category}</b></nav>
       <header className="journal-article-header">
         <p>{article.category} · {formatDate(article.publishedAt)}</p>

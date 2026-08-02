@@ -4,6 +4,8 @@ const defaultBase = window.location.hostname === "localhost"
 
 const configuredBase = String(process.env.REACT_APP_API_URL || "").trim();
 export const API_BASE = (configuredBase || defaultBase).replace(/\/$/, "");
+const publicGetCache = new Map();
+const CACHEABLE_PUBLIC_PATH = /^\/(products(?:\?|\/)|categories(?:\?|$)|news(?:\?|\/|$)|promotions(?:\?|\/|$)|config(?:\?|$))/;
 
 function apiConnectionMessage() {
   if (process.env.NODE_ENV === "production" && API_BASE === "/api") {
@@ -76,8 +78,25 @@ export async function apiRequest(path, options = {}) {
   return payload;
 }
 
+function cachedPublicGet(path, options = {}) {
+  const { cache: cacheOption, ...requestOptions } = options;
+  if (!CACHEABLE_PUBLIC_PATH.test(path) || options.signal || cacheOption === false) {
+    return apiRequest(path, { ...requestOptions, method: "GET" });
+  }
+  const now = Date.now();
+  const cached = publicGetCache.get(path);
+  if (cached && cached.expiresAt > now) return cached.promise;
+  const promise = apiRequest(path, { ...requestOptions, method: "GET" })
+    .catch((error) => {
+      publicGetCache.delete(path);
+      throw error;
+    });
+  publicGetCache.set(path, { promise, expiresAt: now + 30_000 });
+  return promise;
+}
+
 export const api = {
-  get: (path, options) => apiRequest(path, { ...options, method: "GET" }),
+  get: cachedPublicGet,
   post: (path, body, options) => apiRequest(path, { ...options, method: "POST", body: JSON.stringify(body) }),
   put: (path, body, options) => apiRequest(path, { ...options, method: "PUT", body: JSON.stringify(body) }),
   patch: (path, body, options) => apiRequest(path, { ...options, method: "PATCH", body: JSON.stringify(body) }),

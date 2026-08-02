@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
 import { formatMoney } from "../config/site";
-import { ProductCard } from "../components/Common";
+import { ProductCard, SmartImage } from "../components/Common";
 
 export default function PromotionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -13,7 +13,7 @@ export default function PromotionsPage() {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    Promise.all([api.get("/promotions"), api.get("/products?sale=true&sort=discount-desc&limit=100")])
+    Promise.all([api.get("/promotions"), api.get("/products?sale=true&sort=discount-desc&limit=100&view=card")])
       .then(([promotionResult, productResult]) => { setPromotions(promotionResult.data); setSaleProducts(productResult.data); })
       .catch((requestError) => setError(requestError.message));
   }, []);
@@ -70,7 +70,7 @@ export default function PromotionsPage() {
         <div className="offers-hero__actions"><Link className="button button--dark" to="/cua-hang">Khám phá sản phẩm <span>→</span></Link><a href="#uu-dai-hien-co">Xem mã đang có</a></div>
       </div>
       <div className="offers-hero__visual">
-        <img src="/Images/nova-v3/promotions-women-color.png" alt="Người mẫu nữ NOVAWEAR trong bộ suit đỏ burgundy" />
+        <SmartImage src="/Images/nova-v3/promotions-women-color.webp" alt="Người mẫu nữ NOVAWEAR trong bộ suit đỏ burgundy" loading="eager" />
         <aside className="offers-feature" aria-label="Ưu đãi nổi bật">
           <span>ƯU ĐÃI NỔI BẬT</span>
           {featured ? <><strong>{featured.code}</strong><h2>{describeOffer(featured)}</h2><p>Cho đơn từ {formatMoney(featured.minOrder)}</p><button type="button" onClick={() => copyCode(featured.code)}>{copiedCode === featured.code ? "Đã sao chép" : "Sao chép mã"}</button></> : <><strong>NOVA</strong><h2>Quà tặng sẽ sớm trở lại.</h2><p>Hãy ghé lại sau để nhận ưu đãi mới nhất.</p></>}

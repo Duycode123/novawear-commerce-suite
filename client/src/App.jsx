@@ -1,35 +1,43 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { ShopProvider } from "./context/ShopContext";
 import HomePage from "./pages/HomePage";
-import CatalogPage from "./pages/CatalogPage";
-import ProductPage from "./pages/ProductPage";
-import CartPage from "./pages/CartPage";
-import CheckoutPage from "./pages/CheckoutPage";
-import AuthPage from "./pages/AuthPage";
-import AccountPage from "./pages/AccountPage";
-import WishlistPage from "./pages/WishlistPage";
-import TrackingPage from "./pages/TrackingPage";
-import OrderSuccessPage from "./pages/OrderSuccessPage";
-import AboutPage from "./pages/AboutPage";
-import SizeGuidePage from "./pages/SizeGuidePage";
-import SupportPage from "./pages/SupportPage";
-import NewsPage from "./pages/NewsPage";
-import NewsDetailPage from "./pages/NewsDetailPage";
-import PromotionsPage from "./pages/PromotionsPage";
-import ReturnsPage from "./pages/ReturnsPage";
-import PoliciesPage from "./pages/PoliciesPage";
-import LifestylePage from "./pages/LifestylePage";
-import NotFoundPage from "./pages/NotFoundPage";
-import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import { ToastViewport } from "./components/Common";
+import { RouteSeo } from "./components/Seo";
+
+const CatalogPage = lazy(() => import("./pages/CatalogPage"));
+const ProductPage = lazy(() => import("./pages/ProductPage"));
+const CartPage = lazy(() => import("./pages/CartPage"));
+const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const AccountPage = lazy(() => import("./pages/AccountPage"));
+const WishlistPage = lazy(() => import("./pages/WishlistPage"));
+const TrackingPage = lazy(() => import("./pages/TrackingPage"));
+const OrderSuccessPage = lazy(() => import("./pages/OrderSuccessPage"));
+const AboutPage = lazy(() => import("./pages/AboutPage"));
+const SizeGuidePage = lazy(() => import("./pages/SizeGuidePage"));
+const SupportPage = lazy(() => import("./pages/SupportPage"));
+const NewsPage = lazy(() => import("./pages/NewsPage"));
+const NewsDetailPage = lazy(() => import("./pages/NewsDetailPage"));
+const PromotionsPage = lazy(() => import("./pages/PromotionsPage"));
+const ReturnsPage = lazy(() => import("./pages/ReturnsPage"));
+const PoliciesPage = lazy(() => import("./pages/PoliciesPage"));
+const LifestylePage = lazy(() => import("./pages/LifestylePage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const OAuthCallbackPage = lazy(() => import("./pages/OAuthCallbackPage"));
+
+function RouteFallback() {
+  return <div className="route-loading" role="status" aria-live="polite"><span />Đang mở trang…</div>;
+}
 
 export default function App() {
   return (
     <ShopProvider>
-      <Routes>
-        <Route element={<Layout />}>
+      <RouteSeo />
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route element={<Layout />}>
           <Route index element={<HomePage />} />
           <Route path="/cua-hang" element={<CatalogPage />} />
           <Route path="/san-pham/:identifier" element={<ProductPage />} />
@@ -55,14 +63,15 @@ export default function App() {
           <Route path="/chonsize" element={<Navigate to="/chon-size" replace />} />
           <Route path="/donhang" element={<Navigate to="/tai-khoan" replace />} />
           <Route path="*" element={<NotFoundPage />} />
-        </Route>
-        <Route path="/thanh-toan" element={<CheckoutPage />} />
-        <Route path="/dang-nhap" element={<AuthPage mode="login" />} />
-        <Route path="/dang-ky" element={<AuthPage mode="register" />} />
-        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
-        <Route path="/DangNhap" element={<Navigate to="/dang-nhap" replace />} />
-        <Route path="/DangKy" element={<Navigate to="/dang-ky" replace />} />
-      </Routes>
+          </Route>
+          <Route path="/thanh-toan" element={<CheckoutPage />} />
+          <Route path="/dang-nhap" element={<AuthPage mode="login" />} />
+          <Route path="/dang-ky" element={<AuthPage mode="register" />} />
+          <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+          <Route path="/DangNhap" element={<Navigate to="/dang-nhap" replace />} />
+          <Route path="/DangKy" element={<Navigate to="/dang-ky" replace />} />
+        </Routes>
+      </Suspense>
       <ToastViewport />
     </ShopProvider>
   );

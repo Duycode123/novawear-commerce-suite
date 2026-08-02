@@ -227,12 +227,12 @@ export default function Layout() {
   const menuHref = `/cua-hang?audience=${activeMegaMenu}`;
   const menuEditorial = activeMegaMenu === "men"
     ? {
-      image: "/Images/nova-v3/menu-men-editorial.png",
+      image: "/Images/nova-v3/menu-men-editorial.webp",
       eyebrow: "MEN'S EDIT",
       title: "Những lớp mặc tinh giản cho mọi lịch trình.",
     }
     : {
-      image: "/Images/nova-v3/menu-women-editorial.png",
+      image: "/Images/nova-v3/menu-women-editorial.webp",
       eyebrow: "WOMEN'S EDIT",
       title: "Thanh lịch tự nhiên, hiện đại theo cách riêng.",
     };

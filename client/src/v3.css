@@ -3173,3 +3173,48 @@ img {
     font-size: .78rem;
   }
 }
+/* Performance: defer below-the-fold layout/paint without changing the visual design. */
+.home-v4 > section:not(.home-v4-hero),
+.home-v4 > nav,
+.journal-related,
+.product-editorial,
+.product-reviews-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
+}
+
+.product-card {
+  contain: layout paint style;
+  contain-intrinsic-size: auto 560px;
+}
+
+.route-loading {
+  display: grid;
+  min-height: 52vh;
+  place-content: center;
+  gap: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.route-loading span {
+  width: 34px;
+  height: 34px;
+  margin-inline: auto;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: route-loading-spin .8s linear infinite;
+}
+
+@keyframes route-loading-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

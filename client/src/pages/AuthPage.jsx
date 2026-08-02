@@ -159,7 +159,7 @@ export default function AuthPage({ mode = "login" }) {
   return (
     <div className={`auth-page auth-page--${isLogin ? "login" : "register"}`}>
       <div className="auth-visual">
-        <img src="/Images/nova-v3/auth-couple.png" alt="Phong cách thành viên NOVAWEAR" />
+        <img src="/Images/nova-v3/auth-couple.webp" alt="Phong cách thành viên NOVAWEAR" width="853" height="1844" decoding="async" fetchpriority="high" />
         <div className="auth-visual__copy">
           <p className="eyebrow">NOVA PEOPLE</p>
           <h2>Mặc điều bạn tin.<br />Sống theo nhịp của bạn.</h2>

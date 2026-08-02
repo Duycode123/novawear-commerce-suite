@@ -4,6 +4,7 @@ import { api } from "../services/api";
 import { formatMoney } from "../config/site";
 import { useShop } from "../context/ShopContext";
 import { ErrorState, ProductCard, ProductGridSkeleton, SectionHeading, SmartImage } from "../components/Common";
+import { Seo, absoluteUrl } from "../components/Seo";
 
 export default function ProductPage() {
   const { identifier } = useParams();
@@ -83,9 +84,44 @@ export default function ProductPage() {
 
   const wished = wishlist.some((item) => item.id === product.id);
   const images = product.images?.length ? product.images : [product.image];
+  const productPath = `/san-pham/${product.slug || product.id}`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.description,
+    sku: product.sku,
+    image: images.filter(Boolean).map(absoluteUrl),
+    brand: { "@type": "Brand", name: "NOVAWEAR" },
+    category: product.category?.name,
+    offers: {
+      "@type": "Offer",
+      url: absoluteUrl(productPath),
+      priceCurrency: "VND",
+      price: Number(product.price),
+      availability: Number(product.stock || 0) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      itemCondition: "https://schema.org/NewCondition",
+      ...(product.saleEndsAt ? { priceValidUntil: String(product.saleEndsAt).slice(0, 10) } : {}),
+    },
+    ...(reviewStats.total > 0 ? {
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: Number(reviewStats.average.toFixed(1)),
+        reviewCount: reviewStats.total,
+      },
+    } : {}),
+  };
 
   return (
     <div className="product-page">
+      <Seo
+        title={`${product.name} | NOVAWEAR`}
+        description={product.description}
+        canonical={productPath}
+        image={product.image}
+        type="product"
+        jsonLd={structuredData}
+      />
       <nav className="breadcrumbs" aria-label="Đường dẫn">
         <Link to="/">Trang chủ</Link><span>/</span>
         <Link to="/cua-hang">Cửa hàng</Link><span>/</span>
@@ -113,8 +149,9 @@ export default function ProductPage() {
               src={activeImage}
               alt={product.name}
               loading="eager"
-              widthHint={1800}
-              responsiveWidths={[800, 1200, 1800, 2400]}
+              fetchPriority="high"
+              widthHint={1600}
+              responsiveWidths={[640, 960, 1280, 1600]}
               sizes="(max-width: 900px) 100vw, 55vw"
             />
             {product.badge && <span className="product-gallery__badge">{product.badge}</span>}

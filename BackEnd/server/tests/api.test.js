@@ -139,6 +139,16 @@ test("health check and catalog are available", async () => {
   assert.equal(products.body.data.length, 4);
   assert.ok(products.body.data.every((item) => item.featured));
 
+  const productCards = await request("/products?featured=true&limit=4&view=card");
+  assert.equal(productCards.response.status, 200);
+  assert.match(productCards.response.headers.get("cache-control"), /public/);
+  assert.ok(productCards.body.data.every((item) => (
+    item.id && item.name && item.image && item.category
+    && !Object.hasOwn(item, "longDescription")
+    && !Object.hasOwn(item, "variants")
+    && !Object.hasOwn(item, "care")
+  )));
+
   const saleProducts = await request("/products?sale=true&sort=discount-desc&limit=100");
   assert.equal(saleProducts.response.status, 200);
   assert.ok(saleProducts.body.data.length > 0);

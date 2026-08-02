@@ -11,7 +11,7 @@ export default function NotFoundPage() {
         <p>Có thể trang đã được chuyển hoặc không còn tồn tại. Đừng lo, lúc khám phá thời trang vẫn còn bên dưới.</p>
         <div><Link className="button button--accent" to="/">Về trang chủ</Link><Link className="button button--outline" to="/cua-hang">Tiếp tục mua sắm</Link></div>
       </div>
-      <div className="not-found__visual"><img src="/Images/nova-v3/not-found.png" alt="Minh họa thời trang NOVAWEAR" /></div>
+      <div className="not-found__visual"><img src="/Images/nova-v3/not-found.webp" alt="Minh họa thời trang NOVAWEAR" width="1448" height="1086" loading="lazy" decoding="async" /></div>
     </div>
   );
 }

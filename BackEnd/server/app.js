@@ -211,6 +211,44 @@ function publicProduct(product, categories) {
   };
 }
 
+function publicProductCard(product, categories) {
+  const category = categories.find((item) => item.id === product.categoryId);
+  return {
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    slug: product.slug,
+    categoryId: product.categoryId,
+    audience: product.audience,
+    price: product.price,
+    comparePrice: product.comparePrice,
+    saleEndsAt: product.saleEndsAt,
+    stock: product.stock,
+    featured: Boolean(product.featured),
+    badge: product.badge || "",
+    image: product.image,
+    colors: product.colors || [],
+    sizes: product.sizes || [],
+    rating: Number(product.rating || 0),
+    reviewCount: Number(product.reviewCount || 0),
+    sold: Number(product.sold || 0),
+    createdAt: product.createdAt,
+    category: category ? {
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      audience: category.audience || "all",
+    } : null,
+  };
+}
+
+function cachePublicResponse(res, browserSeconds = 30, edgeSeconds = 180) {
+  res.setHeader(
+    "Cache-Control",
+    `public, max-age=${browserSeconds}, s-maxage=${edgeSeconds}, stale-while-revalidate=600`,
+  );
+}
+
 function publicOrder(order) {
   const {
     internalNote,
@@ -2420,6 +2458,7 @@ function createApp(options = {}) {
   });
 
   app.get("/api/categories", (_req, res) => {
+    cachePublicResponse(res, 120, 600);
     const categories = store.data.categories
       .filter((item) => !item.status || item.status === "active")
       .map((item) => {
@@ -2454,6 +2493,7 @@ function createApp(options = {}) {
     } = req.query;
     const page = asPositiveInt(req.query.page, 1);
     const limit = Math.min(asPositiveInt(req.query.limit || req.query.pageSize, 12), 100);
+    const cardView = normalizeText(req.query.view) === "card";
     const searchText = normalizeText(search || req.query.keyword);
     const categoryText = normalizeText(category);
     const audienceText = normalizeText(audience);
@@ -2512,8 +2552,13 @@ function createApp(options = {}) {
     const start = (safePage - 1) * limit;
     const data = products
       .slice(start, start + limit)
-      .map((item) => publicProduct(item, store.data.categories));
+      .map((item) => (
+        cardView
+          ? publicProductCard(item, store.data.categories)
+          : publicProduct(item, store.data.categories)
+      ));
 
+    cachePublicResponse(res);
     res.json({
       data,
       pagination: { page: safePage, limit, total, totalPages },
@@ -2530,10 +2575,11 @@ function createApp(options = {}) {
     const related = store.data.products
       .filter((item) => item.id !== product.id && item.categoryId === product.categoryId && item.status === "active")
       .slice(0, 4)
-      .map((item) => publicProduct({ ...item, sold: sales.get(item.id) || 0, ...ratingStats(item.id, store.data.reviews) }, store.data.categories));
+      .map((item) => publicProductCard({ ...item, sold: sales.get(item.id) || 0, ...ratingStats(item.id, store.data.reviews) }, store.data.categories));
     const reviews = store.data.reviews
       .filter((item) => item.productId === product.id && item.status === "published")
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    cachePublicResponse(res, 30, 120);
     return res.json({
       data: publicProduct(productWithRating, store.data.categories),
       related,
@@ -2599,6 +2645,7 @@ function createApp(options = {}) {
   });
 
   app.get("/api/promotions", (_req, res) => {
+    cachePublicResponse(res, 30, 120);
     const now = new Date();
     const data = (store.data.coupons || [])
       .filter((item) => !couponAvailabilityError(item, null, now))
@@ -2618,6 +2665,7 @@ function createApp(options = {}) {
   });
 
   app.get("/api/promotions/catalog-summary", (_req, res) => {
+    cachePublicResponse(res, 30, 120);
     const now = new Date();
     const categoryById = new Map(
       (store.data.categories || [])
@@ -2682,6 +2730,7 @@ function createApp(options = {}) {
   });
 
   app.get("/api/news", (_req, res) => {
+    cachePublicResponse(res, 120, 600);
     const data = (store.data.news || []).filter((item) => item.status === "published").sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
     return res.json({ data });
   });
@@ -2689,6 +2738,7 @@ function createApp(options = {}) {
     const article = (store.data.news || []).find((item) => item.id === req.params.id && item.status === "published");
     if (!article) return notFound(res, "Bài viết");
     const published = (store.data.news || []).filter((item) => item.status === "published").sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+    cachePublicResponse(res, 120, 600);
     return res.json({ data: article, related: published.filter((item) => item.id !== article.id).slice(0, 3) });
   });
 

@@ -66,7 +66,7 @@ function mockHomeApi({
 } = {}) {
   api.get.mockImplementation((path) => {
     if (path.startsWith("/products?search=")) return Promise.resolve({ data: recent });
-    if (path === "/products?sale=true&sort=discount-desc&limit=4") {
+    if (path === "/products?sale=true&sort=discount-desc&limit=4&view=card") {
       return Promise.resolve({ data: sale });
     }
     if (path === "/promotions") return Promise.resolve({ data: promotions });
@@ -97,7 +97,7 @@ describe("HomePage promotion banners", () => {
     await waitFor(() => expect(view.getByRole("region", { name: "Ưu đãi nổi bật" })).toBeInTheDocument());
     await waitFor(() => expect(view.queryAllByLabelText("Đang tải sản phẩm")).toHaveLength(0));
 
-    expect(api.get).toHaveBeenCalledWith("/products?sale=true&sort=discount-desc&limit=4");
+    expect(api.get).toHaveBeenCalledWith("/products?sale=true&sort=discount-desc&limit=4&view=card");
     expect(api.get).toHaveBeenCalledWith("/promotions");
     expect(api.get).toHaveBeenCalledWith("/promotions/catalog-summary");
     expect(view.getByRole("heading", { name: "Áo khoác nam" })).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("HomePage promotion banners", () => {
     });
 
     await waitFor(() => expect(view.getByRole("heading", { name: "Tiếp tục từ “áo thun”." })).toBeInTheDocument());
-    expect(api.get).toHaveBeenCalledWith("/products?search=%C3%A1o%20thun&sort=featured&limit=3");
+    expect(api.get).toHaveBeenCalledWith("/products?search=%C3%A1o%20thun&sort=featured&limit=3&view=card");
     expect(view.getByRole("link", { name: /Áo thun thử nghiệm/i })).toHaveAttribute("href", "/san-pham/ao-thun-thu-nghiem");
   });
 });

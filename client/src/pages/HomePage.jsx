@@ -160,17 +160,17 @@ export default function HomePage() {
     try {
       const recentSearch = getRecentSearch();
       const requests = [
-        api.get("/products?sort=rating&limit=100"),
-        api.get("/products?sort=newest&limit=4"),
-        api.get("/products?sort=popular&limit=100"),
-        api.get("/products?sale=true&sort=discount-desc&limit=4"),
+        api.get("/products?sort=rating&limit=12&view=card"),
+        api.get("/products?sort=newest&limit=4&view=card"),
+        api.get("/products?sort=popular&limit=100&view=card"),
+        api.get("/products?sale=true&sort=discount-desc&limit=4&view=card"),
         api.get("/categories"),
         api.get("/news"),
         api.get("/promotions"),
         api.get("/promotions/catalog-summary"),
       ];
       if (recentSearch?.term) {
-        requests.push(api.get(`/products?search=${encodeURIComponent(recentSearch.term)}&sort=featured&limit=3`));
+        requests.push(api.get(`/products?search=${encodeURIComponent(recentSearch.term)}&sort=featured&limit=3&view=card`));
       }
       const [topRated, newest, popular, sale, categories, news, promotions, saleSummary, recentResult] = await Promise.all(requests);
       const popularProducts = (popular.data || []).filter((product) => Number(product.sold) > 0);
