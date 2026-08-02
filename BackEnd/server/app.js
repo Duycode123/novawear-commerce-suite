@@ -2367,6 +2367,23 @@ function createApp(options = {}) {
       if (!req.file) return res.status(400).json({ message: "Vui lòng chọn một tệp ảnh." });
       try {
         const data = await cloudinaryService.uploadImage(req.file.buffer, uploadFolders[kind]);
+        const productMinEdge = asPositiveInt(process.env.UPLOAD_PRODUCT_MIN_EDGE_PX, 1200);
+        if (kind === "product" && (
+          Number(data.width || 0) < productMinEdge
+          || Number(data.height || 0) < productMinEdge
+        )) {
+          try {
+            if (cloudinaryService.deleteImage) await cloudinaryService.deleteImage(data.publicId);
+          } catch (_cleanupError) {
+            // The response must still reject the undersized asset even when
+            // Cloudinary cleanup is temporarily unavailable.
+          }
+          return res.status(422).json({
+            message: `Ảnh sản phẩm quá nhỏ (${data.width || 0}×${data.height || 0}px). Mỗi cạnh cần tối thiểu ${productMinEdge}px để hiển thị sắc nét.`,
+            code: "PRODUCT_IMAGE_TOO_SMALL",
+            minimumEdge: productMinEdge,
+          });
+        }
         if (kind === "avatar") {
           const user = store.data.users.find((item) => item.id === req.user.id);
           user.avatar = data.url;
@@ -2375,7 +2392,10 @@ function createApp(options = {}) {
           store.audit("upload_avatar", "user", user.id, req.user);
           store.save();
         }
-        return res.status(201).json({ message: "Tải ảnh lên thành công.", data });
+        return res.status(201).json({
+          message: `Tải ảnh ${data.width || ""}×${data.height || ""}px lên thành công, ảnh gốc được giữ nguyên chất lượng.`,
+          data,
+        });
       } catch (error) {
         return res.status(error.code === "CLOUDINARY_NOT_CONFIGURED" ? 503 : 502).json({
           message: error.code === "CLOUDINARY_NOT_CONFIGURED"

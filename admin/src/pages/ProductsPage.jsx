@@ -35,6 +35,28 @@ const emptyProduct = {
 };
 
 const PRODUCT_PAGE_SIZE = 24;
+const PRODUCT_IMAGE_MIN_EDGE = 1200;
+const PRODUCT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+
+function readImageDimensions(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const dimensions = {
+        width: Number(image.naturalWidth || 0),
+        height: Number(image.naturalHeight || 0),
+      };
+      URL.revokeObjectURL(objectUrl);
+      resolve(dimensions);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Không đọc được kích thước ảnh. Vui lòng chọn ảnh JPEG, PNG, WebP hoặc AVIF hợp lệ."));
+    };
+    image.src = objectUrl;
+  });
+}
 
 function slugText(value) {
   return String(value || "")
@@ -218,6 +240,27 @@ export default function ProductsPage() {
   const uploadProductImage = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      notify("Ảnh vượt quá 12MB. Hãy xuất lại ảnh ở chất lượng cao với dung lượng nhỏ hơn 12MB.", "error");
+      event.target.value = "";
+      return;
+    }
+    let dimensions;
+    try {
+      dimensions = await readImageDimensions(file);
+    } catch (imageError) {
+      notify(imageError.message, "error");
+      event.target.value = "";
+      return;
+    }
+    if (dimensions.width < PRODUCT_IMAGE_MIN_EDGE || dimensions.height < PRODUCT_IMAGE_MIN_EDGE) {
+      notify(
+        `Ảnh chỉ có ${dimensions.width}×${dimensions.height}px. Hãy dùng ảnh có mỗi cạnh từ ${PRODUCT_IMAGE_MIN_EDGE}px để không bị mờ.`,
+        "error",
+      );
+      event.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       const result = await api.upload("/uploads/product", file);
@@ -373,7 +416,7 @@ export default function ProductsPage() {
               <label className="ops-field"><span>Nhãn sản phẩm</span><input name="badge" value={form.badge} onChange={change} placeholder="Mới / Bán chạy" /></label>
               {advancedOpen && <>
               <label className="ops-field ops-field--wide"><span>Đường dẫn ảnh</span><input name="image" value={form.image} onChange={change} placeholder="Bỏ trống để dùng ảnh mặc định" /></label>
-              {uploadsEnabled && <label className="ops-field ops-field--wide"><span>Tải ảnh lên Cloudinary</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadProductImage} disabled={uploading} /><small>{uploading ? "Đang tải và tối ưu ảnh…" : "Tối đa 12MB. Ảnh tải lên sẽ tự điền vào đường dẫn và thư viện ảnh."}</small></label>}
+              {uploadsEnabled && <label className="ops-field ops-field--wide"><span>Tải ảnh chất lượng cao lên Cloudinary</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadProductImage} disabled={uploading} /><small>{uploading ? "Đang tải ảnh gốc, không nén giảm chất lượng…" : "Khuyên dùng ảnh dọc 1600×2000px trở lên; mỗi cạnh tối thiểu 1200px, tối đa 12MB. Ảnh gốc được giữ nguyên."}</small></label>}
               <label className="ops-field ops-field--wide"><span>Thư viện ảnh (mỗi dòng một đường dẫn)</span><textarea name="imagesText" rows={4} value={form.imagesText} onChange={change} placeholder={"/Images/anh-chinh.jpg\n/Images/anh-chi-tiet.jpg"} /></label>
               <label className="ops-field"><span>Màu sắc (cách nhau bằng dấu phẩy)</span><input name="colorsText" value={form.colorsText} onChange={change} /></label>
               <label className="ops-field"><span>Kích thước (cách nhau bằng dấu phẩy)</span><input name="sizesText" value={form.sizesText} onChange={change} /></label>

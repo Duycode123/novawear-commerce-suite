@@ -30,21 +30,34 @@ function createCloudinaryService() {
         overwrite: false,
         unique_filename: true,
         use_filename: false,
-        transformation: resourceType === "image"
-          ? [{ quality: "auto", fetch_format: "auto" }]
-          : undefined,
+        // Keep the uploaded master untouched. In particular, f_auto must be
+        // chosen at delivery time because it depends on the requesting
+        // browser. Applying q_auto/f_auto here is an incoming transformation
+        // and permanently stores a recompressed asset, which makes large
+        // product photos look soft when they are displayed or zoomed.
       }, (error, result) => {
         if (error) reject(error);
         else resolve({
           url: result.secure_url,
+          originalUrl: result.secure_url,
           publicId: result.public_id,
           width: result.width,
           height: result.height,
           bytes: result.bytes,
           format: result.format,
+          version: result.version,
         });
       });
       stream.end(buffer);
+    });
+  }
+
+  async function deleteImage(publicId) {
+    assertConfigured();
+    if (!publicId) return;
+    await cloudinary.uploader.destroy(publicId, {
+      resource_type: "image",
+      invalidate: true,
     });
   }
 
@@ -54,6 +67,7 @@ function createCloudinaryService() {
     uploadImage(buffer, folder) {
       return uploadBuffer(buffer, "image", folder);
     },
+    deleteImage,
   };
 }
 

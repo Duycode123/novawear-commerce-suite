@@ -61,8 +61,8 @@ test.before(async () => {
         return {
           url: `https://res.cloudinary.example/${folder}/test-image.webp`,
           publicId: `${folder}/test-image`,
-          width: 800,
-          height: 1000,
+          width: 1800,
+          height: 2400,
           bytes: 1024,
           format: "webp",
         };

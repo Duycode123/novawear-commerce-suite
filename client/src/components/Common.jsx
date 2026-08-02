@@ -32,14 +32,48 @@ export function SectionHeading({ eyebrow, title, copy, action, align = "left" })
   );
 }
 
-export function SmartImage({ src, alt, className = "", ...props }) {
+function cloudinaryVariant(src, width) {
+  const marker = "/image/upload/";
+  if (!width || typeof src !== "string" || !src.includes("res.cloudinary.com") || !src.includes(marker)) {
+    return src;
+  }
+  const [prefix, suffix] = src.split(marker);
+  // secure_url returned by an untouched upload is versioned. Avoid stacking
+  // transformations on hand-written or already transformed Cloudinary URLs.
+  if (!/^v\d+\//.test(suffix || "")) return src;
+  return `${prefix}${marker}c_limit,w_${Math.round(width)}/q_auto:best/f_auto/${suffix}`;
+}
+
+export function SmartImage({
+  src,
+  alt,
+  className = "",
+  widthHint,
+  responsiveWidths,
+  sizes,
+  ...props
+}) {
+  const widths = widthHint
+    ? (responsiveWidths || [Math.max(320, Math.round(widthHint / 2)), widthHint, Math.min(2400, widthHint * 1.5)])
+      .map((value) => Math.round(value))
+      .filter((value, index, values) => value > 0 && values.indexOf(value) === index)
+    : [];
+  const renderedSrc = cloudinaryVariant(src, widthHint);
+  const generatedSrcSet = widths.length > 1 && renderedSrc !== src
+    ? widths.map((width) => `${cloudinaryVariant(src, width)} ${width}w`).join(", ")
+    : undefined;
   return (
     <img
-      src={src}
+      src={renderedSrc}
+      srcSet={generatedSrcSet}
+      sizes={generatedSrcSet ? (sizes || "100vw") : undefined}
       alt={alt}
       className={className}
       loading="lazy"
+      decoding="async"
       onError={(event) => {
+        event.currentTarget.removeAttribute("srcset");
+        event.currentTarget.removeAttribute("sizes");
         event.currentTarget.src = "/Images/nova-v3/product-tee-black.png";
       }}
       {...props}
@@ -56,7 +90,13 @@ export function ProductCard({ product, compact = false }) {
     <article className={`product-card ${compact ? "product-card--compact" : ""}`}>
       <div className="product-card__media">
         <Link to={detailUrl} aria-label={`Xem ${product.name}`}>
-          <SmartImage src={product.image} alt={product.name} />
+          <SmartImage
+            src={product.image}
+            alt={product.name}
+            widthHint={900}
+            responsiveWidths={[420, 720, 900, 1200]}
+            sizes="(max-width: 640px) 50vw, (max-width: 1100px) 33vw, 25vw"
+          />
         </Link>
         {product.badge && <span className="product-card__badge">{product.badge}</span>}
         <button

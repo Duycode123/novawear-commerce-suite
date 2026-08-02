@@ -104,12 +104,19 @@ export default function ProductPage() {
                 aria-label={`Xem ảnh ${index + 1}`}
                 key={`${image}-${index}`}
               >
-                <SmartImage src={image} alt="" />
+                <SmartImage src={image} alt="" widthHint={240} responsiveWidths={[160, 240, 320]} sizes="96px" />
               </button>
             ))}
           </div>
           <div className="product-gallery__main">
-            <SmartImage src={activeImage} alt={product.name} loading="eager" />
+            <SmartImage
+              src={activeImage}
+              alt={product.name}
+              loading="eager"
+              widthHint={1800}
+              responsiveWidths={[800, 1200, 1800, 2400]}
+              sizes="(max-width: 900px) 100vw, 55vw"
+            />
             {product.badge && <span className="product-gallery__badge">{product.badge}</span>}
           </div>
         </div>
@@ -211,7 +218,13 @@ export default function ProductPage() {
 
         <div className="product-editorial__visual-grid">
           <figure className="product-editorial__visual">
-            <SmartImage src={images[1] || images[0]} alt={`${product.name} - hình ảnh chi tiết`} />
+            <SmartImage
+              src={images[1] || images[0]}
+              alt={`${product.name} - hình ảnh chi tiết`}
+              widthHint={1800}
+              responsiveWidths={[800, 1200, 1800, 2400]}
+              sizes="(max-width: 900px) 100vw, 72vw"
+            />
             <figcaption><span>01 / Góc nhìn chi tiết</span>Chi tiết thiết kế và bề mặt chất liệu của {product.name}.</figcaption>
           </figure>
           <aside className="product-editorial__facts">
