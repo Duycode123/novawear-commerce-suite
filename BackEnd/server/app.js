@@ -1534,10 +1534,17 @@ function createApp(options = {}) {
     15 * 60,
     (req) => req.user?.id || req.ip || "unknown",
   );
-  const limitUploads = fixedWindowLimit(
-    "uploads",
-    30,
-    15 * 60,
+  const uploadRateWindowSeconds = asPositiveInt(process.env.UPLOAD_RATE_WINDOW_SECONDS, 15 * 60);
+  const limitProductUploads = fixedWindowLimit(
+    "product-uploads",
+    asPositiveInt(process.env.UPLOAD_PRODUCT_RATE_LIMIT, 120),
+    uploadRateWindowSeconds,
+    (req) => req.user?.id || req.ip || "unknown",
+  );
+  const limitCustomerUploads = fixedWindowLimit(
+    "customer-uploads",
+    asPositiveInt(process.env.UPLOAD_CUSTOMER_RATE_LIMIT, 30),
+    uploadRateWindowSeconds,
     (req) => req.user?.id || req.ip || "unknown",
   );
 
@@ -2350,7 +2357,7 @@ function createApp(options = {}) {
     return: process.env.CLOUDINARY_RETURN_FOLDER || "novawear/returns",
   };
 
-  app.post("/api/uploads/:kind", requireAuth, limitUploads, (req, res) => {
+  app.post("/api/uploads/:kind", requireAuth, (req, res) => {
     const kind = String(req.params.kind || "");
     if (!Object.hasOwn(uploadFolders, kind)) return notFound(res, "Loại ảnh");
     if (req.user.mustChangePassword) {
@@ -2365,7 +2372,8 @@ function createApp(options = {}) {
     if (kind !== "product" && req.user.role !== "customer") {
       return res.status(403).json({ message: "Loại tài khoản không phù hợp với ảnh này." });
     }
-    return upload.single("file")(req, res, async (uploadError) => {
+    const limitUpload = kind === "product" ? limitProductUploads : limitCustomerUploads;
+    return limitUpload(req, res, () => upload.single("file")(req, res, async (uploadError) => {
       if (uploadError) {
         return res.status(400).json({ message: uploadError.message || "Ảnh tải lên không hợp lệ." });
       }
@@ -2408,7 +2416,7 @@ function createApp(options = {}) {
             : "Cloudinary chưa thể xử lý ảnh. Vui lòng thử lại.",
         });
       }
-    });
+    }));
   });
 
   app.get("/api/categories", (_req, res) => {

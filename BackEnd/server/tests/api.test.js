@@ -526,6 +526,19 @@ test("authenticated image uploads enforce roles and persist avatars", async () =
   });
   assert.equal(uploadedProduct.status, 201);
 
+  // A catalog editing session commonly uploads several views for each item.
+  // Keep this above the legacy limit of 30 so the admin workflow cannot regress.
+  for (let index = 0; index < 35; index += 1) {
+    const additionalProductForm = new FormData();
+    additionalProductForm.append("file", new Blob([`image-${index}`], { type: "image/png" }), `product-${index}.png`);
+    const additionalUpload = await fetch(`${baseUrl}/uploads/product`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: additionalProductForm,
+    });
+    assert.equal(additionalUpload.status, 201);
+  }
+
   const avatarForm = new FormData();
   avatarForm.append("file", new Blob(["image"], { type: "image/png" }), "avatar.png");
   const uploadedAvatar = await fetch(`${baseUrl}/uploads/avatar`, {

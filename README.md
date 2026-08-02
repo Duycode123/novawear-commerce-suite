@@ -176,5 +176,6 @@ Luồng chuyển khoản lấy thông tin tài khoản từ backend, tạo QR ri
 - Bật tải ảnh bằng `CLOUDINARY_ENABLED=true`, rồi điền `CLOUDINARY_URL` hoặc bộ `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
 - Ảnh sản phẩm được lưu nguyên bản, không chạy `q_auto`/`f_auto` trong bước upload. Giao diện tạo bản responsive `q_auto:best` khi phân phối để ảnh vẫn nét trên màn hình Retina mà không tải thừa dung lượng.
 - Ngưỡng ảnh sản phẩm cấu hình bằng `UPLOAD_PRODUCT_MIN_EDGE_PX` (và `REACT_APP_UPLOAD_PRODUCT_MIN_EDGE_PX` ở Admin). Chế độ demo mặc định là `0`, nên nhận mọi ảnh hợp lệ dưới 12MB; ảnh gốc được giữ nguyên nhưng ảnh nhỏ có thể mờ khi hiển thị lớn. Đặt cả hai biến thành `1200` hoặc cao hơn nếu muốn bật lại kiểm tra chất lượng.
+- Giới hạn tải ảnh được tách theo nghiệp vụ: Admin có thể tải mặc định 120 ảnh sản phẩm trong 15 phút, còn ảnh khách hàng giữ mức 30. Có thể chỉnh bằng `UPLOAD_PRODUCT_RATE_LIMIT`, `UPLOAD_CUSTOMER_RATE_LIMIT` và `UPLOAD_RATE_WINDOW_SECONDS`.
 - Backend kiểm tra cấu hình khi khởi động. Một tích hợp được bật nhưng thiếu khóa bắt buộc sẽ làm quá trình khởi động dừng với thông báo rõ trường còn thiếu.
 Quy trình nghiệp vụ đầy đủ cho khách hàng, nhân viên và admin xem tại [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md).

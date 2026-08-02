@@ -243,6 +243,7 @@ export default function ProductsPage() {
   };
 
   const uploadProductImage = async (event) => {
+    if (uploading) return;
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
@@ -286,6 +287,10 @@ export default function ProductsPage() {
 
   const save = async (event) => {
     event.preventDefault();
+    if (uploading) {
+      notify("Vui lòng chờ ảnh tải xong trước khi lưu sản phẩm.", "error");
+      return;
+    }
     setSaving(true);
     const payload = {
       ...form,
@@ -448,7 +453,7 @@ export default function ProductsPage() {
               <span>Không bắt buộc khi tạo sản phẩm nhanh</span>
             </div>
             <label className="ops-check"><input type="checkbox" name="featured" checked={Boolean(form.featured)} onChange={change} /><span>Hiển thị ở khu vực sản phẩm nổi bật</span></label>
-            <div className="ops-form-actions"><button className="ops-secondary-button" type="button" onClick={closeForm}>Hủy</button><button className="ops-primary-button" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu sản phẩm →"}</button></div>
+            <div className="ops-form-actions"><button className="ops-secondary-button" type="button" onClick={closeForm} disabled={saving || uploading}>Hủy</button><button className="ops-primary-button" type="submit" disabled={saving || uploading}>{uploading ? "Đang tải ảnh..." : saving ? "Đang lưu..." : "Lưu sản phẩm →"}</button></div>
           </div>
         </form>
       </Modal>
