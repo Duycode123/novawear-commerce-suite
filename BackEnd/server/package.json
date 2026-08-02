@@ -7,7 +7,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "server": "nodemon index.js",
-    "test": "node --test tests/api.test.js tests/catalog-migration.test.js tests/cloudinary.test.js tests/mailer.test.js",
+    "test": "node --test tests/api.test.js tests/catalog-migration.test.js tests/cloudinary.test.js tests/integrations.test.js tests/mailer.test.js",
     "accounts:preview": "node reset-operations-accounts.js",
     "accounts:reset": "node reset-operations-accounts.js --apply"
   },

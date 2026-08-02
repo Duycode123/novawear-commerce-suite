@@ -9,6 +9,8 @@ const { createMailer } = require("./lib/mailer");
 const { createCloudinaryService } = require("./lib/cloudinary");
 const { createOAuthService } = require("./lib/oauth");
 const { createSepayTransactionLookup } = require("./lib/sepay");
+const { createShippingService, mapGhnStatus } = require("./lib/shipping");
+const { createRefundService } = require("./lib/refunds");
 const { hashPassword, verifyPassword, sanitizeUser } = require("./lib/security");
 const { enforceProductionIdentityPolicy } = require("./lib/production-identity");
 
@@ -174,9 +176,20 @@ function createToken(user, secret) {
       algorithm: "HS256",
       audience: "novawear-app",
       issuer: "novawear-api",
-      expiresIn: process.env.JWT_EXPIRES_IN || "30m",
+      expiresIn: process.env.JWT_EXPIRES_IN || "15m",
     },
   );
+}
+
+function parseCookies(header) {
+  return String(header || "").split(";").reduce((cookies, pair) => {
+    const separator = pair.indexOf("=");
+    if (separator < 1) return cookies;
+    const key = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim();
+    try { cookies[key] = decodeURIComponent(value); } catch (_error) { cookies[key] = value; }
+    return cookies;
+  }, {});
 }
 
 function createVerificationCode() {
@@ -1075,6 +1088,8 @@ function createApp(options = {}) {
     || process.env.DATA_FILE
     || path.join(__dirname, "data", "store.json");
   const store = options.store || new JsonStore(dataFile);
+  const shippingService = options.shippingService || createShippingService(options.shipping || {});
+  const refundService = options.refundService || createRefundService(options.refunds || {});
   ensureDataShape(store);
   store.data.customers.forEach((customer) => rebuildCustomerMetrics(store, customer.id));
   const configuredJwtSecret = String(options.jwtSecret || process.env.JWT_SECRET || "").trim();
@@ -1167,6 +1182,78 @@ function createApp(options = {}) {
   const publicRequestLimits = new Map();
   let lastSecurityPruneAt = 0;
   const dummyPasswordHash = hashPassword("Invalid-password-value-2026");
+  const refreshCookieName = String(process.env.REFRESH_COOKIE_NAME || "novawear_refresh");
+  const refreshTtlSeconds = asPositiveInt(process.env.REFRESH_TOKEN_TTL_SECONDS, 7 * 24 * 60 * 60);
+  const secureRefreshCookie = process.env.NODE_ENV === "production"
+    || String(process.env.REFRESH_COOKIE_SECURE || "false").toLowerCase() === "true";
+
+  function refreshTokenHash(token) {
+    return crypto.createHmac("sha256", jwtSecret).update(String(token || "")).digest("hex");
+  }
+
+  function setRefreshCookie(res, token, maxAgeSeconds = refreshTtlSeconds) {
+    const sameSite = String(process.env.REFRESH_COOKIE_SAME_SITE || (secureRefreshCookie ? "None" : "Lax"));
+    const parts = [
+      `${refreshCookieName}=${encodeURIComponent(token)}`,
+      "Path=/api/auth",
+      "HttpOnly",
+      `SameSite=${sameSite}`,
+      `Max-Age=${Math.max(0, maxAgeSeconds)}`,
+    ];
+    if (secureRefreshCookie) parts.push("Secure");
+    res.setHeader("Set-Cookie", parts.join("; "));
+  }
+
+  function issueRefreshSession(res, user, req) {
+    store.data.authSessions = Array.isArray(store.data.authSessions) ? store.data.authSessions : [];
+    const now = Date.now();
+    store.data.authSessions = store.data.authSessions.filter((session) => (
+      new Date(session.expiresAt).getTime() > now && !session.revokedAt
+    ));
+    const sessionId = crypto.randomUUID();
+    const token = jwt.sign(
+      { sub: user.id, sid: sessionId, ver: Number(user.tokenVersion || 0), type: "refresh" },
+      jwtSecret,
+      {
+        algorithm: "HS256",
+        audience: "novawear-refresh",
+        issuer: "novawear-api",
+        expiresIn: refreshTtlSeconds,
+      },
+    );
+    store.data.authSessions.push({
+      id: sessionId,
+      userId: user.id,
+      tokenHash: refreshTokenHash(token),
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + refreshTtlSeconds * 1000).toISOString(),
+      ip: req.ip || null,
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 240),
+      revokedAt: null,
+    });
+    const activeForUser = store.data.authSessions
+      .filter((session) => session.userId === user.id)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    activeForUser.slice(5).forEach((session) => { session.revokedAt = new Date().toISOString(); });
+    setRefreshCookie(res, token);
+    return token;
+  }
+
+  function revokeRefreshToken(token, reason = "logout") {
+    if (!token || !Array.isArray(store.data.authSessions)) return null;
+    let payload = null;
+    try {
+      payload = jwt.verify(token, jwtSecret, {
+        algorithms: ["HS256"], audience: "novawear-refresh", issuer: "novawear-api",
+      });
+    } catch (_error) { return null; }
+    const session = store.data.authSessions.find((item) => item.id === payload.sid);
+    if (session && !session.revokedAt) {
+      session.revokedAt = new Date().toISOString();
+      session.revokeReason = reason;
+    }
+    return { payload, session };
+  }
 
   function pruneTemporarySecurityState(now = Date.now()) {
     if (now - lastSecurityPruneAt < 60 * 1000) return;
@@ -1412,6 +1499,8 @@ function createApp(options = {}) {
   app.locals.mailer = mailer;
   app.locals.cloudinary = cloudinaryService;
   app.locals.oauth = oauthService;
+  app.locals.shipping = shippingService;
+  app.locals.refunds = refundService;
 
   app.disable("x-powered-by");
   if (String(process.env.TRUST_PROXY || "false").toLowerCase() === "true") {
@@ -1451,6 +1540,33 @@ function createApp(options = {}) {
   }));
   app.use(express.json({ limit: requestBodyLimit }));
   app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
+  // Không trả thông báo thành công trước khi PostgreSQL đã COMMIT. Điều này
+  // tránh trường hợp giao diện báo lưu xong nhưng tiến trình bị dừng giữa lúc ghi.
+  app.use((req, res, next) => {
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method) || typeof store.flush !== "function") {
+      next();
+      return;
+    }
+    const sendJson = res.json.bind(res);
+    let sending = false;
+    res.json = (body) => {
+      if (sending || res.statusCode >= 400) return sendJson(body);
+      sending = true;
+      Promise.resolve(store.flush())
+        .then(() => sendJson(body))
+        .catch((error) => {
+          res.status(error.code === "STORE_CONFLICT" ? 409 : 503);
+          sendJson({
+            message: error.code === "STORE_CONFLICT"
+              ? "Dữ liệu vừa được cập nhật ở phiên khác. Vui lòng tải lại và thử lại."
+              : "Dữ liệu chưa thể được lưu an toàn. Vui lòng thử lại.",
+            code: error.code || "STORE_WRITE_FAILED",
+          });
+        });
+      return res;
+    };
+    next();
+  });
 
   function optionalAuth(req, _res, next) {
     const authorization = req.headers.authorization || "";
@@ -1755,6 +1871,8 @@ function createApp(options = {}) {
         user: sanitizeUser(user),
       });
     }
+    issueRefreshSession(res, user, req);
+    store.save();
     return res.json({
       message: "Đăng nhập thành công.",
       token: createToken(user, jwtSecret),
@@ -1811,6 +1929,8 @@ function createApp(options = {}) {
     store.save();
     clearAuthFailures(req.authAttemptKey);
 
+    issueRefreshSession(res, user, req);
+    store.save();
     return res.json({
       message: "Xác minh tài khoản thành công.",
       token: createToken(user, jwtSecret),
@@ -1982,6 +2102,8 @@ function createApp(options = {}) {
       emailConfigured: Boolean(mailer.configured),
       cloudinaryConfigured: Boolean(cloudinaryService.configured),
       sepayConfigured,
+      shippingConfigured: Boolean(shippingService.configured),
+      refundProviderConfigured: Boolean(refundService.configured),
       time: new Date().toISOString(),
     });
   });
@@ -2029,6 +2151,8 @@ function createApp(options = {}) {
         uploads: Boolean(cloudinaryService.configured),
         oauth: oauthService.publicConfig(),
         sepay: sepayConfigured,
+        shipping: Boolean(shippingService.configured),
+        refunds: Boolean(refundService.configured),
       },
     });
   });
@@ -2037,6 +2161,43 @@ function createApp(options = {}) {
   app.post("/api/auth/login", rateLimitAuth, loginHandler);
   app.post("/api/createaccount", limitEmailDelivery, rateLimitAuth, registerHandler);
   app.post("/api/login", rateLimitAuth, loginHandler);
+
+  app.post("/api/auth/refresh", rateLimitAuth, (req, res) => {
+    const token = parseCookies(req.headers.cookie)[refreshCookieName];
+    if (!token) return res.status(401).json({ message: "Phiên đăng nhập đã hết hạn." });
+    let payload;
+    try {
+      payload = jwt.verify(token, jwtSecret, {
+        algorithms: ["HS256"], audience: "novawear-refresh", issuer: "novawear-api",
+      });
+    } catch (_error) {
+      setRefreshCookie(res, "", 0);
+      return res.status(401).json({ message: "Phiên đăng nhập đã hết hạn." });
+    }
+    const session = (store.data.authSessions || []).find((item) => item.id === payload.sid);
+    const user = store.data.users.find((item) => item.id === payload.sub);
+    const valid = session && !session.revokedAt
+      && safeTextEqual(session.tokenHash, refreshTokenHash(token))
+      && new Date(session.expiresAt).getTime() > Date.now()
+      && user?.status === "active" && user.emailVerifiedAt
+      && Number(payload.ver || 0) === Number(user.tokenVersion || 0);
+    if (!valid) {
+      // Token quay vòng đã dùng lại: thu hồi toàn bộ phiên của tài khoản để hạn chế chiếm đoạt.
+      if (user && Array.isArray(store.data.authSessions)) {
+        store.data.authSessions
+          .filter((item) => item.userId === user.id && !item.revokedAt)
+          .forEach((item) => { item.revokedAt = new Date().toISOString(); item.revokeReason = "reuse_detected"; });
+        store.save();
+      }
+      setRefreshCookie(res, "", 0);
+      return res.status(401).json({ message: "Phiên đăng nhập không còn hợp lệ." });
+    }
+    session.revokedAt = new Date().toISOString();
+    session.revokeReason = "rotated";
+    issueRefreshSession(res, user, req);
+    store.save();
+    return res.json({ token: createToken(user, jwtSecret), user: sanitizeUser(user) });
+  });
 
   app.get("/api/auth/oauth/config", (_req, res) => {
     return res.json({ data: oauthService.publicConfig() });
@@ -2227,6 +2388,8 @@ function createApp(options = {}) {
       return res.status(403).json({ message: "Tài khoản không thể đăng nhập bằng phương thức này." });
     }
     clearAuthFailures(req.authAttemptKey);
+    issueRefreshSession(res, user, req);
+    store.save();
     return res.json({
       message: "Đăng nhập thành công.",
       token: createToken(user, jwtSecret),
@@ -2252,6 +2415,8 @@ function createApp(options = {}) {
       return res.status(403).json({ message: "Tài khoản không có quyền truy cập khu vực vận hành." });
     }
     clearAuthFailures(req.authAttemptKey);
+    issueRefreshSession(res, user, req);
+    store.save();
     return res.json({
       message: "Đã xác nhận phiên đăng nhập quản trị.",
       token: createToken(user, jwtSecret),
@@ -2367,13 +2532,19 @@ function createApp(options = {}) {
     });
   });
 
-  app.post("/api/auth/logout", requireAuth, (req, res) => {
-    const user = store.data.users.find((item) => item.id === req.user.id);
+  app.post("/api/auth/logout", optionalAuth, (req, res) => {
+    const refreshToken = parseCookies(req.headers.cookie)[refreshCookieName];
+    const revoked = revokeRefreshToken(refreshToken);
+    const user = store.data.users.find((item) => item.id === (req.user?.id || revoked?.payload?.sub));
     if (user) {
       user.tokenVersion = Number(user.tokenVersion || 0) + 1;
-      store.audit("logout", "user", user.id, req.user);
+      (store.data.authSessions || [])
+        .filter((session) => session.userId === user.id && !session.revokedAt)
+        .forEach((session) => { session.revokedAt = new Date().toISOString(); session.revokeReason = "logout"; });
+      store.audit("logout", "user", user.id, req.user || sanitizeUser(user));
       store.save();
     }
+    setRefreshCookie(res, "", 0);
     return res.json({ message: "Đã đăng xuất an toàn trên máy chủ." });
   });
 
@@ -3874,6 +4045,111 @@ function createApp(options = {}) {
     return res.json({ message: "Đăng ký nhận tin thành công." });
   });
 
+  app.post("/api/shipping/ghn/webhook", (req, res) => {
+    const configuredSecret = String(process.env.GHN_WEBHOOK_SECRET || "").trim();
+    const suppliedSecret = String(req.headers["x-novawear-webhook-secret"] || req.query.secret || "").trim();
+    if (!configuredSecret || !safeTextEqual(suppliedSecret, configuredSecret)) {
+      return res.status(401).json({ message: "Webhook vận chuyển không hợp lệ." });
+    }
+    const trackingNumber = String(req.body.OrderCode || req.body.order_code || "").trim();
+    const clientOrderCode = String(req.body.ClientOrderCode || req.body.client_order_code || "").trim();
+    const rawStatus = String(req.body.Status || req.body.status || "").trim();
+    const targetStatus = mapGhnStatus(rawStatus);
+    const order = store.data.orders.find((item) => item.id === clientOrderCode
+      || item.shipment?.trackingNumber === trackingNumber);
+    if (!order) return res.status(202).json({ received: true, matched: false });
+    const webhookKey = `${trackingNumber}:${rawStatus}:${req.body.Time || req.body.time || ""}`;
+    order.shippingWebhookKeys = Array.isArray(order.shippingWebhookKeys) ? order.shippingWebhookKeys : [];
+    if (order.shippingWebhookKeys.includes(webhookKey)) return res.json({ received: true, duplicate: true });
+    order.shippingWebhookKeys.push(webhookKey);
+    order.shippingWebhookKeys = order.shippingWebhookKeys.slice(-40);
+    order.shipment = {
+      ...(order.shipment || {}), carrier: "GHN", trackingNumber,
+      rawStatus, lastWebhookAt: new Date().toISOString(),
+    };
+    const providerActor = { id: "ghn", name: "GHN", role: "system" };
+    let event = null;
+    if (targetStatus && targetStatus !== order.status) {
+      if (["delivered", "delivery_failed"].includes(targetStatus) && order.status === "ready_to_ship") {
+        applyOrderTransition(store, order, "shipping", {
+          shipment: order.shipment, actor: providerActor, source: "shipping_webhook",
+          publicNote: "Đơn vị vận chuyển đã nhận hàng.",
+        });
+      }
+      if ((ALLOWED_ORDER_TRANSITIONS[order.status] || []).includes(targetStatus)) {
+        event = applyOrderTransition(store, order, targetStatus, {
+          shipment: order.shipment,
+          reason: String(req.body.Reason || req.body.reason || "Cập nhật từ GHN"),
+          publicNote: String(req.body.Description || req.body.description || "Trạng thái giao hàng đã được cập nhật."),
+          actor: providerActor,
+          source: "shipping_webhook",
+        });
+      }
+    }
+    store.audit("shipping_webhook", "order", order.id, providerActor);
+    store.save();
+    if (event) {
+      notifyOrderChange(store, order, event, { type: "shipping_update", message: event.note });
+      queueOrderStatusEmail(order, event);
+    }
+    return res.json({ received: true, matched: true, status: order.status });
+  });
+
+  app.post("/api/refunds/provider/webhook", (req, res) => {
+    const rawBody = JSON.stringify(req.body || {});
+    if (!refundService.verifyWebhook(rawBody, req.headers["x-nova-signature"])) {
+      return res.status(401).json({ message: "Webhook hoàn tiền không hợp lệ." });
+    }
+    const reference = String(req.body.reference || "").trim();
+    const returnRequest = store.data.returns.find((item) => item.refundProviderReference === reference
+      || item.id === req.body.returnId);
+    if (!returnRequest) return res.status(202).json({ received: true, matched: false });
+    if (returnRequest.refundStatus === "refunded") return res.json({ received: true, duplicate: true });
+    const status = String(req.body.status || "").toLowerCase();
+    const at = new Date().toISOString();
+    if (["failed", "rejected"].includes(status)) {
+      returnRequest.refundStatus = "pending";
+      returnRequest.refundFailureReason = String(req.body.reason || "Nhà cung cấp từ chối giao dịch.").slice(0, 500);
+      touchReturn(returnRequest, at);
+      store.save();
+      return res.json({ received: true, status: "pending" });
+    }
+    if (!["succeeded", "completed", "paid"].includes(status)) {
+      return res.json({ received: true, status: "processing" });
+    }
+    const order = store.data.orders.find((item) => item.id === returnRequest.orderId);
+    if (!order) return res.status(409).json({ message: "Không tìm thấy đơn hàng cần hoàn." });
+    returnRequest.refundStatus = "refunded";
+    returnRequest.refundedAt = at;
+    returnRequest.refundReference = reference;
+    const event = appendReturnEvent(returnRequest, {
+      status: "completed", label: "Đã hoàn tiền",
+      note: `Đã hoàn ${Number(returnRequest.refundAmount || 0).toLocaleString("vi-VN")} ₫ cho khách hàng.`,
+      internalNote: "Nhà cung cấp hoàn tiền xác nhận giao dịch thành công.",
+      actor: { id: "refund-provider", name: "Nhà cung cấp hoàn tiền", role: "system" },
+      source: "refund_webhook", at: touchReturn(returnRequest, at),
+    });
+    const refundedAmount = store.data.returns
+      .filter((entry) => entry.orderId === order.id && entry.refundStatus === "refunded")
+      .reduce((sum, entry) => sum + Number(entry.refundAmount || 0), 0);
+    order.refundedAmount = refundedAmount;
+    const refundableTotal = Math.max(0, Number(order.subtotal || 0) - Number(order.discount || 0));
+    order.paymentStatus = refundedAmount >= refundableTotal ? "refunded" : "partially_refunded";
+    const paymentEvent = appendOrderEvent(order, {
+      eventType: "payment", status: order.status, paymentStatus: order.paymentStatus,
+      label: PAYMENT_STATUS_LABELS[order.paymentStatus], note: event.note,
+      actor: { id: "refund-provider", name: "Nhà cung cấp hoàn tiền", role: "system" },
+      source: "refund_webhook", at: touchOrder(order, at),
+    });
+    notifyReturnChange(store, returnRequest, order, event);
+    notifyOrderChange(store, order, paymentEvent, { type: "payment_refunded", message: event.note });
+    rebuildCustomerMetrics(store, order.customerId);
+    store.save();
+    queueReturnStatusEmail(returnRequest, order, event);
+    queueOrderStatusEmail(order, paymentEvent);
+    return res.json({ received: true, status: "refunded" });
+  });
+
   const admin = express.Router();
   admin.use(requireAuth, allowRoles("admin", "staff"));
 
@@ -4312,6 +4588,43 @@ function createApp(options = {}) {
     return res.json({ data: order });
   });
 
+  admin.post("/orders/:id/shipment", async (req, res, next) => {
+    try {
+      const order = store.data.orders.find((item) => item.id === req.params.id);
+      if (!order) return notFound(res, "Đơn hàng");
+      if (order.status !== "ready_to_ship") {
+        return res.status(409).json({ message: "Chỉ tạo vận đơn khi đơn đã đóng gói và sẵn sàng bàn giao." });
+      }
+      if (req.user.role === "staff"
+        && (!req.user.employeeId || (order.assigneeId && order.assigneeId !== req.user.employeeId))) {
+        return res.status(403).json({ message: "Đơn hàng đang được nhân viên khác phụ trách." });
+      }
+      if (req.body.expectedVersion === undefined || Number(req.body.expectedVersion) !== Number(order.version || 1)) {
+        return res.status(409).json({ message: "Dữ liệu đơn hàng vừa thay đổi. Vui lòng tải lại trước khi tạo vận đơn." });
+      }
+      if (order.shipment?.trackingNumber) {
+        return res.status(409).json({ message: "Đơn hàng đã có mã vận đơn." });
+      }
+      const shipment = await shippingService.createShipment(order, req.body);
+      order.shipment = { ...shipment, createdAt: new Date().toISOString() };
+      const event = applyOrderTransition(store, order, "shipping", {
+        shipment,
+        publicNote: `Đơn hàng đã được bàn giao cho ${shipment.carrier}.`,
+        internalNote: `Tạo vận đơn tự động qua ${shipment.provider}.`,
+        actor: req.user,
+        source: "shipping_provider",
+      });
+      store.audit("shipment_create", "order", order.id, req.user);
+      store.save();
+      notifyOrderChange(store, order, event, { type: "order_shipping", message: event.note });
+      queueOrderStatusEmail(order, event);
+      return res.status(201).json({ message: "Đã tạo vận đơn và bàn giao đơn vị vận chuyển.", data: order });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ message: error.message, code: error.code });
+      return next(error);
+    }
+  });
+
   admin.patch("/orders/:id", (req, res) => {
     const order = store.data.orders.find((item) => item.id === req.params.id);
     if (!order) return notFound(res, "Đơn hàng");
@@ -4473,12 +4786,25 @@ function createApp(options = {}) {
   admin.get("/customers", (req, res) => {
     const search = normalizeText(req.query.search);
     let customers = [...store.data.customers];
+    // Nhân viên chỉ được xem khách hàng thuộc đơn/hội thoại được phân công.
+    // Danh sách khách hàng toàn hệ thống và thao tác sửa dữ liệu gốc là quyền quản trị.
+    if (req.user.role === "staff") {
+      const permittedCustomerIds = new Set([
+        ...store.data.orders
+          .filter((order) => order.assigneeId === (req.user.employeeId || req.user.id))
+          .map((order) => order.customerId),
+        ...(store.data.contacts || [])
+          .filter((contact) => [req.user.id, req.user.employeeId].includes(contact.assigneeId))
+          .map((contact) => contact.customerId),
+      ].filter(Boolean));
+      customers = customers.filter((customer) => permittedCustomerIds.has(customer.id));
+    }
     if (search) customers = customers.filter((item) => normalizeText(`${item.name} ${item.email} ${item.phone}`).includes(search));
     customers.sort((a, b) => b.totalSpent - a.totalSpent);
     res.json({ data: customers });
   });
 
-  admin.post("/customers", (req, res) => {
+  admin.post("/customers", allowRoles("admin"), (req, res) => {
     const requestedTier = String(req.body.tier || "Member").trim();
     if (requestedTier !== "Member") {
       return res.status(400).json({ message: "Hạng thành viên do hệ thống tự tính từ các đơn đã giao và đã thanh toán." });
@@ -4510,7 +4836,7 @@ function createApp(options = {}) {
     return res.status(201).json({ message: "Đã thêm khách hàng.", data: customer });
   });
 
-  admin.put("/customers/:id", (req, res) => {
+  admin.put("/customers/:id", allowRoles("admin"), (req, res) => {
     const customer = store.data.customers.find((item) => item.id === req.params.id);
     if (!customer) return notFound(res, "Khách hàng");
     if (req.body.tier !== undefined && String(req.body.tier) !== String(customer.tier)) {
@@ -5161,6 +5487,54 @@ function createApp(options = {}) {
     store.save();
     queueReturnStatusEmail(returnRequest, order, event);
     return res.json({ message: "Đã cập nhật yêu cầu đổi trả.", data: returnRequest });
+  });
+
+  admin.post("/returns/:id/refund/initiate", allowRoles("admin"), async (req, res, next) => {
+    try {
+      if (!refundService.configured) {
+        return res.status(503).json({
+          message: "Chưa cấu hình nhà cung cấp chi tiền hoàn. Hãy dùng đối soát thủ công kèm mã giao dịch.",
+          code: "REFUND_PROVIDER_NOT_CONFIGURED",
+        });
+      }
+      const returnRequest = store.data.returns.find((entry) => entry.id === req.params.id);
+      if (!returnRequest) return notFound(res, "Yêu cầu đổi trả");
+      if (Number(req.body.expectedVersion) !== Number(returnRequest.version || 1)) {
+        return res.status(409).json({ message: "Yêu cầu vừa được cập nhật. Vui lòng tải lại." });
+      }
+      if (returnRequest.status !== "completed" || returnRequest.type !== "return"
+        || returnRequest.refundStatus !== "pending") {
+        return res.status(409).json({ message: "Yêu cầu chưa đủ điều kiện hoàn tiền." });
+      }
+      const order = store.data.orders.find((entry) => entry.id === returnRequest.orderId);
+      if (!order) return notFound(res, "Đơn hàng");
+      const accountNumber = String(req.body.accountNumber || "").replace(/\s/g, "");
+      const bankCode = String(req.body.bankCode || "").trim().toUpperCase();
+      const accountName = String(req.body.accountName || "").trim();
+      if (accountNumber.length < 6 || bankCode.length < 2 || accountName.length < 3) {
+        return res.status(400).json({ message: "Thông tin tài khoản nhận hoàn tiền chưa đầy đủ." });
+      }
+      const result = await refundService.initiate({
+        idempotencyKey: `refund:${returnRequest.id}:${returnRequest.version || 1}`,
+        returnId: returnRequest.id,
+        orderId: order.id,
+        amount: Number(returnRequest.refundAmount || 0),
+        currency: "VND",
+        recipient: { accountNumber, bankCode, accountName },
+        callbackUrl: `${String(process.env.API_BASE_URL || "").replace(/\/$/, "")}/api/refunds/provider/webhook`,
+      });
+      returnRequest.refundStatus = "processing";
+      returnRequest.refundProviderReference = result.reference;
+      returnRequest.refundDestination = { bankCode, accountLast4: accountNumber.slice(-4), accountName };
+      returnRequest.refundInitiatedAt = new Date().toISOString();
+      touchReturn(returnRequest);
+      store.audit("refund_initiated", "return", returnRequest.id, req.user);
+      store.save();
+      return res.status(202).json({ message: "Nhà cung cấp đang xử lý hoàn tiền.", data: returnRequest });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ message: error.message, code: error.code });
+      return next(error);
+    }
   });
 
   admin.patch("/returns/:id/refund", allowRoles("admin"), (req, res) => {

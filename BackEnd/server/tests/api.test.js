@@ -933,7 +933,7 @@ test("staff portal is protected and supports order workflow", async () => {
       tier: "Gold",
     }),
   });
-  assert.equal(deniedElevatedCustomer.response.status, 400);
+  assert.equal(deniedElevatedCustomer.response.status, 403);
 
   const staffCreatedCustomer = await request("/admin/customers", {
     method: "POST",
@@ -945,15 +945,14 @@ test("staff portal is protected and supports order workflow", async () => {
       tier: "Member",
     }),
   });
-  assert.equal(staffCreatedCustomer.response.status, 201);
-  assert.equal(staffCreatedCustomer.body.data.tier, "Member");
+  assert.equal(staffCreatedCustomer.response.status, 403);
 
-  const deniedTierUpdate = await request(`/admin/customers/${staffCreatedCustomer.body.data.id}`, {
+  const deniedTierUpdate = await request("/admin/customers/cus-001", {
     method: "PUT",
     headers: staffAuth,
     body: JSON.stringify({ tier: "Silver" }),
   });
-  assert.equal(deniedTierUpdate.response.status, 400);
+  assert.equal(deniedTierUpdate.response.status, 403);
 
   const invalidAdminTier = await request("/admin/customers", {
     method: "POST",
@@ -1838,6 +1837,33 @@ test("security boundaries prevent token bypass, privilege escalation and stale s
     headers: { Authorization: `Bearer ${changedPassword.body.token}` },
   });
   assert.equal(revokedAfterLogout.response.status, 401);
+});
+
+test("refresh session is HttpOnly, rotates once and rejects reuse", async () => {
+  const login = await request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email: "demo@novawear.vn", password: "Demo@123" }),
+  });
+  assert.equal(login.response.status, 200);
+  const initialCookie = login.response.headers.get("set-cookie");
+  assert.match(initialCookie, /novawear_refresh=/);
+  assert.match(initialCookie, /HttpOnly/i);
+
+  const refreshed = await request("/auth/refresh", {
+    method: "POST",
+    headers: { Cookie: initialCookie.split(";")[0] },
+    body: JSON.stringify({}),
+  });
+  assert.equal(refreshed.response.status, 200);
+  assert.ok(refreshed.body.token);
+  assert.notEqual(refreshed.response.headers.get("set-cookie"), initialCookie);
+
+  const reused = await request("/auth/refresh", {
+    method: "POST",
+    headers: { Cookie: initialCookie.split(";")[0] },
+    body: JSON.stringify({}),
+  });
+  assert.equal(reused.response.status, 401);
 });
 
 test("password reset uses an emailed one-time code and revokes old sessions", async () => {

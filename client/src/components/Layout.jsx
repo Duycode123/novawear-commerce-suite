@@ -26,6 +26,8 @@ export default function Layout() {
   const [categories, setCategories] = useState([]);
   const [activeMegaMenu, setActiveMegaMenu] = useState("");
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const [backToTopVisible, setBackToTopVisible] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -41,6 +43,32 @@ export default function Layout() {
     setNotificationOpen(false);
     return () => window.clearTimeout(timer);
   }, [location.pathname, location.search, location.hash]);
+
+  useEffect(() => {
+    let lastScrollY = Math.max(0, window.scrollY);
+    let frame = 0;
+    const updateScrollUi = () => {
+      const currentScrollY = Math.max(0, window.scrollY);
+      const delta = currentScrollY - lastScrollY;
+      setBackToTopVisible(currentScrollY > 520);
+      if (currentScrollY < 96 || mobileOpen || searchOpen || activeMegaMenu) {
+        setHeaderVisible(true);
+      } else if (Math.abs(delta) > 7) {
+        setHeaderVisible(delta < 0);
+      }
+      lastScrollY = currentScrollY;
+      frame = 0;
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(updateScrollUi);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    updateScrollUi();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [activeMegaMenu, mobileOpen, searchOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -246,7 +274,7 @@ export default function Layout() {
         <Link to="/ho-tro">Cần hỗ trợ?</Link>
       </div>
 
-      <header className="site-header" onMouseLeave={() => setActiveMegaMenu("")}>
+      <header className={`site-header ${headerVisible ? "is-visible" : "is-hidden"}`} onMouseLeave={() => setActiveMegaMenu("")}>
         <div className="site-header__inner">
           <button
             className="header-icon header-menu-button"
@@ -437,6 +465,16 @@ export default function Layout() {
           <div><Link to="/chinh-sach/bao-mat">Chính sách bảo mật</Link><Link to="/chinh-sach/dieu-khoan">Điều khoản</Link></div>
         </div>
       </footer>
+      <button
+        className={`back-to-top ${backToTopVisible ? "is-visible" : ""}`}
+        type="button"
+        aria-label="Cuộn về đầu trang"
+        title="Về đầu trang"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      >
+        <span aria-hidden="true">↑</span>
+        <small>Đầu trang</small>
+      </button>
       <ShopChat />
     </div>
   );

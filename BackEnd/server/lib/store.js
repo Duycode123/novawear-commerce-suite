@@ -255,6 +255,18 @@ const projectionSchemas = [
     received_at TIMESTAMPTZ,
     data JSONB NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS novawear_auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    revoke_reason TEXT,
+    ip TEXT,
+    user_agent TEXT,
+    data JSONB NOT NULL
+  )`,
 ];
 
 const projectionQueries = [
@@ -426,6 +438,18 @@ const projectionQueries = [
         NULLIF(item->>'receivedAt','')::timestamptz, item
       FROM jsonb_array_elements($1::jsonb) AS item`,
   },
+  {
+    table: "novawear_auth_sessions",
+    collection: "authSessions",
+    sql: `INSERT INTO novawear_auth_sessions
+      (id,user_id,token_hash,created_at,expires_at,revoked_at,revoke_reason,ip,user_agent,data)
+      SELECT item->>'id', item->>'userId', item->>'tokenHash',
+        NULLIF(item->>'createdAt','')::timestamptz,
+        NULLIF(item->>'expiresAt','')::timestamptz,
+        NULLIF(item->>'revokedAt','')::timestamptz,
+        item->>'revokeReason', item->>'ip', item->>'userAgent', item - 'tokenHash'
+      FROM jsonb_array_elements($1::jsonb) AS item`,
+  },
 ];
 
 async function ensureProjectionSchema(pool) {
@@ -455,6 +479,7 @@ async function ensureProjectionSchema(pool) {
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_inventory_order_idx ON novawear_inventory_movements (order_id, created_at DESC)");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_inventory_return_idx ON novawear_inventory_movements (return_id, created_at DESC)");
   await pool.query("CREATE INDEX IF NOT EXISTS novawear_payments_order_idx ON novawear_payment_transactions (order_id, received_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS novawear_auth_sessions_user_idx ON novawear_auth_sessions (user_id, expires_at DESC)");
 }
 
 async function syncProjections(client, data) {
@@ -465,10 +490,11 @@ async function syncProjections(client, data) {
 }
 
 class PostgresStore {
-  constructor(pool, data) {
+  constructor(pool, data, version = 0) {
     this.pool = pool;
     this.data = data;
     this.writeQueue = Promise.resolve();
+    this.version = Number(version || 0);
   }
 
   save() {
@@ -479,21 +505,40 @@ class PostgresStore {
       const client = await this.pool.connect();
       try {
         await client.query("BEGIN");
-        await client.query(
-          `INSERT INTO novawear_app_state (id, data, updated_at)
-           VALUES (1, $1::jsonb, NOW())
-           ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-          [snapshot],
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('novawear_app_state'))");
+        const result = await client.query(
+          `UPDATE novawear_app_state
+             SET data = $1::jsonb, updated_at = NOW(), version = version + 1
+           WHERE id = 1 AND version = $2
+           RETURNING version`,
+          [snapshot, this.version],
         );
+        if (result.rowCount !== 1) {
+          const conflict = new Error("Dữ liệu đã được một tiến trình khác cập nhật.");
+          conflict.code = "STORE_CONFLICT";
+          throw conflict;
+        }
         await syncProjections(client, projectionData);
         await client.query("COMMIT");
+        this.version = Number(result.rows[0].version);
       } catch (error) {
         await client.query("ROLLBACK");
+        if (error.code === "STORE_CONFLICT") {
+          const current = await client.query("SELECT data, version FROM novawear_app_state WHERE id = 1");
+          if (current.rows[0]) {
+            this.data = current.rows[0].data;
+            this.version = Number(current.rows[0].version || 0);
+          }
+        }
         throw error;
       } finally {
         client.release();
       }
     });
+    return this.writeQueue;
+  }
+
+  flush() {
     return this.writeQueue;
   }
 
@@ -550,13 +595,19 @@ async function createStoreFromEnv() {
   await pool.query(`CREATE TABLE IF NOT EXISTS novawear_app_state (
     id SMALLINT PRIMARY KEY CHECK (id = 1),
     data JSONB NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+  await pool.query("ALTER TABLE novawear_app_state ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0");
   await ensureProjectionSchema(pool);
-  const result = await pool.query("SELECT data FROM novawear_app_state WHERE id = 1");
+  let result = await pool.query("SELECT data, version FROM novawear_app_state WHERE id = 1");
+  if (!result.rows[0]) {
+    await pool.query("INSERT INTO novawear_app_state (id, data, version) VALUES (1, $1::jsonb, 0)", [JSON.stringify(createSeedData())]);
+    result = await pool.query("SELECT data, version FROM novawear_app_state WHERE id = 1");
+  }
   const data = result.rows[0]?.data || createSeedData();
   applyCatalogMigration(data);
-  const store = new PostgresStore(pool, data);
+  const store = new PostgresStore(pool, data, result.rows[0]?.version || 0);
   await store.save();
   return store;
 }

@@ -4,6 +4,7 @@ const defaultBase = window.location.hostname === "localhost"
 
 const configuredBase = String(process.env.REACT_APP_API_URL || "").trim();
 const API_BASE = (configuredBase || defaultBase).replace(/\/$/, "");
+let refreshPromise = null;
 
 function apiConnectionMessage() {
   if (process.env.NODE_ENV === "production" && API_BASE === "/api") {
@@ -26,6 +27,7 @@ export async function request(path, options = {}) {
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
+      credentials: "include",
       headers: {
         Accept: "application/json",
         ...(options.body && !isFormData ? { "Content-Type": "application/json" } : {}),
@@ -47,7 +49,29 @@ export async function request(path, options = {}) {
   }
   const payload = await response.json().catch(() => ({ message: "Phản hồi không hợp lệ." }));
   if (!response.ok) {
-    if (response.status === 401 && token) {
+    if (response.status === 401 && path !== "/auth/refresh" && !options.__retried) {
+      refreshPromise = refreshPromise || fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      }).then(async (refreshResponse) => {
+        if (!refreshResponse.ok) throw new Error("refresh_failed");
+        const session = await refreshResponse.json();
+        if (!session.token || !["admin", "staff"].includes(session.user?.role)) {
+          throw new Error("refresh_failed");
+        }
+        sessionStorage.setItem("nova_ops_token", session.token);
+        sessionStorage.setItem("nova_ops_user", JSON.stringify(session.user));
+        return session;
+      }).finally(() => { refreshPromise = null; });
+      try {
+        await refreshPromise;
+        return request(path, { ...options, __retried: true });
+      } catch (_error) {
+        // Fall through to session cleanup.
+      }
+    }
+    if (response.status === 401 && (token || options.__retried)) {
       sessionStorage.removeItem("nova_ops_token");
       sessionStorage.removeItem("nova_ops_user");
       window.dispatchEvent(new Event("nova:ops-session-expired"));

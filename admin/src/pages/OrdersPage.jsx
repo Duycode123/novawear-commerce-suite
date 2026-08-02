@@ -23,6 +23,8 @@ function blankOperation(order) {
     carrier: order?.shipment?.carrier || "",
     trackingNumber: order?.shipment?.trackingNumber || "",
     estimatedDeliveryAt: order?.shipment?.estimatedDeliveryAt?.slice(0, 16) || "",
+    toDistrictId: order?.customer?.districtId || "",
+    toWardCode: order?.customer?.wardCode || "",
     refundReason: "",
     refundReference: "",
     paymentReason: "",
@@ -150,6 +152,26 @@ export default function OrdersPage() {
     }
     await updateOrder(changes);
     setExceptionAction("");
+  };
+
+  const createAutomaticShipment = async () => {
+    if (!selected) return;
+    setUpdating(true);
+    try {
+      const result = await api.post(`/admin/orders/${selected.id}/shipment`, {
+        expectedVersion: selected.version,
+        toDistrictId: operation.toDistrictId,
+        toWardCode: operation.toWardCode,
+        note: operation.internalNote,
+      });
+      acceptUpdatedOrder(result.data);
+      notify(result.message);
+    } catch (requestError) {
+      notify(requestError.message, "error");
+      if ([409, 428].includes(requestError.status)) await load({ silent: true });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const completeRefund = async () => {
@@ -305,6 +327,13 @@ export default function OrdersPage() {
                         <label><span>Đơn vị vận chuyển *</span><input value={operation.carrier} onChange={(event) => setOperation((current) => ({ ...current, carrier: event.target.value }))} placeholder="Ví dụ: GHN" /></label>
                         <label><span>Mã vận đơn *</span><input value={operation.trackingNumber} onChange={(event) => setOperation((current) => ({ ...current, trackingNumber: event.target.value }))} placeholder="Mã từ đơn vị vận chuyển" /></label>
                         <label><span>Dự kiến giao</span><input type="datetime-local" value={operation.estimatedDeliveryAt} onChange={(event) => setOperation((current) => ({ ...current, estimatedDeliveryAt: event.target.value }))} /></label>
+                      </div>
+                    )}
+                    {selected.status === "ready_to_ship" && (
+                      <div className="ops-workflow-fields ops-workflow-fields--three">
+                        <label><span>Mã quận/huyện GHN</span><input inputMode="numeric" value={operation.toDistrictId} onChange={(event) => setOperation((current) => ({ ...current, toDistrictId: event.target.value }))} placeholder="Lấy từ hồ sơ địa chỉ" /></label>
+                        <label><span>Mã phường/xã GHN</span><input value={operation.toWardCode} onChange={(event) => setOperation((current) => ({ ...current, toWardCode: event.target.value }))} placeholder="Ví dụ: 21012" /></label>
+                        <button className="ops-secondary-button" type="button" disabled={updating || !String(operation.toDistrictId).trim() || !operation.toWardCode.trim()} onClick={createAutomaticShipment}>Tạo vận đơn GHN tự động</button>
                       </div>
                     )}
                     <details className="ops-workflow-notes">

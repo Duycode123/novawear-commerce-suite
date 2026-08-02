@@ -5,6 +5,7 @@ const defaultBase = window.location.hostname === "localhost"
 const configuredBase = String(process.env.REACT_APP_API_URL || "").trim();
 export const API_BASE = (configuredBase || defaultBase).replace(/\/$/, "");
 const publicGetCache = new Map();
+let refreshPromise = null;
 const CACHEABLE_PUBLIC_PATH = /^\/(products(?:\?|\/)|categories(?:\?|$)|news(?:\?|\/|$)|promotions(?:\?|\/|$)|config(?:\?|$))/;
 
 function apiConnectionMessage() {
@@ -38,6 +39,7 @@ export async function apiRequest(path, options = {}) {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
+      credentials: "include",
       signal: options.signal,
     });
   } catch (error) {
@@ -68,7 +70,27 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    if (response.status === 401 && token) {
+    if (response.status === 401 && path !== "/auth/refresh" && !options.__retried) {
+      refreshPromise = refreshPromise || fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      }).then(async (refreshResponse) => {
+        if (!refreshResponse.ok) throw new Error("refresh_failed");
+        const session = await refreshResponse.json();
+        if (!session.token) throw new Error("refresh_failed");
+        sessionStorage.setItem("novawear_token", session.token);
+        sessionStorage.setItem("novawear_user", JSON.stringify(session.user));
+        return session;
+      }).finally(() => { refreshPromise = null; });
+      try {
+        await refreshPromise;
+        return apiRequest(path, { ...options, __retried: true });
+      } catch (_error) {
+        // Fall through to the normal expired-session cleanup below.
+      }
+    }
+    if (response.status === 401 && (token || options.__retried)) {
       sessionStorage.removeItem("novawear_token");
       sessionStorage.removeItem("novawear_user");
       window.dispatchEvent(new Event("novawear:session-expired"));
