@@ -83,7 +83,6 @@ export default function WorkspacePage() {
               <strong>{workspace.summary?.assignedOrders ?? workspace.orderQueue.filter((item) => item.assigneeId === workspace.employee.id).length}</strong>
               <small>{workspace.summary?.availableOrders ?? workspace.orderQueue.filter((item) => !item.assigneeId).length} đơn chờ nhận</small>
             </div>
-            <div><span>Hiệu suất</span><strong>{workspace.employee.performance}%</strong><small>30 ngày gần nhất</small></div>
           </section>
 
           <section className="ops-workspace-grid">

@@ -106,18 +106,19 @@ export default function CategoriesPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Catalog structure" title="Danh mục" copy="Tách riêng danh mục Nam và Nữ; menu cửa hàng sẽ đọc trực tiếp từ cấu hình này." actions={user.role === "admin" && <><button className="ops-secondary-button" type="button" disabled={saving} onClick={addSuggested}>＋ Thêm danh mục Nam & Nữ</button><button className="ops-primary-button" type="button" onClick={() => open()}>＋ Thêm danh mục</button></>} />
+      <PageHeader eyebrow="Hàng hóa" title="Danh mục" copy="Sắp xếp sản phẩm theo nhóm hiển thị trên cửa hàng." actions={user.role === "admin" && <>{!categories.length && <button className="ops-secondary-button" type="button" disabled={saving} onClick={addSuggested}>Tạo danh mục mẫu</button>}<button className="ops-primary-button" type="button" onClick={() => open()}>＋ Thêm danh mục</button></>} />
       {loading && <Loading rows={4} />}
       {error && <ErrorPanel message={error} onRetry={load} />}
       {!loading && !error && categories.length > 0 && (
-        <section className="ops-category-grid">
-          {categories.map((category, index) => (
+        <section className="ops-panel ops-category-list">
+          <header><strong>Tên danh mục</strong><strong>Hiển thị</strong><strong>Sản phẩm</strong><strong>Trạng thái</strong><span /></header>
+          {categories.map((category) => (
             <article key={category.id}>
-              <header><span>0{index + 1}</span><Status value={category.status} type="category" /></header>
-              <h2>{category.name}</h2>
-              <p>{category.description}</p>
-              <div><strong>{category.productCount}</strong><span>sản phẩm</span></div>
-              <footer>{user.role === "admin" ? <><button type="button" onClick={() => open(category)}>Chỉnh sửa →</button>{!category.productCount && <button type="button" className="danger" onClick={() => remove(category)}>Xóa</button>}</> : <span>Chỉ xem</span>}</footer>
+              <div><h2>{category.name}</h2><p>{category.description || "Chưa có mô tả"}</p></div>
+              <span>{category.audience === "men" ? "Nam" : category.audience === "women" ? "Nữ" : "Nam & Nữ"}</span>
+              <strong>{category.productCount}</strong>
+              <Status value={category.status} type="category" />
+              <footer>{user.role === "admin" ? <><button type="button" onClick={() => open(category)}>Chỉnh sửa</button>{!category.productCount && <button type="button" className="danger" onClick={() => remove(category)}>Xóa</button>}</> : <span>Chỉ xem</span>}</footer>
             </article>
           ))}
         </section>

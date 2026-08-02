@@ -18,7 +18,13 @@ function makeMailer(sent) {
 test("transactional email templates are branded, responsive and escape customer data", async () => {
   const sent = [];
   const mailer = makeMailer(sent);
-  await mailer.sendVerification({ to: "duy@example.com", name: "<Duy>", code: "123456" });
+  await mailer.sendVerification({
+    to: "duy@example.com",
+    name: "<Duy>",
+    code: "123456",
+    purpose: "checkout",
+    resumeToken: "resume-token-123",
+  });
   await mailer.sendOrderConfirmation({
     to: "duy@example.com",
     order: {
@@ -62,6 +68,7 @@ test("transactional email templates are branded, responsive and escape customer 
   }
   assert.match(sent[0].html, /&lt;Duy&gt;/);
   assert.match(sent[0].html, /123456/);
+  assert.match(sent[0].html, /thanh-toan\?resume=resume-token-123/);
   assert.match(sent[1].html, /Chờ chuyển khoản/);
   assert.match(sent[1].html, /319\.000/);
   assert.match(sent[2].html, /GHN123/);

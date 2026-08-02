@@ -206,7 +206,7 @@ function createMailer(options = {}) {
     return info;
   }
 
-  async function sendVerification({ to, name, code, purpose = "account" }) {
+  async function sendVerification({ to, name, code, purpose = "account", resumeToken = "" }) {
     const checkout = purpose === "checkout";
     const passwordReset = purpose === "password-reset";
     const title = checkout
@@ -219,7 +219,9 @@ function createMailer(options = {}) {
       : passwordReset
         ? "đặt lại mật khẩu tài khoản"
         : "kích hoạt tài khoản";
-    const ctaPath = checkout ? "/thanh-toan" : "/dang-nhap";
+    const ctaPath = checkout
+      ? `/thanh-toan${resumeToken ? `?resume=${encodeURIComponent(resumeToken)}` : ""}`
+      : "/dang-nhap";
     const text = `Xin chào ${name || "bạn"}, mã xác minh NOVAWEAR của bạn là ${code}. Mã có hiệu lực 10 phút, chỉ dùng một lần.`;
     return send({
       to,

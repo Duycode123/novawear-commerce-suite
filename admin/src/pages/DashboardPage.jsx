@@ -44,7 +44,7 @@ export default function DashboardPage() {
             <article className="ops-stat-card ops-stat-card--dark">
               <div><span>Doanh thu lũy kế</span><i>↗</i></div>
               <strong>{formatMoney(data.revenue)}</strong>
-              <p><b>+12.4%</b> so với kỳ trước</p>
+              <p><b>{data.orderCount}</b> đơn hàng đã ghi nhận</p>
             </article>
             <article className="ops-stat-card">
               <div><span>Doanh thu hôm nay</span><i>₫</i></div>

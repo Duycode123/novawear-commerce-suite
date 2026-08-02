@@ -120,6 +120,19 @@ export function ShopProvider({ children }) {
 
   const clearCart = useCallback(() => setCart([]), []);
 
+  const replaceCart = useCallback((items = []) => {
+    const normalized = Array.isArray(items)
+      ? items
+        .filter((item) => item?.productId && Number(item.quantity) > 0)
+        .map((item) => ({
+          ...item,
+          key: item.key || `${item.productId}-${item.size || ""}-${item.color || ""}`,
+          quantity: Math.max(1, Math.min(Number(item.quantity), Number(item.stock || 99))),
+        }))
+      : [];
+    setCart(normalized);
+  }, []);
+
   const toggleWishlist = useCallback((product) => {
     setWishlist((current) => {
       const exists = current.some((item) => item.id === product.id);
@@ -268,6 +281,7 @@ export function ShopProvider({ children }) {
     updateCart,
     removeFromCart,
     clearCart,
+    replaceCart,
     toggleWishlist,
     login,
     register,
@@ -295,6 +309,7 @@ export function ShopProvider({ children }) {
     updateCart,
     removeFromCart,
     clearCart,
+    replaceCart,
     toggleWishlist,
     login,
     register,

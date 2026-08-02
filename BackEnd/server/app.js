@@ -500,6 +500,8 @@ function ensureDataShape(store) {
     "coupons",
     "auditLogs",
     "paymentTransactions",
+    "checkoutDrafts",
+    "purchaseOrders",
   ];
   collections.forEach((name) => {
     if (!Array.isArray(store.data[name])) store.data[name] = [];
@@ -511,6 +513,16 @@ function ensureDataShape(store) {
   });
   store.data.products.forEach((product) => {
     if (!Array.isArray(product.variants)) product.variants = [];
+  });
+  store.data.purchaseOrders.forEach((order) => {
+    if (!Array.isArray(order.payments)) order.payments = [];
+    order.amountPaid = Math.max(0, Math.min(Number(order.total || 0), Number(order.amountPaid || 0)));
+    order.balanceDue = Math.max(0, Number(order.total || 0) - order.amountPaid);
+    order.paymentStatus = order.balanceDue === 0 && Number(order.total || 0) > 0
+      ? "paid"
+      : order.amountPaid > 0
+        ? "partial"
+        : "unpaid";
   });
   store.data.orders.forEach((order) => {
     if (!Number.isFinite(Number(order.version)) || Number(order.version) < 1) order.version = 1;
@@ -1140,6 +1152,7 @@ function createApp(options = {}) {
   const authLockSeconds = asPositiveInt(process.env.AUTH_LOCK_SECONDS, 60);
   const operationsHandoffTtlSeconds = asPositiveInt(process.env.OPERATIONS_HANDOFF_TTL_SECONDS, 60);
   const guestCheckoutTokenTtlSeconds = asPositiveInt(process.env.GUEST_CHECKOUT_TOKEN_TTL_SECONDS, 900);
+  const checkoutResumeTtlSeconds = asPositiveInt(process.env.CHECKOUT_RESUME_TTL_SECONDS, 1800);
   const orderPaymentExpirationSeconds = asPositiveInt(
     options.orderPaymentExpirationSeconds || process.env.ORDER_PAYMENT_EXPIRATION_SECONDS,
     1800,
@@ -1448,12 +1461,13 @@ function createApp(options = {}) {
     return code;
   }
 
-  function createGuestCheckoutToken(email) {
+  function createGuestCheckoutToken(email, draftId = null) {
     return jwt.sign(
       {
         sub: normalizeText(email),
         type: "guest_checkout",
         jti: crypto.randomUUID(),
+        ...(draftId ? { draftId } : {}),
       },
       jwtSecret,
       {
@@ -1463,6 +1477,45 @@ function createApp(options = {}) {
         expiresIn: guestCheckoutTokenTtlSeconds,
       },
     );
+  }
+
+  function createCheckoutResumeToken(email, draftId) {
+    return jwt.sign(
+      { sub: normalizeText(email), type: "checkout_resume", draftId },
+      jwtSecret,
+      {
+        algorithm: "HS256",
+        audience: "novawear-checkout-resume",
+        issuer: "novawear-api",
+        expiresIn: checkoutResumeTtlSeconds,
+      },
+    );
+  }
+
+  function sanitizeCheckoutDraft(input, email, name) {
+    const source = input && typeof input === "object" ? input : {};
+    const sourceForm = source.form && typeof source.form === "object" ? source.form : {};
+    const safeItems = Array.isArray(source.items)
+      ? source.items.slice(0, 30).map((item) => ({
+        productId: String(item?.productId || "").trim().slice(0, 100),
+        quantity: Math.max(1, Math.min(10, Number.parseInt(item?.quantity, 10) || 1)),
+        size: String(item?.size || "").trim().slice(0, 60),
+        color: String(item?.color || "").trim().slice(0, 60),
+      })).filter((item) => item.productId)
+      : [];
+    return {
+      form: {
+        name: String(sourceForm.name || name || "").trim().slice(0, 100),
+        email: normalizeText(email),
+        phone: String(sourceForm.phone || "").trim().slice(0, 30),
+        address: String(sourceForm.address || "").trim().slice(0, 300),
+        note: String(sourceForm.note || "").trim().slice(0, 500),
+        shippingMethod: sourceForm.shippingMethod === "express" ? "express" : "standard",
+        paymentMethod: sourceForm.paymentMethod === "bank" ? "bank" : "cod",
+      },
+      couponCode: String(source.couponCode || "").trim().slice(0, 50),
+      items: safeItems,
+    };
   }
 
   function issueVerificationCode(user) {
@@ -3146,16 +3199,32 @@ function createApp(options = {}) {
     }
 
     const code = createVerificationCode();
+    const draftId = crypto.randomUUID();
+    const expiresAt = now + checkoutResumeTtlSeconds * 1000;
+    store.data.checkoutDrafts = store.data.checkoutDrafts
+      .filter((item) => Number(item.expiresAt) > now)
+      .slice(-499);
+    store.data.checkoutDrafts.push({
+      id: draftId,
+      email,
+      draft: sanitizeCheckoutDraft(req.body.draft, email, name),
+      createdAt: new Date(now).toISOString(),
+      expiresAt,
+    });
+    const resumeToken = createCheckoutResumeToken(email, draftId);
     const record = {
       codeHash: hashVerificationCode(email, code, jwtSecret),
       expiresAt: now + otpTtlSeconds * 1000,
       sentAt: now,
       attempts: 0,
+      draftId,
     };
     try {
-      await mailer.sendVerification({ to: email, name, code, purpose: "checkout" });
+      await mailer.sendVerification({ to: email, name, code, purpose: "checkout", resumeToken });
     } catch (error) {
       if (!exposeVerificationCode) {
+        store.data.checkoutDrafts = store.data.checkoutDrafts
+          .filter((item) => item.id !== draftId);
         return res.status(error.code === "EMAIL_NOT_CONFIGURED" ? 503 : 502).json({
           message: "Chưa thể gửi email xác minh đơn hàng. Vui lòng thử lại sau.",
           code: "EMAIL_DELIVERY_UNAVAILABLE",
@@ -3163,6 +3232,7 @@ function createApp(options = {}) {
       }
     }
     guestVerificationAttempts.set(key, record);
+    store.save();
     recentRequests.push(Date.now());
     checkoutRequestLimits.set(requestKey, recentRequests);
     clearAuthFailures(req.authAttemptKey);
@@ -3173,6 +3243,45 @@ function createApp(options = {}) {
       expiresInSeconds: otpTtlSeconds,
       ...(exposeVerificationCode ? { verificationCode: code } : {}),
     });
+  });
+
+  app.post("/api/checkout/resume", rateLimitAuth, (req, res) => {
+    try {
+      const payload = jwt.verify(String(req.body.token || ""), jwtSecret, {
+        algorithms: ["HS256"],
+        audience: "novawear-checkout-resume",
+        issuer: "novawear-api",
+      });
+      if (payload.type !== "checkout_resume" || !payload.draftId) throw new Error("Invalid resume token");
+      const stored = store.data.checkoutDrafts.find((item) => item.id === payload.draftId);
+      if (!stored || Number(stored.expiresAt) <= Date.now()
+        || !safeTextEqual(normalizeText(stored.email), normalizeText(payload.sub))) {
+        return res.status(410).json({ message: "Liên kết khôi phục thanh toán đã hết hạn. Vui lòng quay lại giỏ hàng." });
+      }
+      const items = stored.draft.items.map((item) => {
+        const product = store.data.products.find((candidate) => candidate.id === item.productId);
+        if (!product || product.status === "archived") return null;
+        return {
+          key: `${product.id}-${item.size}-${item.color}`,
+          productId: product.id,
+          slug: product.slug,
+          name: product.name,
+          sku: product.sku,
+          image: product.image,
+          price: product.price,
+          stock: product.stock,
+          size: item.size,
+          color: item.color,
+          quantity: Math.min(item.quantity, Math.max(0, Number(product.stock || 0))),
+        };
+      }).filter((item) => item && item.quantity > 0);
+      return res.json({
+        message: "Đã khôi phục phiên thanh toán.",
+        data: { ...stored.draft, items },
+      });
+    } catch (_error) {
+      return res.status(400).json({ message: "Liên kết khôi phục thanh toán không hợp lệ hoặc đã hết hạn." });
+    }
   });
 
   app.post("/api/checkout/verification/verify", rateLimitAuth, (req, res) => {
@@ -3203,7 +3312,7 @@ function createApp(options = {}) {
     clearAuthFailures(req.authAttemptKey);
     return res.json({
       message: "Email đã được xác minh cho lần đặt hàng này.",
-      checkoutToken: createGuestCheckoutToken(email),
+      checkoutToken: createGuestCheckoutToken(email, record.draftId),
       expiresInSeconds: guestCheckoutTokenTtlSeconds,
     });
   });
@@ -3251,6 +3360,7 @@ function createApp(options = {}) {
       return res.status(400).json({ message: "Mã yêu cầu đặt hàng không hợp lệ." });
     }
     let guestCheckoutJti = null;
+    let guestCheckoutDraftId = null;
     if (!req.user) {
       try {
         const checkoutPayload = jwt.verify(String(req.body.checkoutToken || ""), jwtSecret, {
@@ -3278,6 +3388,7 @@ function createApp(options = {}) {
           throw new Error("Guest checkout token already used");
         }
         guestCheckoutJti = checkoutPayload.jti;
+        guestCheckoutDraftId = checkoutPayload.draftId || null;
       } catch (_error) {
         return res.status(403).json({
           message: "Vui lòng xác minh email trước khi đặt hàng.",
@@ -3514,6 +3625,10 @@ function createApp(options = {}) {
       appliedCoupon.usedCount = Number(appliedCoupon.usedCount || 0) + 1;
     }
     store.data.orders.unshift(order);
+    if (guestCheckoutDraftId) {
+      store.data.checkoutDrafts = store.data.checkoutDrafts
+        .filter((draft) => draft.id !== guestCheckoutDraftId);
+    }
     notifyOrderChange(store, order, customerFacingEvent, {
       type: "order_created",
       message: customerFacingEvent.note,
@@ -5174,10 +5289,22 @@ function createApp(options = {}) {
   });
 
   admin.post("/purchase-orders", allowRoles("admin"), (req, res) => {
-    const supplier = String(req.body.supplier || "").trim();
+    const supplierId = String(req.body.supplierId || "").trim();
+    const supplierRecord = supplierId
+      ? store.data.suppliers.find((item) => item.id === supplierId && item.status === "active")
+      : null;
+    if (supplierId && !supplierRecord) {
+      return res.status(400).json({ message: "Nhà cung cấp không tồn tại hoặc đã ngừng hoạt động." });
+    }
+    const supplier = supplierRecord?.name || String(req.body.supplier || "").trim();
     const expectedDate = req.body.expectedDate ? new Date(req.body.expectedDate) : null;
+    const paymentDueDate = req.body.paymentDueDate ? new Date(req.body.paymentDueDate) : null;
+    const paymentMethod = ["bank_transfer", "cash", "other"].includes(req.body.paymentMethod)
+      ? req.body.paymentMethod
+      : "bank_transfer";
     if (supplier.length < 2 || !Array.isArray(req.body.items) || !req.body.items.length
-      || (expectedDate && Number.isNaN(expectedDate.getTime()))) {
+      || (expectedDate && Number.isNaN(expectedDate.getTime()))
+      || (paymentDueDate && Number.isNaN(paymentDueDate.getTime()))) {
       return res.status(400).json({ message: "Nhà cung cấp và danh sách nhập hàng là bắt buộc." });
     }
     const items = [];
@@ -5199,9 +5326,16 @@ function createApp(options = {}) {
     const purchaseOrder = {
       id: `PO-${new Date().getFullYear()}-${String(store.data.purchaseOrders.length + 1).padStart(3, "0")}`,
       supplier,
+      supplierId: supplierId || null,
       expectedDate: expectedDate ? expectedDate.toISOString() : null,
+      paymentDueDate: paymentDueDate ? paymentDueDate.toISOString() : null,
+      preferredPaymentMethod: paymentMethod,
       status: "ordered",
       total: items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0),
+      amountPaid: 0,
+      balanceDue: items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0),
+      paymentStatus: "unpaid",
+      payments: [],
       items,
       createdAt: new Date().toISOString(),
     };
@@ -5209,6 +5343,39 @@ function createApp(options = {}) {
     store.audit("create", "purchase_order", purchaseOrder.id, req.user);
     store.save();
     return res.status(201).json({ message: "Đã tạo phiếu nhập hàng.", data: purchaseOrder });
+  });
+
+  admin.patch("/purchase-orders/:id/payment", allowRoles("admin"), (req, res) => {
+    const purchaseOrder = store.data.purchaseOrders.find((item) => item.id === req.params.id);
+    if (!purchaseOrder) return notFound(res, "Phiếu nhập");
+    const amount = Math.round(Number(req.body.amount));
+    const method = ["bank_transfer", "cash", "other"].includes(req.body.method)
+      ? req.body.method
+      : "bank_transfer";
+    const reference = String(req.body.reference || "").trim().slice(0, 100);
+    const note = String(req.body.note || "").trim().slice(0, 300);
+    const currentPaid = Math.max(0, Number(purchaseOrder.amountPaid || 0));
+    const balanceDue = Math.max(0, Number(purchaseOrder.total || 0) - currentPaid);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > balanceDue) {
+      return res.status(400).json({ message: "Số tiền thanh toán phải lớn hơn 0 và không vượt quá công nợ còn lại." });
+    }
+    if (method === "bank_transfer" && reference.length < 3) {
+      return res.status(400).json({ message: "Vui lòng nhập mã giao dịch hoặc nội dung chuyển khoản." });
+    }
+    const paidAt = new Date().toISOString();
+    if (!Array.isArray(purchaseOrder.payments)) purchaseOrder.payments = [];
+    purchaseOrder.payments.push({
+      id: crypto.randomUUID(), amount, method, reference, note, paidAt,
+      recordedBy: req.user.id,
+      recordedByName: req.user.name,
+    });
+    purchaseOrder.amountPaid = currentPaid + amount;
+    purchaseOrder.balanceDue = Math.max(0, purchaseOrder.total - purchaseOrder.amountPaid);
+    purchaseOrder.paymentStatus = purchaseOrder.balanceDue === 0 ? "paid" : "partial";
+    if (purchaseOrder.paymentStatus === "paid") purchaseOrder.paidAt = paidAt;
+    store.audit("record_payment", "purchase_order", purchaseOrder.id, req.user);
+    store.save();
+    return res.json({ message: "Đã ghi nhận thanh toán nhà cung cấp.", data: purchaseOrder });
   });
 
   admin.patch("/purchase-orders/:id/receive", allowRoles("admin"), (req, res) => {

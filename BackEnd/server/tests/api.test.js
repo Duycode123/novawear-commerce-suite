@@ -282,10 +282,31 @@ test("guest checkout requires a verified email and sends an order confirmation",
 
   const requested = await request("/checkout/verification/request", {
     method: "POST",
-    body: JSON.stringify({ email: customer.email, name: customer.name }),
+    body: JSON.stringify({
+      email: customer.email,
+      name: customer.name,
+      draft: {
+        form: { ...customer, note: "Giao giờ hành chính", paymentMethod: "cod" },
+        couponCode: "",
+        items: [{ productId: "prd-003", quantity: 1, size: "M", color: "Tráº¯ng kem" }],
+      },
+    }),
   });
   assert.equal(requested.response.status, 200);
   assert.match(requested.body.verificationCode, /^\d{6}$/);
+
+  const verificationEmail = sentEmails.find((item) => (
+    item.type === "verification" && item.to === customer.email && item.purpose === "checkout"
+  ));
+  assert.ok(verificationEmail?.resumeToken);
+  const resumed = await request("/checkout/resume", {
+    method: "POST",
+    body: JSON.stringify({ token: verificationEmail.resumeToken }),
+  });
+  assert.equal(resumed.response.status, 200);
+  assert.equal(resumed.body.data.form.address, customer.address);
+  assert.equal(resumed.body.data.items.length, 1);
+  assert.equal(resumed.body.data.items[0].productId, "prd-003");
 
   const verified = await request("/checkout/verification/verify", {
     method: "POST",
@@ -2027,6 +2048,25 @@ test("admin can manage catalog, inventory and purchase receiving", async () => {
     }),
   });
   assert.equal(purchase.response.status, 201);
+  assert.equal(purchase.body.data.paymentStatus, "unpaid");
+
+  const partialPayment = await request(`/admin/purchase-orders/${purchase.body.data.id}/payment`, {
+    method: "PATCH",
+    headers: auth,
+    body: JSON.stringify({ amount: 200000, method: "bank_transfer", reference: "TXN-PO-001" }),
+  });
+  assert.equal(partialPayment.response.status, 200);
+  assert.equal(partialPayment.body.data.paymentStatus, "partial");
+  assert.equal(partialPayment.body.data.balanceDue, 260000);
+
+  const finalPayment = await request(`/admin/purchase-orders/${purchase.body.data.id}/payment`, {
+    method: "PATCH",
+    headers: auth,
+    body: JSON.stringify({ amount: 260000, method: "bank_transfer", reference: "TXN-PO-002" }),
+  });
+  assert.equal(finalPayment.response.status, 200);
+  assert.equal(finalPayment.body.data.paymentStatus, "paid");
+  assert.equal(finalPayment.body.data.balanceDue, 0);
 
   const invalidPurchase = await request("/admin/purchase-orders", {
     method: "POST",

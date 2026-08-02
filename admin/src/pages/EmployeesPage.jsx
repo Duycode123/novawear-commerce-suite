@@ -13,7 +13,6 @@ const emptyForm = {
   status: "active",
   joinDate: new Date().toISOString().slice(0, 10),
   shift: "09:00 - 18:00",
-  performance: 80,
   address: "",
   createAccount: true,
   accountRole: "staff",
@@ -97,25 +96,26 @@ export default function EmployeesPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="People operations" title="Nhân viên" copy="Quản lý hồ sơ, vai trò, ca làm và trạng thái đội ngũ." actions={<button className="ops-primary-button" type="button" onClick={() => open()}>＋ Thêm nhân viên</button>} />
-      <section className="ops-team-banner">
-        <div><p>Đội ngũ hiện tại</p><strong>{employees.filter((item) => item.status === "active").length}</strong><span>nhân viên đang hoạt động</span></div>
-        <div className="ops-team-avatars">{employees.slice(0, 6).map((employee, index) => <span style={{ "--avatar-color": index }} key={employee.id}>{employee.name.charAt(0)}</span>)}<b>+</b></div>
-        <div><p>Hiệu suất trung bình</p><strong>{Math.round(employees.reduce((sum, item) => sum + Number(item.performance || 0), 0) / Math.max(1, employees.length))}%</strong><span>30 ngày gần nhất</span></div>
-      </section>
+      <PageHeader eyebrow="Đội ngũ" title="Nhân viên" copy="Thông tin liên hệ, vai trò, ca làm và trạng thái tài khoản." actions={<button className="ops-primary-button" type="button" onClick={() => open()}>＋ Thêm nhân viên</button>} />
+      <div className="ops-compact-summary">
+        <div><strong>{employees.filter((item) => item.status === "active").length}</strong><span>Đang làm việc</span></div>
+        <div><strong>{employees.filter((item) => item.status === "on_leave").length}</strong><span>Nghỉ phép</span></div>
+        <div><strong>{employees.filter((item) => item.status === "inactive").length}</strong><span>Ngừng hoạt động</span></div>
+      </div>
       <section className="ops-panel ops-list-panel">
         <div className="ops-list-toolbar"><div className="ops-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên, mã, email..." /></div><select value={department} onChange={(event) => setDepartment(event.target.value)}><option value="">Tất cả phòng ban</option>{departments.map((item) => <option key={item}>{item}</option>)}</select><span>{employees.length} nhân viên</span></div>
         {loading && <Loading rows={6} />}
         {error && <ErrorPanel message={error} onRetry={load} />}
         {!loading && !error && employees.length > 0 && (
-          <div className="ops-employee-grid">
+          <div className="ops-employee-list">
             {employees.map((employee, index) => (
               <article key={employee.id}>
-                <header><span style={{ "--avatar-color": index }}>{employee.name.charAt(0)}</span><Status value={employee.status} type="employee" /></header>
-                <h2>{employee.name}</h2><p>{employee.roleTitle}</p>
-                <dl><div><dt>Mã NV</dt><dd>{employee.employeeCode}</dd></div><div><dt>Phòng ban</dt><dd>{employee.department}</dd></div><div><dt>Ca làm</dt><dd>{employee.shift}</dd></div><div><dt>Gia nhập</dt><dd>{formatDate(employee.joinDate)}</dd></div></dl>
-                <div className="ops-performance"><span>Hiệu suất</span><strong>{employee.performance}%</strong><i><b style={{ width: `${employee.performance}%` }} /></i></div>
-                <footer><a href={`mailto:${employee.email}`}>{employee.email}</a><button type="button" onClick={() => open(employee)}>Chi tiết →</button></footer>
+                <span className="ops-employee-avatar" style={{ "--avatar-color": index }}>{employee.name.charAt(0)}</span>
+                <div className="ops-employee-identity"><h2>{employee.name}</h2><p>{employee.employeeCode} · {employee.roleTitle}</p></div>
+                <div><strong>{employee.department}</strong><span>{employee.shift}</span></div>
+                <div><a href={`mailto:${employee.email}`}>{employee.email}</a><span>{employee.phone}</span></div>
+                <div><Status value={employee.status} type="employee" /><span>Từ {formatDate(employee.joinDate)}</span></div>
+                <button className="ops-row-action" type="button" onClick={() => open(employee)}>Chỉnh sửa</button>
               </article>
             ))}
           </div>
@@ -132,7 +132,6 @@ export default function EmployeesPage() {
             <label className="ops-field"><span>Phòng ban</span><select name="department" value={form.department} onChange={change}><option>Bán hàng</option><option>Vận hành</option><option>Kho vận</option><option>Chăm sóc khách hàng</option><option>Marketing</option></select></label>
             <label className="ops-field"><span>Ngày gia nhập</span><input name="joinDate" type="date" value={form.joinDate} onChange={change} /></label>
             <label className="ops-field"><span>Ca làm việc</span><input name="shift" value={form.shift} onChange={change} /></label>
-            <label className="ops-field"><span>Hiệu suất (%)</span><input name="performance" type="number" min="0" max="100" value={form.performance} onChange={change} /></label>
             <label className="ops-field"><span>Trạng thái</span><select name="status" value={form.status} onChange={change}><option value="active">Đang làm việc</option><option value="on_leave">Nghỉ phép</option><option value="inactive">Ngừng hoạt động</option></select></label>
             <label className="ops-field ops-field--wide"><span>Địa chỉ</span><textarea name="address" rows={2} value={form.address} onChange={change} /></label>
           </div>

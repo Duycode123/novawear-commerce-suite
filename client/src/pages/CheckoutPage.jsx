@@ -20,8 +20,11 @@ function createOrderHandoff(order = {}) {
 }
 
 export default function CheckoutPage() {
-  const { cart, cartSubtotal, user, clearCart, notify, integrations } = useShop();
+  const { cart, cartSubtotal, user, clearCart, replaceCart, notify, integrations } = useShop();
   const navigate = useNavigate();
+  const resumeToken = useMemo(() => (
+    new URLSearchParams(window.location.search).get("resume") || ""
+  ), []);
   const [form, setForm] = useState({
     name: user?.name || "",
     email: user?.email || "",
@@ -42,6 +45,7 @@ export default function CheckoutPage() {
     verifiedEmail: "",
   });
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(Boolean(resumeToken));
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
   const [membership, setMembership] = useState(null);
   const [savedAddress, setSavedAddress] = useState(user?.address || "");
@@ -72,6 +76,53 @@ export default function CheckoutPage() {
     Math.max(0, cartSubtotal - membershipDiscount),
   );
   const total = Math.max(0, cartSubtotal + shippingFee - membershipDiscount - couponDiscount);
+
+  useEffect(() => {
+    if (!resumeToken) {
+      setResumeLoading(false);
+      return undefined;
+    }
+    let active = true;
+    api.post("/checkout/resume", { token: resumeToken })
+      .then(async (result) => {
+        if (!active) return;
+        const draft = result.data || {};
+        if (draft.form) {
+          setForm((current) => ({ ...current, ...draft.form }));
+          setSavedAddress(draft.form.address || "");
+          setCustomAddress(draft.form.address || "");
+          setAddressMode("custom");
+        }
+        if (Array.isArray(draft.items) && draft.items.length) replaceCart(draft.items);
+        setCouponCode(draft.couponCode || "");
+        if (draft.couponCode && Array.isArray(draft.items) && draft.items.length) {
+          const restoredSubtotal = draft.items.reduce(
+            (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+            0,
+          );
+          try {
+            const couponResult = await api.post("/coupons/validate", {
+              code: draft.couponCode,
+              subtotal: restoredSubtotal,
+            });
+            if (active) setCoupon(couponResult.data);
+          } catch (_couponError) {
+            if (active) setCoupon(null);
+          }
+        }
+        if (!active) return;
+        setEmailVerification((current) => ({
+          ...current,
+          requested: true,
+          checkoutToken: "",
+          verifiedEmail: "",
+        }));
+        notify("Đã khôi phục giỏ hàng và thông tin thanh toán. Hãy nhập mã trong email để tiếp tục.", "info");
+      })
+      .catch((requestError) => notify(requestError.message, "error"))
+      .finally(() => { if (active) setResumeLoading(false); });
+    return () => { active = false; };
+  }, [notify, replaceCart, resumeToken]);
   useEffect(() => {
     let active = true;
 
@@ -156,7 +207,7 @@ export default function CheckoutPage() {
     };
   }, [notify, user]);
 
-  if (!cart.length && !checkoutCompleted.current) return <Navigate to="/gio-hang" replace />;
+  if (!cart.length && !checkoutCompleted.current && !resumeLoading) return <Navigate to="/gio-hang" replace />;
 
   const change = (event) => {
     const { name, value } = event.target;
@@ -189,6 +240,16 @@ export default function CheckoutPage() {
       const result = await api.post("/checkout/verification/request", {
         email: form.email,
         name: form.name,
+        draft: {
+          form,
+          couponCode: coupon?.code || couponCode,
+          items: cart.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            size: item.size,
+            color: item.color,
+          })),
+        },
       });
       setEmailVerification((current) => ({
         ...current,
