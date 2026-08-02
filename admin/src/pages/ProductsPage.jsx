@@ -35,7 +35,12 @@ const emptyProduct = {
 };
 
 const PRODUCT_PAGE_SIZE = 24;
-const PRODUCT_IMAGE_MIN_EDGE = 1200;
+// Keep the original file when it is uploaded.  The minimum edge is
+// configurable so demo catalogs can accept small source images as well.
+const PRODUCT_IMAGE_MIN_EDGE = Math.max(
+  0,
+  Number.parseInt(process.env.REACT_APP_UPLOAD_PRODUCT_MIN_EDGE_PX || "0", 10) || 0,
+);
 const PRODUCT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 
 function readImageDimensions(file) {
@@ -253,7 +258,8 @@ export default function ProductsPage() {
       event.target.value = "";
       return;
     }
-    if (dimensions.width < PRODUCT_IMAGE_MIN_EDGE || dimensions.height < PRODUCT_IMAGE_MIN_EDGE) {
+    if (PRODUCT_IMAGE_MIN_EDGE > 0
+      && (dimensions.width < PRODUCT_IMAGE_MIN_EDGE || dimensions.height < PRODUCT_IMAGE_MIN_EDGE)) {
       notify(
         `Ảnh chỉ có ${dimensions.width}×${dimensions.height}px. Hãy dùng ảnh có mỗi cạnh từ ${PRODUCT_IMAGE_MIN_EDGE}px để không bị mờ.`,
         "error",
@@ -416,7 +422,7 @@ export default function ProductsPage() {
               <label className="ops-field"><span>Nhãn sản phẩm</span><input name="badge" value={form.badge} onChange={change} placeholder="Mới / Bán chạy" /></label>
               {advancedOpen && <>
               <label className="ops-field ops-field--wide"><span>Đường dẫn ảnh</span><input name="image" value={form.image} onChange={change} placeholder="Bỏ trống để dùng ảnh mặc định" /></label>
-              {uploadsEnabled && <label className="ops-field ops-field--wide"><span>Tải ảnh chất lượng cao lên Cloudinary</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadProductImage} disabled={uploading} /><small>{uploading ? "Đang tải ảnh gốc, không nén giảm chất lượng…" : "Khuyên dùng ảnh dọc 1600×2000px trở lên; mỗi cạnh tối thiểu 1200px, tối đa 12MB. Ảnh gốc được giữ nguyên."}</small></label>}
+  {uploadsEnabled && <label className="ops-field ops-field--wide"><span>Tải ảnh gốc lên Cloudinary</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadProductImage} disabled={uploading} /><small>{uploading ? "Đang tải ảnh gốc, không nén giảm chất lượng…" : PRODUCT_IMAGE_MIN_EDGE > 0 ? `Khuyên dùng ảnh dọc 1600×2000px trở lên; mỗi cạnh tối thiểu ${PRODUCT_IMAGE_MIN_EDGE}px, tối đa 12MB.` : "Ảnh nhỏ vẫn được nhận trong chế độ demo; tối đa 12MB. Ảnh gốc được giữ nguyên nhưng có thể mờ khi hiển thị lớn."}</small></label>}
               <label className="ops-field ops-field--wide"><span>Thư viện ảnh (mỗi dòng một đường dẫn)</span><textarea name="imagesText" rows={4} value={form.imagesText} onChange={change} placeholder={"/Images/anh-chinh.jpg\n/Images/anh-chi-tiet.jpg"} /></label>
               <label className="ops-field"><span>Màu sắc (cách nhau bằng dấu phẩy)</span><input name="colorsText" value={form.colorsText} onChange={change} /></label>
               <label className="ops-field"><span>Kích thước (cách nhau bằng dấu phẩy)</span><input name="sizesText" value={form.sizesText} onChange={change} /></label>

@@ -133,6 +133,11 @@ function asPositiveInt(value, fallback = 1) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function asNonNegativeInt(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function validPassword(value, { minLength = 10, requireSpecial = false } = {}) {
   const password = String(value || "");
   return password.length >= minLength
@@ -2367,8 +2372,8 @@ function createApp(options = {}) {
       if (!req.file) return res.status(400).json({ message: "Vui lòng chọn một tệp ảnh." });
       try {
         const data = await cloudinaryService.uploadImage(req.file.buffer, uploadFolders[kind]);
-        const productMinEdge = asPositiveInt(process.env.UPLOAD_PRODUCT_MIN_EDGE_PX, 1200);
-        if (kind === "product" && (
+        const productMinEdge = asNonNegativeInt(process.env.UPLOAD_PRODUCT_MIN_EDGE_PX, 0);
+        if (kind === "product" && productMinEdge > 0 && (
           Number(data.width || 0) < productMinEdge
           || Number(data.height || 0) < productMinEdge
         )) {
