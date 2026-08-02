@@ -84,3 +84,45 @@ test("catalog v4 merges duplicate category slugs and repairs stale product categ
   assert.doesNotMatch(trousers.longDescription, /T-shirt không đúng loại/i);
   assert.match(trousers.modelInfo, /size 31/i);
 });
+
+test("recent Cloudinary images receive matching editable product copy exactly once", () => {
+  const data = createSeedData();
+  applyCatalogMigration(data);
+  const product = {
+    id: "prd-125",
+    sku: "NVA-ACC-125",
+    categoryId: "cat-accessories-men",
+    price: 429000,
+    stock: 12,
+    image: "https://res.cloudinary.com/demo/image/upload/v1785649181/novawear/products/govpnhtkqac0pagfnhcq.webp",
+    images: ["https://res.cloudinary.com/demo/image/upload/v1785649181/novawear/products/govpnhtkqac0pagfnhcq.webp"],
+    name: "Webbing Belt",
+    description: "Mô tả cũ không còn đúng với ảnh.",
+  };
+  data.products.push(product);
+  const preserved = {
+    sku: product.sku,
+    categoryId: product.categoryId,
+    price: product.price,
+    stock: product.stock,
+  };
+  const result = applyCatalogMigration(data);
+
+  assert.equal(result.changed, true);
+  assert.equal(product.name, "Túi trống thể thao Compact");
+  assert.match(product.description, /Túi trống xanh đậm/i);
+  assert.match(product.longDescription, /quai xách bản rộng/i);
+  assert.deepEqual({
+    sku: product.sku,
+    categoryId: product.categoryId,
+    price: product.price,
+    stock: product.stock,
+  }, preserved);
+  assert.equal(product.image, product.images[0]);
+  assert.equal(data.meta.imageCopyVersion, 1);
+  assert.deepEqual(applyCatalogMigration(data), {
+    changed: false,
+    addedProducts: 0,
+    categories: CATALOG_CATEGORIES.length,
+  });
+});

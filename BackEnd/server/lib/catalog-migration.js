@@ -1,3 +1,5 @@
+const { applyImageCopyMigration } = require("./image-copy-migration");
+
 const CATALOG_VERSION = 4;
 const PRODUCTS_PER_CATEGORY = 4;
 
@@ -581,7 +583,12 @@ function applyCatalogMigration(data, options = {}) {
   if (!data || typeof data !== "object") throw new Error("Dữ liệu catalog không hợp lệ.");
   data.meta = data.meta || {};
   if (Number(data.meta.catalogVersion || 0) >= CATALOG_VERSION) {
-    return { changed: false, addedProducts: 0, categories: CATALOG_CATEGORIES.length };
+    const imageCopy = applyImageCopyMigration(data);
+    return {
+      changed: imageCopy.changed,
+      addedProducts: 0,
+      categories: CATALOG_CATEGORIES.length,
+    };
   }
   data.categories = Array.isArray(data.categories) ? data.categories : [];
   data.products = Array.isArray(data.products) ? data.products : [];
@@ -682,6 +689,7 @@ function applyCatalogMigration(data, options = {}) {
     }
   }
 
+  applyImageCopyMigration(data);
   data.meta.catalogVersion = CATALOG_VERSION;
   data.meta.catalogMigratedAt = createdAt;
   data.auditLogs = Array.isArray(data.auditLogs) ? data.auditLogs : [];
