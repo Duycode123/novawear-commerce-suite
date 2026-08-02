@@ -12,7 +12,7 @@ export default function Sizebar() {
     <div className="sidebar-brand-icon rotate-n-15">
         <i className="fas fa-laugh-wink"></i>
     </div>
-    <div className="sidebar-brand-text mx-3">COOLMATE <sup></sup></div>
+    <div className="sidebar-brand-text mx-3">NOVA OPS <sup></sup></div>
 </a>
 
 {/* <!-- Divider --> */}

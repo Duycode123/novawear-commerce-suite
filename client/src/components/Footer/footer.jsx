@@ -8,7 +8,7 @@ export default function Footer() {
                     <div className="footer-top">
                         <div className="footer-top-left">
                             <ul>
-                                <li className="footer-top-left__heading"><a href="">Khám phá COOLMATE</a></li>
+                                <li className="footer-top-left__heading"><a href="">Khám phá NOVAWEAR</a></li>
                                 <li><a href="">Áo polo</a></li>
                                 <li><a href="">Áo T-shirt</a></li>
                                 <li><a href="">Áo sơ mi </a></li>
@@ -16,7 +16,7 @@ export default function Footer() {
                                 <li><a href="">Quần lót</a></li>
                                 <li><a href="">Tất(vớ)</a></li>
                                 <li><a href="">Phụ kiện khác</a></li>
-                                <li><a href="">Coolsub</a></li>
+                                <li><a href="">NOVA Club</a></li>
                                 <li><a href="">Hộp tạo sẵn</a></li>
                             </ul>
                             <ul>
@@ -25,7 +25,7 @@ export default function Footer() {
                                 <li><a href="">Chính sách đổi trả 60 ngày</a></li>
                                 <li><a href="">Liên hệ</a></li>
                                 <li><a href="">Dịch vụ gói quà tặng</a></li>
-                                <li><a href="">Thành viên Coolclub</a></li>
+                                <li><a href="">Thành viên NOVA Club</a></li>
                                 <li><a href="">Khách hàng hài lòng 100%</a></li>
                                 <li><a href="">Chính sách khuyến mãi</a></li>
                                 <li><a href="">Chính sách giao hàng</a></li>
@@ -40,9 +40,9 @@ export default function Footer() {
                                 <li className="footer-top-left__heading" ><a href="">Tài liệu - Tuyển dụng</a></li>
                                 <li><a href="">Đăng ký bản quyền</a></li>
                                 <li><a href="">Tuyển dụng</a></li>
-                                <li className="footer-top-left__heading mg-top30"><a href="">Về COOLMATE</a></li>
-                                <li><a href="">Câu chuyện về Coolmate</a></li>
-                                <li><a href="">Gia nhập Coolmate</a></li>
+                                <li className="footer-top-left__heading mg-top30"><a href="">Về NOVAWEAR</a></li>
+                                <li><a href="">Câu chuyện về NOVAWEAR</a></li>
+                                <li><a href="">Gia nhập NOVAWEAR</a></li>
                                 <li><a href="">Care & Share</a></li>
                                 <li><a href="">Nhà máy</a></li>
                             </ul>
@@ -59,7 +59,7 @@ export default function Footer() {
                         </div>
 
                         <div className="footer-top-right">
-                            <h3 className="footer-top-right__heading">COOLMATE lắng nghe bạn!</h3>
+                            <h3 className="footer-top-right__heading">NOVAWEAR lắng nghe bạn!</h3>
                             <p className="footer-top-right__content">
                                 Chúng tôi luôn trân trọng và mong đợi nhận được mọi ý kiến đóng góp từ khách hàng
                                 để có thể nâng cấp trải nghiệm dịch vụ và sản phẩm tốt hơn nữa.

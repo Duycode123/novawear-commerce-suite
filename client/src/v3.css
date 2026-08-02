@@ -2738,3 +2738,438 @@ h4 {
     height: 270px;
   }
 }
+
+/* Final responsive hardening
+   Keeps Vietnamese text readable and prevents controls/cards from colliding
+   on narrow phones. These rules intentionally live last so they win over
+   legacy page-specific styles above. */
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+img {
+  max-width: 100%;
+}
+
+.product-card,
+.product-card__media,
+.product-card__body,
+.product-info,
+.product-story,
+.reviews-section,
+.review-form,
+.review-list {
+  min-width: 0;
+}
+
+.wishlist-button {
+  z-index: 4;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.wishlist-button svg {
+  display: block;
+  width: 19px;
+  height: 19px;
+}
+
+.product-card h3,
+.product-card__meta,
+.product-card__price,
+.product-card__colors {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  body {
+    font-size: 15px;
+  }
+
+  /* Avoid giant editorial headings clipping accented Vietnamese glyphs. */
+  :where(
+    .home-hero h1,
+    .home-v4-hero__copy h1,
+    .catalog-hero h1,
+    .product-info h1,
+    .product-story h2,
+    .about-hero__copy h1,
+    .nova-about-hero__copy h1,
+    .offers-hero h1,
+    .wishlist-hero h1,
+    .cart-hero h1,
+    .account-header h1,
+    .checkout-title h1,
+    .tracking-hero h1,
+    .support-hero h1,
+    .size-hero h1,
+    .lifestyle-hero__copy h1,
+    .section-heading h2
+  ) {
+    max-width: 100%;
+    font-size: clamp(2rem, 10.5vw, 3.35rem);
+    line-height: 1.08;
+    letter-spacing: -.045em;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+
+  .section-heading h2 {
+    margin-bottom: 12px;
+  }
+
+  .section-heading__copy,
+  .product-info__description,
+  .product-story p,
+  .product-accordions details p,
+  .review-item p,
+  .review-form p {
+    overflow-wrap: anywhere;
+  }
+
+  .product-grid,
+  .product-grid--catalog {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 10px;
+  }
+
+  .product-card {
+    padding: 5px;
+    border-radius: 14px;
+  }
+
+  .product-card__media {
+    aspect-ratio: .78;
+    border-radius: 10px;
+  }
+
+  .product-card__body {
+    padding: 11px 3px 7px;
+  }
+
+  .product-card__meta {
+    margin-bottom: 5px;
+    font-size: .62rem;
+    letter-spacing: .025em;
+  }
+
+  .product-card h3 {
+    min-height: 2.45em;
+    margin-bottom: 6px;
+    font-size: .84rem;
+    line-height: 1.24;
+  }
+
+  .product-card__price {
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+
+  .product-card__price strong {
+    font-size: .86rem;
+  }
+
+  .product-card__price del {
+    font-size: .72rem;
+  }
+
+  .wishlist-button {
+    top: 8px;
+    right: 8px;
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(11, 23, 32, .14);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 4px 12px rgba(11, 23, 32, .13);
+  }
+
+  .wishlist-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .product-card__badge {
+    top: 8px;
+    left: 8px;
+    max-width: calc(100% - 56px);
+    overflow: hidden;
+    padding: 4px 7px;
+    font-size: .55rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .product-card__quick {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    min-height: 37px;
+    font-size: .67rem;
+  }
+
+  .product-detail,
+  .product-story,
+  .reviews-section,
+  .related-products {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .product-gallery__main {
+    width: 100%;
+    max-height: 560px;
+  }
+
+  .product-info h1 {
+    font-size: clamp(2.2rem, 12vw, 3.5rem);
+  }
+
+  .product-story {
+    padding: 62px 18px;
+    gap: 30px;
+  }
+
+  .product-story h2 {
+    font-size: clamp(2.25rem, 12vw, 3.6rem);
+  }
+
+  .product-perks {
+    gap: 10px;
+  }
+
+  .product-perks p {
+    font-size: .58rem;
+  }
+
+  .reviews-layout {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .review-list,
+  .review-item,
+  .review-form,
+  .review-form textarea {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .table-scroll,
+  .size-table-wrap,
+  .order-detail-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 420px) {
+  .product-grid,
+  .product-grid--catalog {
+    gap: 18px 8px;
+  }
+
+  .product-card {
+    padding: 4px;
+  }
+
+  .wishlist-button {
+    top: 6px;
+    right: 6px;
+    width: 35px;
+    height: 35px;
+  }
+
+  .product-card__badge {
+    top: 6px;
+    left: 6px;
+  }
+
+  .product-card__quick {
+    right: 6px;
+    bottom: 6px;
+    left: 6px;
+  }
+}
+
+/* Legal and customer-care policy pages */
+.policy-page {
+  min-height: 70vh;
+  color: #111;
+  background: #f8f7f3;
+}
+
+.policy-page__hero {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 112px 28px 66px;
+}
+
+.policy-page__hero h1 {
+  max-width: 780px;
+  margin: 14px 0 22px;
+  font-size: clamp(3.2rem, 7vw, 7rem);
+  font-weight: 700;
+  letter-spacing: -.075em;
+  line-height: .98;
+  text-wrap: balance;
+}
+
+.policy-page__hero > p:last-child {
+  max-width: 650px;
+  margin: 0;
+  color: #6e6b65;
+  font-size: .9rem;
+  line-height: 1.75;
+}
+
+.policy-page__tabs {
+  display: flex;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 28px;
+  gap: 28px;
+  border-bottom: 1px solid #d7d4cc;
+  overflow-x: auto;
+}
+
+.policy-page__tabs a {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0 0 16px;
+  color: #77746d;
+  font-size: .72rem;
+  font-weight: 750;
+}
+
+.policy-page__tabs a::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: #111;
+  content: "";
+  opacity: 0;
+  transform: scaleX(.4);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.policy-page__tabs a:hover,
+.policy-page__tabs a.is-active {
+  color: #111;
+}
+
+.policy-page__tabs a.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.policy-page__content {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 92px 28px 120px;
+}
+
+.policy-page__content .section-heading {
+  margin-bottom: 54px;
+}
+
+.policy-page__sections {
+  border-top: 1px solid #111;
+}
+
+.policy-page__sections article {
+  display: grid;
+  padding: 30px 0;
+  border-bottom: 1px solid #d7d4cc;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 28px;
+}
+
+.policy-page__sections article > span {
+  color: #928f87;
+  font-size: .58rem;
+  font-weight: 750;
+  letter-spacing: .12em;
+}
+
+.policy-page__sections h2 {
+  margin: 0 0 12px;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  letter-spacing: -.045em;
+}
+
+.policy-page__sections p {
+  max-width: 700px;
+  margin: 0;
+  color: #67645e;
+  font-size: .82rem;
+  line-height: 1.85;
+}
+
+.policy-page__contact {
+  margin: 34px 0 0;
+  color: #67645e;
+  font-size: .76rem;
+}
+
+.policy-page__contact a {
+  color: #111;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .policy-page__hero {
+    padding: 70px 18px 45px;
+  }
+
+  .policy-page__hero h1 {
+    font-size: clamp(2.45rem, 13vw, 4rem);
+    line-height: 1.05;
+  }
+
+  .policy-page__tabs {
+    padding: 0 18px;
+    gap: 22px;
+  }
+
+  .policy-page__content {
+    padding: 62px 18px 80px;
+  }
+
+  .policy-page__sections article {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .policy-page__sections h2 {
+    font-size: 1.3rem;
+  }
+
+  .policy-page__sections p {
+    font-size: .78rem;
+  }
+}

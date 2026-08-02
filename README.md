@@ -11,7 +11,7 @@ Bộ ứng dụng bán hàng thời trang đã được tách thành ba phần �
 - Cửa hàng: `https://novawear-commerce.turkey-glow-5k.chatgpt.site`
 - Nhân viên / quản trị: `https://novawear-commerce.turkey-glow-5k.chatgpt.site/ops`
 
-Bản này đang để riêng tư cho chủ sở hữu. Dữ liệu trực tuyến được lưu bền vững bằng D1 và tách biệt với tệp dữ liệu chạy trên máy.
+Bản này đang để riêng tư cho chủ sở hữu. Khi triển khai production, API phải dùng PostgreSQL (ví dụ Neon) và không được rơi về kho JSON cục bộ.
 
 ## Khởi chạy
 
@@ -28,7 +28,20 @@ Sau khi khởi động:
 - Nhân viên / quản trị: `http://localhost:3001`
 - API: `http://localhost:5000/api/health`
 
+API có hai endpoint vận hành:
+
+- `GET /api/health`: liveness nhẹ, dùng để biết tiến trình còn chạy.
+- `GET /api/health/ready`: readiness, kiểm tra kết nối database và trạng thái tích hợp; dùng endpoint này làm health check trên Render.
+
 Nhấn `Ctrl+C` để dừng cả ba phần.
+
+Trước khi deploy production, đặt `NODE_ENV=production`, `DB_TYPE=postgres`, `DB_SSL=true`, `DB_SSL_REJECT_UNAUTHORIZED=true`, khai báo `CORS_ORIGINS` bằng các URL HTTPS thật và tạo bootstrap admin bằng nhóm `BOOTSTRAP_ADMIN_*`. API sẽ từ chối khởi động nếu thiếu các giá trị bảo mật bắt buộc hoặc đang cấu hình kho JSON.
+
+Các trang chính sách có route riêng để khách hàng luôn tra cứu được:
+
+- `/chinh-sach/bao-mat`
+- `/chinh-sach/dieu-khoan`
+- `/chinh-sach/giao-hang-doi-tra`
 
 ## Đăng nhập chung và phân quyền
 
@@ -140,3 +153,4 @@ Luồng chuyển khoản lấy thông tin tài khoản từ backend, tạo QR ri
 - Bật riêng từng nhà cung cấp bằng `GOOGLE_OAUTH_ENABLED` hoặc `FACEBOOK_OAUTH_ENABLED`, sau đó điền đủ client ID, secret và callback URL. Nút đăng nhập chỉ hiện với nhà cung cấp đã cấu hình hợp lệ.
 - Bật tải ảnh bằng `CLOUDINARY_ENABLED=true`, rồi điền `CLOUDINARY_URL` hoặc bộ `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
 - Backend kiểm tra cấu hình khi khởi động. Một tích hợp được bật nhưng thiếu khóa bắt buộc sẽ làm quá trình khởi động dừng với thông báo rõ trường còn thiếu.
+Quy trình nghiệp vụ đầy đủ cho khách hàng, nhân viên và admin xem tại [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md).

@@ -56,6 +56,9 @@ function validateEnvironment() {
     errors,
   );
   if (process.env.NODE_ENV === "production") {
+    if (dbType !== "postgres") {
+      errors.push("DB_TYPE trên production phải là postgres để dữ liệu không rơi về kho JSON cục bộ");
+    }
     requireWhen(true, ["JWT_SECRET", "FRONTEND_BASE_URL", "CORS_ORIGINS"], "Production", errors);
     const jwtSecret = String(process.env.JWT_SECRET || "");
     if (jwtSecret && Buffer.byteLength(jwtSecret, "utf8") < 32) {

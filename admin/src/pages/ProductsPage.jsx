@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../services/api";
 import { formatMoney } from "../config";
 import { useAdmin } from "../context/AdminContext";
@@ -12,7 +12,7 @@ const emptyProduct = {
   comparePrice: "",
   saleEndsAt: "",
   cost: "",
-  stock: "",
+  stock: "0",
   status: "draft",
   featured: false,
   audience: "unisex",
@@ -36,10 +36,56 @@ const emptyProduct = {
 
 const PRODUCT_PAGE_SIZE = 24;
 
+function slugText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function toDateTimeLocal(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+}
+
+function makeSku(name, categoryId, categories, seed) {
+  const productPart = slugText(name).split("-").filter(Boolean).slice(0, 3).join("").slice(0, 10).toUpperCase() || "ITEM";
+  const category = categories.find((item) => item.id === categoryId);
+  const categoryPart = slugText(category?.slug || category?.name).split("-").filter(Boolean)[0]?.slice(0, 5).toUpperCase() || "GEN";
+  return `NVA-${categoryPart}-${productPart}-${seed}`;
+}
+
+function productSuggestions(form, categories) {
+  const category = categories.find((item) => item.id === form.categoryId);
+  const categoryName = category?.name || (form.audience === "women" ? "danh mục nữ" : form.audience === "men" ? "danh mục nam" : "danh mục thời trang");
+  const name = form.name.trim() || "Sản phẩm NOVAWEAR";
+  const audienceText = form.audience === "women" ? "nữ" : form.audience === "men" ? "nam" : "unisex";
+  return {
+    description: `${name} thuộc ${categoryName.toLowerCase()}, thiết kế dễ mặc và phù hợp với nhịp sống hằng ngày.`,
+    longDescription: `${name} được phát triển cho khách hàng ${audienceText} yêu thích phong cách gọn gàng, linh hoạt. Phom dáng cân bằng, dễ phối cùng các sản phẩm cơ bản và phù hợp nhiều hoàn cảnh sử dụng.`,
+    materials: "Cập nhật theo chất liệu thực tế của từng lô hàng.",
+    care: "Giặt theo hướng dẫn trên nhãn sản phẩm, ưu tiên giặt nhẹ và phơi nơi thoáng mát.",
+    fit: "Phom dễ mặc, thoải mái khi vận động và phù hợp nhiều vóc dáng.",
+    suitableFor: "Đi làm, đi chơi và sử dụng hằng ngày.",
+    modelInfo: "Cập nhật khi có thông tin người mẫu thực tế.",
+    origin: "Việt Nam",
+    highlightsText: "Phom dễ mặc, Dễ phối đồ, Thiết kế linh hoạt",
+    featureDetailsText: "Thiết kế | Tối giản, dễ kết hợp với tủ đồ hiện có.\nTrải nghiệm mặc | Ưu tiên sự thoải mái trong các hoạt động hằng ngày.\nBảo quản | Thực hiện theo hướng dẫn trên nhãn để giữ phom và màu sắc.",
+  };
+}
+
 function formFromProduct(product) {
-  if (!product) return emptyProduct;
+  if (!product) return { ...emptyProduct };
   return {
     ...product,
+    saleEndsAt: toDateTimeLocal(product.saleEndsAt),
     colorsText: (product.colors || []).join(", "),
     sizesText: (product.sizes || []).join(", "),
     variantsText: (product.variants || []).map((item) => `${item.size} | ${item.color} | ${item.stock}`).join("\n"),
@@ -63,10 +109,13 @@ export default function ProductsPage() {
   const [summary, setSummary] = useState({ active: 0, draft: 0, totalStock: 0, inventoryValue: 0 });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(emptyProduct);
+  const [form, setForm] = useState({ ...emptyProduct });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [skuAuto, setSkuAuto] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadsEnabled, setUploadsEnabled] = useState(false);
+  const skuSeed = useRef(String(Date.now()).slice(-5));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,18 +170,49 @@ export default function ProductsPage() {
   const openForm = (product = null) => {
     setFormOpen(true);
     setEditing(product);
+    skuSeed.current = String(Date.now()).slice(-5);
+    setSkuAuto(!product);
+    setAdvancedOpen(Boolean(product?.longDescription || product?.variants?.length));
     setForm(formFromProduct(product));
   };
 
   const closeForm = () => {
     setFormOpen(false);
     setEditing(null);
-    setForm(emptyProduct);
+    setForm({ ...emptyProduct });
+    setAdvancedOpen(false);
+    setSkuAuto(true);
   };
 
   const change = (event) => {
     const { name, value, type, checked } = event.target;
-    setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+    if (name === "sku") setSkuAuto(false);
+    setForm((current) => {
+      const next = { ...current, [name]: type === "checkbox" ? checked : value };
+      if (!editing && skuAuto && (name === "name" || name === "categoryId")) {
+        next.sku = makeSku(next.name, next.categoryId, categories, skuSeed.current);
+      }
+      if (!editing && name === "categoryId") {
+        const category = categories.find((item) => item.id === value);
+        if (category?.audience === "men" || category?.audience === "women") next.audience = category.audience;
+      }
+      return next;
+    });
+  };
+
+  const regenerateSku = () => {
+    setSkuAuto(true);
+    setForm((current) => ({ ...current, sku: makeSku(current.name, current.categoryId, categories, skuSeed.current) }));
+  };
+
+  const fillSuggestedDetails = () => {
+    const suggestions = productSuggestions(form, categories);
+    setForm((current) => ({
+      ...current,
+      ...Object.fromEntries(Object.entries(suggestions).map(([key, value]) => [key, current[key] || value])),
+    }));
+    setAdvancedOpen(true);
+    notify("Đã điền nội dung gợi ý. Bạn có thể chỉnh lại trước khi lưu.");
   };
 
   const uploadProductImage = async (event) => {
@@ -160,6 +240,8 @@ export default function ProductsPage() {
     setSaving(true);
     const payload = {
       ...form,
+      sku: form.sku || makeSku(form.name, form.categoryId, categories, skuSeed.current),
+      image: form.image || emptyProduct.image,
       price: Number(form.price),
       comparePrice: Number(form.comparePrice || 0),
       saleEndsAt: form.saleEndsAt ? new Date(form.saleEndsAt).toISOString() : "",
@@ -173,7 +255,7 @@ export default function ProductsPage() {
       }).filter((item) => item.size || item.color),
       highlights: form.highlightsText.split(",").map((item) => item.trim()).filter(Boolean),
       featureDetails: form.featureDetailsText.split("\n").map((line) => { const [title, ...rest] = line.split("|"); return { title: title?.trim(), description: rest.join("|").trim() }; }).filter((item) => item.title && item.description),
-      images: form.imagesText.split("\n").map((item) => item.trim()).filter(Boolean),
+      images: (form.imagesText || form.image || emptyProduct.image).split("\n").map((item) => item.trim()).filter(Boolean),
     };
     try {
       const result = editing
@@ -264,22 +346,33 @@ export default function ProductsPage() {
         <form className="ops-product-form" onSubmit={save}>
           <div className="ops-product-form__preview">
             <ProductImage src={form.image} alt="Xem trước sản phẩm" />
-            <p>Ảnh xem trước</p>
+            <p>{form.image ? "Ảnh xem trước" : "Ảnh mặc định sẽ được dùng nếu chưa tải ảnh"}</p>
           </div>
           <div className="ops-product-form__fields">
+            <div className="ops-product-quick-guide">
+              <div>
+                <p>THÊM NHANH</p>
+                <strong>Chỉ cần tên, danh mục và giá bán.</strong>
+                <small>SKU, tồn kho mặc định và ảnh dự phòng đã có sẵn. Nội dung chi tiết có thể tạo gợi ý tự động.</small>
+              </div>
+              <button className="ops-secondary-button" type="button" onClick={fillSuggestedDetails}>✦ Tự điền nội dung</button>
+            </div>
             <div className="ops-form-grid">
               <label className="ops-field ops-field--wide"><span>Tên sản phẩm *</span><input name="name" required minLength={3} value={form.name} onChange={change} /></label>
               <label className="ops-field"><span>SKU *</span><input name="sku" required value={form.sku} onChange={change} placeholder="NVA-TS-009" /></label>
               <label className="ops-field"><span>Danh mục *</span><select name="categoryId" required value={form.categoryId} onChange={change}><option value="">Chọn danh mục</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
               <label className="ops-field"><span>Giá bán *</span><input name="price" type="number" min="0" required value={form.price} onChange={change} /></label>
+              {advancedOpen && <>
               <label className="ops-field"><span>Giá so sánh</span><input name="comparePrice" type="number" min="0" value={form.comparePrice} onChange={change} /></label>
               <label className="ops-field"><span>Kết thúc ưu đãi (giờ Việt Nam)</span><input name="saleEndsAt" type="datetime-local" value={form.saleEndsAt ? form.saleEndsAt.slice(0, 16) : ""} onChange={change} /></label>
               <label className="ops-field"><span>Giá vốn</span><input name="cost" type="number" min="0" value={form.cost} onChange={change} /></label>
-              <label className="ops-field"><span>Tồn kho</span><input name="stock" type="number" min="0" value={form.stock} onChange={change} /></label>
+              </>}
+              <label className="ops-field"><span>Tồn kho ban đầu</span><input name="stock" type="number" min="0" value={form.stock} onChange={change} placeholder="0" /></label>
               <label className="ops-field"><span>Trạng thái</span><select name="status" value={form.status} onChange={change}><option value="draft">Bản nháp</option><option value="active">Đang bán</option><option value="archived">Lưu trữ</option></select></label>
               <label className="ops-field"><span>Dành cho</span><select name="audience" value={form.audience} onChange={change}><option value="men">Nam</option><option value="women">Nữ</option><option value="unisex">Unisex</option></select></label>
               <label className="ops-field"><span>Nhãn sản phẩm</span><input name="badge" value={form.badge} onChange={change} placeholder="Mới / Bán chạy" /></label>
-              <label className="ops-field ops-field--wide"><span>Đường dẫn ảnh *</span><input name="image" required value={form.image} onChange={change} placeholder="/Images/ten-anh.jpg" /></label>
+              {advancedOpen && <>
+              <label className="ops-field ops-field--wide"><span>Đường dẫn ảnh</span><input name="image" value={form.image} onChange={change} placeholder="Bỏ trống để dùng ảnh mặc định" /></label>
               {uploadsEnabled && <label className="ops-field ops-field--wide"><span>Tải ảnh lên Cloudinary</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={uploadProductImage} disabled={uploading} /><small>{uploading ? "Đang tải và tối ưu ảnh…" : "Tối đa 12MB. Ảnh tải lên sẽ tự điền vào đường dẫn và thư viện ảnh."}</small></label>}
               <label className="ops-field ops-field--wide"><span>Thư viện ảnh (mỗi dòng một đường dẫn)</span><textarea name="imagesText" rows={4} value={form.imagesText} onChange={change} placeholder={"/Images/anh-chinh.jpg\n/Images/anh-chi-tiet.jpg"} /></label>
               <label className="ops-field"><span>Màu sắc (cách nhau bằng dấu phẩy)</span><input name="colorsText" value={form.colorsText} onChange={change} /></label>
@@ -295,6 +388,15 @@ export default function ProductsPage() {
               <label className="ops-field"><span>Xuất xứ</span><input name="origin" value={form.origin} onChange={change} /></label>
               <label className="ops-field ops-field--wide"><span>Điểm nổi bật (cách nhau bằng dấu phẩy)</span><textarea name="highlightsText" rows={3} value={form.highlightsText} onChange={change} /></label>
               <label className="ops-field ops-field--wide"><span>Nội dung tính năng (mỗi dòng: Tiêu đề | Mô tả)</span><textarea name="featureDetailsText" rows={6} value={form.featureDetailsText} onChange={change} placeholder={"Co giãn linh hoạt | Hỗ trợ chuyển động tự nhiên trong ngày.\nDễ phối đồ | Phù hợp nhiều phong cách và hoàn cảnh."} /></label>
+              </>}
+            </div>
+            <div className="ops-product-auto-row">
+              <span><small>SKU tự sinh</small><strong>{form.sku || "Nhập tên để tạo mã SKU"}</strong></span>
+              <button type="button" onClick={regenerateSku}>Tạo lại SKU</button>
+            </div>
+            <div className="ops-product-advanced-toggle">
+              <button type="button" onClick={() => setAdvancedOpen((current) => !current)}>{advancedOpen ? "⌃ Thu gọn thông tin nâng cao" : "⌄ Mở thông tin nâng cao"}</button>
+              <span>Không bắt buộc khi tạo sản phẩm nhanh</span>
             </div>
             <label className="ops-check"><input type="checkbox" name="featured" checked={Boolean(form.featured)} onChange={change} /><span>Hiển thị ở khu vực sản phẩm nổi bật</span></label>
             <div className="ops-form-actions"><button className="ops-secondary-button" type="button" onClick={closeForm}>Hủy</button><button className="ops-primary-button" type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu sản phẩm →"}</button></div>

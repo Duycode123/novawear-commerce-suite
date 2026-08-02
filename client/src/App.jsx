@@ -19,6 +19,7 @@ import NewsPage from "./pages/NewsPage";
 import NewsDetailPage from "./pages/NewsDetailPage";
 import PromotionsPage from "./pages/PromotionsPage";
 import ReturnsPage from "./pages/ReturnsPage";
+import PoliciesPage from "./pages/PoliciesPage";
 import LifestylePage from "./pages/LifestylePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/tin-tuc/:identifier" element={<NewsDetailPage />} />
           <Route path="/uu-dai" element={<PromotionsPage />} />
           <Route path="/doi-tra" element={<ReturnsPage />} />
+          <Route path="/chinh-sach/:section" element={<PoliciesPage />} />
           <Route path="/phong-cach/:style" element={<LifestylePage />} />
 
           <Route path="/product" element={<Navigate to="/cua-hang" replace />} />

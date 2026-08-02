@@ -419,7 +419,7 @@ export default function Layout() {
               <h3>Thông tin</h3>
               <Link to="/ve-chung-toi">Về NOVAWEAR</Link>
               <Link to="/chon-size">Hướng dẫn chọn size</Link>
-              <Link to="/ho-tro">Đổi trả & giao hàng</Link>
+              <Link to="/chinh-sach/giao-hang-doi-tra">Đổi trả & giao hàng</Link>
               <Link to="/ho-tro">Liên hệ</Link>
             </div>
             <div>
@@ -434,7 +434,7 @@ export default function Layout() {
         <div className="site-footer__bottom">
           <span>© {new Date().getFullYear()} {SITE.name}</span>
           <span>Thiết kế độc lập cho nhịp sống Việt.</span>
-          <div><Link to="/ho-tro">Chính sách bảo mật</Link><Link to="/ho-tro">Điều khoản</Link></div>
+          <div><Link to="/chinh-sach/bao-mat">Chính sách bảo mật</Link><Link to="/chinh-sach/dieu-khoan">Điều khoản</Link></div>
         </div>
       </footer>
       <ShopChat />

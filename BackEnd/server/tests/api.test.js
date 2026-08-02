@@ -129,6 +129,10 @@ test("health check and catalog are available", async () => {
   const health = await request("/health");
   assert.equal(health.response.status, 200);
   assert.equal(health.body.status, "ok");
+  const readiness = await request("/health/ready");
+  assert.equal(readiness.response.status, 200);
+  assert.equal(readiness.body.status, "ready");
+  assert.equal(readiness.body.checks.database, "ok");
 
   const products = await request("/products?featured=true&limit=4");
   assert.equal(products.response.status, 200);
@@ -204,6 +208,47 @@ test("health check and catalog are available", async () => {
   hiddenProduct.status = previousProductStatus;
   hiddenCategory.status = previousCategoryStatus;
   application.locals.store.save();
+});
+
+test("checkout validation rejects punctuation-only phones and unavailable variants", async () => {
+  const invalidPhone = await request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Invalid Phone",
+      email: "invalid-phone@example.com",
+      phone: "---------",
+      password: "StrongPass123",
+    }),
+  });
+  assert.equal(invalidPhone.response.status, 400);
+
+  const customerToken = await loginAs("demo@novawear.vn", "Demo@123");
+  const product = application.locals.store.data.products[0];
+  const snapshot = structuredClone(product);
+  product.sizes = ["S", "M"];
+  product.colors = ["Navy", "White"];
+  product.variants = [{ size: "S", color: "Navy", stock: 2 }];
+  product.stock = 2;
+  try {
+    const unavailable = await request("/orders", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${customerToken}` },
+      body: JSON.stringify({
+        customer: {
+          name: "Demo Customer",
+          email: "demo@novawear.vn",
+          phone: "0901234567",
+          address: "01 Le Loi, District 1, Ho Chi Minh City",
+        },
+        items: [{ productId: product.id, size: "M", color: "White", quantity: 1 }],
+        paymentMethod: "cod",
+      }),
+    });
+    assert.equal(unavailable.response.status, 400);
+    assert.equal(unavailable.body.code, "PRODUCT_VARIANT_UNAVAILABLE");
+  } finally {
+    Object.assign(product, snapshot);
+  }
 });
 
 test("guest checkout requires a verified email and sends an order confirmation", async () => {
@@ -1902,6 +1947,20 @@ test("admin can manage catalog, inventory and purchase receiving", async () => {
   assert.equal(created.response.status, 201);
   assert.equal(created.body.data.stock, 10);
 
+  const duplicateSku = await request(`/admin/products/${created.body.data.id}`, {
+    method: "PUT",
+    headers: auth,
+    body: JSON.stringify({ sku: firstPage.body.data[0].sku }),
+  });
+  assert.equal(duplicateSku.response.status, 409);
+
+  const invalidCategory = await request(`/admin/products/${created.body.data.id}`, {
+    method: "PUT",
+    headers: auth,
+    body: JSON.stringify({ categoryId: "cat-does-not-exist" }),
+  });
+  assert.equal(invalidCategory.response.status, 400);
+
   const adjusted = await request("/admin/inventory/adjust", {
     method: "POST",
     headers: auth,
@@ -1919,6 +1978,16 @@ test("admin can manage catalog, inventory and purchase receiving", async () => {
     }),
   });
   assert.equal(purchase.response.status, 201);
+
+  const invalidPurchase = await request("/admin/purchase-orders", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({
+      supplier: "Test Supplier",
+      items: [{ productId: created.body.data.id, quantity: 0, unitCost: 115000 }],
+    }),
+  });
+  assert.equal(invalidPurchase.response.status, 400);
 
   const received = await request(`/admin/purchase-orders/${purchase.body.data.id}/receive`, {
     method: "PATCH",

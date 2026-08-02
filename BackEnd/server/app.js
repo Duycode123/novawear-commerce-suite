@@ -68,7 +68,10 @@ const ALLOWED_RETURN_TRANSITIONS = {
 };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phonePattern = /^[0-9+\s.-]{9,15}$/;
+// Keep the format permissive for Vietnamese/international numbers, but require
+// at least one digit so punctuation-only values cannot pass checkout/profile
+// validation.
+const phonePattern = /^(?=.*\d)[0-9+\s.-]{9,15}$/;
 const MEMBERSHIP_TIERS = [
   {
     key: "Member",
@@ -797,6 +800,9 @@ function exchangeAvailabilityError(store, returnRequest) {
       return `Màu muốn đổi của ${item.name} không hợp lệ.`;
     }
     const variant = productVariant(product, desiredSize, desiredColor);
+    if (Array.isArray(product.variants) && product.variants.length && !variant) {
+      return `Tổ hợp size ${desiredSize} và màu ${desiredColor} của ${item.name} không còn bán.`;
+    }
     const available = variant ? Number(variant.stock || 0) : Number(product.stock || 0);
     if (available < Number(item.quantity || 0)) {
       return `${item.name} (${desiredColor}, size ${desiredSize}) không còn đủ tồn kho để đổi.`;
@@ -1901,9 +1907,38 @@ function createApp(options = {}) {
       status: "ok",
       service: process.env.APP_NAME || "novawear-commerce-backend",
       version: store.data.meta?.version || 1,
+      storage: store.pool ? "postgres" : "json",
       emailConfigured: Boolean(mailer.configured),
       cloudinaryConfigured: Boolean(cloudinaryService.configured),
       sepayConfigured,
+      time: new Date().toISOString(),
+    });
+  });
+
+  // Readiness is intentionally separate from the lightweight liveness check
+  // above. Render/load balancers can use this endpoint to stop routing traffic
+  // when the database is unavailable, while the public health endpoint remains
+  // useful for basic monitoring.
+  app.get("/api/health/ready", async (_req, res) => {
+    const checks = {
+      database: "ok",
+      storage: store.pool ? "postgres" : "json",
+      email: mailer.configured ? "configured" : "not_configured",
+      cloudinary: cloudinaryService.configured ? "configured" : "not_configured",
+      sepay: sepayConfigured ? "configured" : "not_configured",
+    };
+    if (store.pool?.query) {
+      try {
+        await store.pool.query("SELECT 1");
+      } catch (_error) {
+        checks.database = "unavailable";
+      }
+    }
+    const production = process.env.NODE_ENV === "production";
+    const ready = checks.database === "ok" && (!production || checks.storage === "postgres");
+    return res.status(ready ? 200 : 503).json({
+      status: ready ? "ready" : "not_ready",
+      checks,
       time: new Date().toISOString(),
     });
   });
@@ -3007,8 +3042,12 @@ function createApp(options = {}) {
       if (quantity > product.stock) {
         return res.status(409).json({ message: `${product.name} chỉ còn ${product.stock} sản phẩm.` });
       }
-      const size = String(requested.size || product.sizes?.[0] || "");
-      const color = String(requested.color || product.colors?.[0] || "");
+      const variantCatalog = Array.isArray(product.variants) && product.variants.length
+        ? product.variants
+        : null;
+      const defaultVariant = variantCatalog?.[0] || null;
+      const size = String(requested.size || defaultVariant?.size || product.sizes?.[0] || "");
+      const color = String(requested.color || defaultVariant?.color || product.colors?.[0] || "");
       if (product.sizes?.length && !product.sizes.includes(size)) {
         return res.status(400).json({ message: `Kích thước của ${product.name} chưa hợp lệ.` });
       }
@@ -3016,6 +3055,12 @@ function createApp(options = {}) {
         return res.status(400).json({ message: `Màu của ${product.name} chưa hợp lệ.` });
       }
       const variant = productVariant(product, size, color);
+      if (variantCatalog && !variant) {
+        return res.status(400).json({
+          message: `Tổ hợp màu ${color || "đã chọn"} và size ${size || "đã chọn"} của ${product.name} không còn bán.`,
+          code: "PRODUCT_VARIANT_UNAVAILABLE",
+        });
+      }
       if (variant && quantity > Number(variant.stock || 0)) {
         return res.status(409).json({ message: `${product.name} (${color}, size ${size}) chỉ còn ${variant.stock} sản phẩm.` });
       }
@@ -3827,17 +3872,30 @@ function createApp(options = {}) {
     if (store.data.products.some((item) => normalizeText(item.sku) === normalizeText(sku))) {
       return res.status(409).json({ message: "SKU đã tồn tại." });
     }
+    const price = Number(req.body.price);
+    const comparePrice = Number(req.body.comparePrice || 0);
+    const cost = Number(req.body.cost || 0);
+    const stock = Number(req.body.stock || 0);
+    const saleEndsAt = req.body.saleEndsAt ? new Date(req.body.saleEndsAt) : null;
+    if (!Number.isFinite(price) || price <= 0
+      || !Number.isFinite(comparePrice) || comparePrice < 0
+      || (comparePrice > 0 && comparePrice < price)
+      || !Number.isFinite(cost) || cost < 0
+      || !Number.isInteger(stock) || stock < 0
+      || (saleEndsAt && Number.isNaN(saleEndsAt.getTime()))) {
+      return res.status(400).json({ message: "Giá, tồn kho, giá niêm yết hoặc thời hạn ưu đãi chưa hợp lệ." });
+    }
     const product = {
       id: store.nextId("products", "prd-"),
       sku,
       name,
       slug: slugify(req.body.slug || name),
       categoryId,
-      price: asMoney(req.body.price),
-      comparePrice: asMoney(req.body.comparePrice),
-      saleEndsAt: req.body.saleEndsAt ? new Date(req.body.saleEndsAt).toISOString() : "",
-      cost: asMoney(req.body.cost),
-      stock: asMoney(req.body.stock),
+      price: Math.round(price),
+      comparePrice: Math.round(comparePrice),
+      saleEndsAt: saleEndsAt ? saleEndsAt.toISOString() : "",
+      cost: Math.round(cost),
+      stock,
       status: ["active", "draft", "archived"].includes(req.body.status) ? req.body.status : "draft",
       featured: Boolean(req.body.featured),
       badge: String(req.body.badge || ""),
@@ -3875,16 +3933,50 @@ function createApp(options = {}) {
     const product = store.data.products.find((item) => item.id === req.params.id);
     if (!product) return notFound(res, "Sản phẩm");
     const allowed = ["name", "sku", "categoryId", "price", "comparePrice", "saleEndsAt", "cost", "stock", "status", "featured", "badge", "audience", "image", "images", "colors", "sizes", "variants", "description", "longDescription", "materials", "care", "fit", "suitableFor", "modelInfo", "origin", "highlights", "featureDetails"];
+    const nextProduct = { ...product };
     for (const field of allowed) {
-      if (req.body[field] !== undefined) product[field] = req.body[field];
+      if (req.body[field] !== undefined) nextProduct[field] = req.body[field];
     }
-    product.name = String(product.name || "").trim();
-    product.sku = String(product.sku || "").trim().toUpperCase();
-    product.slug = slugify(req.body.slug || product.name);
-    ["price", "comparePrice", "cost", "stock"].forEach((field) => { product[field] = asMoney(product[field]); });
-    if (Array.isArray(product.variants)) product.variants = product.variants.map((item) => ({ size: String(item.size || ""), color: String(item.color || ""), stock: asMoney(item.stock) })).filter((item) => item.size || item.color);
+    nextProduct.name = String(nextProduct.name || "").trim();
+    nextProduct.sku = String(nextProduct.sku || "").trim().toUpperCase();
+    nextProduct.slug = slugify(req.body.slug || nextProduct.name);
+    nextProduct.categoryId = String(nextProduct.categoryId || "");
+    nextProduct.status = String(nextProduct.status || "draft");
+    nextProduct.audience = String(nextProduct.audience || "unisex");
+    const nextPrice = Number(nextProduct.price);
+    const nextComparePrice = Number(nextProduct.comparePrice || 0);
+    const nextCost = Number(nextProduct.cost || 0);
+    const nextStock = Number(nextProduct.stock || 0);
+    const nextSaleEndsAt = nextProduct.saleEndsAt ? new Date(nextProduct.saleEndsAt) : null;
+    if (!nextProduct.name || !nextProduct.sku) return res.status(400).json({ message: "Tên và SKU là bắt buộc." });
+    if (store.data.products.some((item) => item.id !== product.id && normalizeText(item.sku) === normalizeText(nextProduct.sku))) {
+      return res.status(409).json({ message: "SKU đã tồn tại." });
+    }
+    if (!store.data.categories.some((item) => item.id === nextProduct.categoryId)) {
+      return res.status(400).json({ message: "Danh mục sản phẩm không tồn tại." });
+    }
+    if (!["active", "draft", "archived"].includes(nextProduct.status)
+      || !["men", "women", "unisex"].includes(nextProduct.audience)) {
+      return res.status(400).json({ message: "Trạng thái hoặc đối tượng sản phẩm chưa hợp lệ." });
+    }
+    if (!Number.isFinite(nextPrice) || nextPrice <= 0
+      || !Number.isFinite(nextComparePrice) || nextComparePrice < 0
+      || (nextComparePrice > 0 && nextComparePrice < nextPrice)
+      || !Number.isFinite(nextCost) || nextCost < 0
+      || !Number.isInteger(nextStock) || nextStock < 0
+      || (nextSaleEndsAt && Number.isNaN(nextSaleEndsAt.getTime()))) {
+      return res.status(400).json({ message: "Giá, tồn kho, giá niêm yết hoặc thời hạn ưu đãi chưa hợp lệ." });
+    }
+    nextProduct.price = Math.round(nextPrice);
+    nextProduct.comparePrice = Math.round(nextComparePrice);
+    nextProduct.cost = Math.round(nextCost);
+    nextProduct.stock = nextStock;
+    nextProduct.saleEndsAt = nextSaleEndsAt ? nextSaleEndsAt.toISOString() : "";
+    if (Array.isArray(nextProduct.variants)) nextProduct.variants = nextProduct.variants
+      .map((item) => ({ size: String(item.size || ""), color: String(item.color || ""), stock: asMoney(item.stock) }))
+      .filter((item) => item.size || item.color);
+    Object.assign(product, nextProduct);
     syncProductStock(product);
-    if (!product.name || !product.sku) return res.status(400).json({ message: "Tên và SKU là bắt buộc." });
     store.audit("update", "product", product.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật sản phẩm.", data: product });
@@ -3908,8 +4000,12 @@ function createApp(options = {}) {
   admin.get("/news", allowRoles("admin"), (_req, res) => res.json({ data: store.data.news || [] }));
   admin.post("/news", allowRoles("admin"), (req, res) => {
     const title = String(req.body.title || "").trim();
-    if (title.length < 5) return res.status(400).json({ message: "Tiêu đề bài viết cần ít nhất 5 ký tự." });
-    const article = { id: store.nextId("news", "news-"), title, excerpt: String(req.body.excerpt || ""), content: String(req.body.content || ""), category: String(req.body.category || "NOVA Journal"), image: String(req.body.image || "/Images/nova-v3/home-story.png"), status: req.body.status === "draft" ? "draft" : "published", publishedAt: req.body.publishedAt || new Date().toISOString() };
+    const status = req.body.status === "draft" ? "draft" : req.body.status === "published" || req.body.status === undefined ? "published" : null;
+    const publishedAt = req.body.publishedAt ? new Date(req.body.publishedAt) : new Date();
+    if (title.length < 5 || !status || Number.isNaN(publishedAt.getTime())) {
+      return res.status(400).json({ message: "Tiêu đề, trạng thái hoặc thời gian xuất bản chưa hợp lệ." });
+    }
+    const article = { id: store.nextId("news", "news-"), title, excerpt: String(req.body.excerpt || ""), content: String(req.body.content || ""), category: String(req.body.category || "NOVA Journal"), image: String(req.body.image || "/Images/nova-v3/home-story.png"), status, publishedAt: publishedAt.toISOString() };
     store.data.news = store.data.news || [];
     store.data.news.push(article);
     store.audit("create", "news", article.id, req.user);
@@ -3919,7 +4015,16 @@ function createApp(options = {}) {
   admin.put("/news/:id", allowRoles("admin"), (req, res) => {
     const article = (store.data.news || []).find((item) => item.id === req.params.id);
     if (!article) return notFound(res, "Bài viết");
-    ["title", "excerpt", "content", "category", "image", "status", "publishedAt"].forEach((field) => { if (req.body[field] !== undefined) article[field] = String(req.body[field]); });
+    const nextTitle = String(req.body.title ?? article.title).trim();
+    const nextStatus = String(req.body.status ?? article.status ?? "published");
+    const nextPublishedAt = new Date(req.body.publishedAt ?? article.publishedAt ?? Date.now());
+    if (nextTitle.length < 5 || !["draft", "published"].includes(nextStatus) || Number.isNaN(nextPublishedAt.getTime())) {
+      return res.status(400).json({ message: "Tiêu đề, trạng thái hoặc thời gian xuất bản chưa hợp lệ." });
+    }
+    article.title = nextTitle;
+    ["excerpt", "content", "category", "image"].forEach((field) => { if (req.body[field] !== undefined) article[field] = String(req.body[field]); });
+    article.status = nextStatus;
+    article.publishedAt = nextPublishedAt.toISOString();
     store.audit("update", "news", article.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật bài viết.", data: article });
@@ -4040,11 +4145,23 @@ function createApp(options = {}) {
   admin.put("/categories/:id", allowRoles("admin"), (req, res) => {
     const category = store.data.categories.find((item) => item.id === req.params.id);
     if (!category) return notFound(res, "Danh mục");
-    if (req.body.name !== undefined) category.name = String(req.body.name).trim();
-    if (req.body.description !== undefined) category.description = String(req.body.description);
-    if (req.body.audience !== undefined && ["men", "women", "all"].includes(String(req.body.audience))) category.audience = String(req.body.audience);
-    if (req.body.status !== undefined) category.status = String(req.body.status);
-    category.slug = slugify(req.body.slug || category.name);
+    const nextName = String(req.body.name ?? category.name).trim();
+    const nextSlug = slugify(req.body.slug || nextName);
+    const nextAudience = String(req.body.audience ?? category.audience ?? "all");
+    const nextStatus = String(req.body.status ?? category.status ?? "active");
+    if (nextName.length < 2 || !nextSlug
+      || !["men", "women", "all"].includes(nextAudience)
+      || !["active", "inactive"].includes(nextStatus)) {
+      return res.status(400).json({ message: "Tên, slug, đối tượng hoặc trạng thái danh mục chưa hợp lệ." });
+    }
+    if (store.data.categories.some((item) => item.id !== category.id && item.slug === nextSlug)) {
+      return res.status(409).json({ message: "Slug danh mục đã tồn tại." });
+    }
+    category.name = nextName;
+    category.description = req.body.description !== undefined ? String(req.body.description) : category.description;
+    category.audience = nextAudience;
+    category.status = nextStatus;
+    category.slug = nextSlug;
     store.audit("update", "category", category.id, req.user);
     store.save();
     return res.json({ message: "Đã cập nhật danh mục.", data: category });
@@ -4365,6 +4482,17 @@ function createApp(options = {}) {
         message: "Mật khẩu tạm cần từ 12 đến 128 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
       });
     }
+    const employeeStatus = String(req.body.status || "active");
+    const joinDate = req.body.joinDate ? new Date(req.body.joinDate) : new Date();
+    const performance = Number(req.body.performance === undefined ? 80 : req.body.performance);
+    if (!["active", "on_leave", "inactive"].includes(employeeStatus)
+      || Number.isNaN(joinDate.getTime())
+      || !Number.isFinite(performance) || performance < 0 || performance > 100) {
+      return res.status(400).json({ message: "Trạng thái, ngày vào làm hoặc hiệu suất nhân viên chưa hợp lệ." });
+    }
+    if (createAccount && employeeStatus !== "active") {
+      return res.status(400).json({ message: "Chỉ nhân viên đang hoạt động mới được tạo tài khoản đăng nhập." });
+    }
     const employee = {
       id: store.nextId("employees", "emp-"),
       employeeCode: `NV${String(store.data.employees.length + 1).padStart(3, "0")}`,
@@ -4373,10 +4501,10 @@ function createApp(options = {}) {
       phone: String(req.body.phone || "").trim(),
       roleTitle: String(req.body.roleTitle || "Nhân viên"),
       department: String(req.body.department || "Bán hàng"),
-      status: req.body.status || "active",
-      joinDate: req.body.joinDate || localDateKey(),
+      status: employeeStatus,
+      joinDate: joinDate.toISOString().slice(0, 10),
       shift: String(req.body.shift || "09:00 - 18:00"),
-      performance: asMoney(req.body.performance || 80),
+      performance: Math.round(performance),
       address: String(req.body.address || ""),
       avatar: String(req.body.avatar || ""),
     };
@@ -4570,6 +4698,9 @@ function createApp(options = {}) {
       return res.status(400).json({ message: "Số lượng điều chỉnh không hợp lệ." });
     }
     const before = product.stock;
+    if (Array.isArray(product.variants) && product.variants.length && !req.body.size && !req.body.color) {
+      return res.status(400).json({ message: "Sản phẩm có biến thể; hãy chọn đúng size và màu để điều chỉnh tồn kho." });
+    }
     if (req.body.size || req.body.color) {
       const variant = productVariant(product, req.body.size, req.body.color);
       if (!variant) return res.status(400).json({ message: "Biến thể size/màu không tồn tại." });
@@ -4614,19 +4745,31 @@ function createApp(options = {}) {
 
   admin.post("/purchase-orders", allowRoles("admin"), (req, res) => {
     const supplier = String(req.body.supplier || "").trim();
-    if (!supplier || !Array.isArray(req.body.items) || !req.body.items.length) {
+    const expectedDate = req.body.expectedDate ? new Date(req.body.expectedDate) : null;
+    if (supplier.length < 2 || !Array.isArray(req.body.items) || !req.body.items.length
+      || (expectedDate && Number.isNaN(expectedDate.getTime()))) {
       return res.status(400).json({ message: "Nhà cung cấp và danh sách nhập hàng là bắt buộc." });
     }
     const items = [];
     for (const line of req.body.items) {
       const product = store.data.products.find((item) => item.id === line.productId);
       if (!product) return res.status(400).json({ message: "Sản phẩm nhập kho không tồn tại." });
-      items.push({ productId: product.id, quantity: asPositiveInt(line.quantity), unitCost: asMoney(line.unitCost || product.cost) });
+      const quantity = Number(line.quantity);
+      const unitCost = line.unitCost === undefined || line.unitCost === ""
+        ? Number(product.cost || 0)
+        : Number(line.unitCost);
+      if (!Number.isInteger(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
+        return res.status(400).json({ message: "Số lượng và giá nhập của từng sản phẩm phải hợp lệ." });
+      }
+      if (items.some((item) => item.productId === product.id)) {
+        return res.status(400).json({ message: "Mỗi sản phẩm chỉ được xuất hiện một lần trong phiếu nhập." });
+      }
+      items.push({ productId: product.id, quantity, unitCost: Math.round(unitCost) });
     }
     const purchaseOrder = {
       id: `PO-${new Date().getFullYear()}-${String(store.data.purchaseOrders.length + 1).padStart(3, "0")}`,
       supplier,
-      expectedDate: req.body.expectedDate || null,
+      expectedDate: expectedDate ? expectedDate.toISOString() : null,
       status: "ordered",
       total: items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0),
       items,
@@ -4988,13 +5131,18 @@ function createApp(options = {}) {
   admin.post("/tasks", allowRoles("admin"), (req, res) => {
     const employee = store.data.employees.find((item) => item.id === req.body.employeeId && item.status === "active");
     const title = String(req.body.title || "").trim();
-    if (!employee || title.length < 3) return res.status(400).json({ message: "Nhân viên hoặc tiêu đề công việc chưa hợp lệ." });
+    const dueDate = req.body.dueDate ? new Date(req.body.dueDate) : new Date();
+    if (!employee || title.length < 3
+      || !["low", "medium", "high"].includes(String(req.body.priority || "medium"))
+      || Number.isNaN(dueDate.getTime())) {
+      return res.status(400).json({ message: "Nhân viên, tiêu đề, mức ưu tiên hoặc hạn công việc chưa hợp lệ." });
+    }
     const now = new Date().toISOString();
     const task = {
       id: store.nextId("tasks", "task-"), employeeId: employee.id, title,
       description: String(req.body.description || "").slice(0, 1000),
-      priority: ["low", "medium", "high"].includes(req.body.priority) ? req.body.priority : "medium",
-      status: "todo", dueDate: req.body.dueDate || now, createdAt: now, updatedAt: now,
+      priority: req.body.priority || "medium",
+      status: "todo", dueDate: dueDate.toISOString(), createdAt: now, updatedAt: now,
     };
     store.data.tasks.push(task);
     store.audit("create", "task", task.id, req.user);
@@ -5005,9 +5153,24 @@ function createApp(options = {}) {
   admin.put("/tasks/:id", allowRoles("admin"), (req, res) => {
     const task = store.data.tasks.find((item) => item.id === req.params.id);
     if (!task) return notFound(res, "Công việc");
-    ["title", "description", "employeeId", "dueDate", "priority", "status"].forEach((field) => {
-      if (req.body[field] !== undefined) task[field] = req.body[field];
-    });
+    const nextEmployeeId = String(req.body.employeeId ?? task.employeeId);
+    const nextEmployee = store.data.employees.find((item) => item.id === nextEmployeeId && item.status === "active");
+    const nextTitle = String(req.body.title ?? task.title).trim();
+    const nextPriority = String(req.body.priority ?? task.priority ?? "medium");
+    const nextStatus = String(req.body.status ?? task.status ?? "todo");
+    const nextDueDate = new Date(req.body.dueDate ?? task.dueDate);
+    if (!nextEmployee || nextTitle.length < 3
+      || !["low", "medium", "high"].includes(nextPriority)
+      || !["todo", "in_progress", "done"].includes(nextStatus)
+      || Number.isNaN(nextDueDate.getTime())) {
+      return res.status(400).json({ message: "Nhân viên, tiêu đề, trạng thái, mức ưu tiên hoặc hạn công việc chưa hợp lệ." });
+    }
+    task.title = nextTitle;
+    task.description = String(req.body.description ?? task.description ?? "").slice(0, 1000);
+    task.employeeId = nextEmployee.id;
+    task.dueDate = nextDueDate.toISOString();
+    task.priority = nextPriority;
+    task.status = nextStatus;
     task.updatedAt = new Date().toISOString();
     store.audit("update", "task", task.id, req.user);
     store.save();
@@ -5026,12 +5189,20 @@ function createApp(options = {}) {
   admin.get("/suppliers", allowRoles("admin"), (_req, res) => res.json({ data: store.data.suppliers }));
   admin.post("/suppliers", allowRoles("admin"), (req, res) => {
     const name = String(req.body.name || "").trim();
-    if (name.length < 2) return res.status(400).json({ message: "Tên nhà cung cấp chưa hợp lệ." });
+    const phone = String(req.body.phone || "").trim();
+    const email = normalizeText(req.body.email);
+    const status = String(req.body.status || "active");
+    if (name.length < 2
+      || (phone && !phonePattern.test(phone))
+      || (email && !emailPattern.test(email))
+      || !["active", "inactive"].includes(status)) {
+      return res.status(400).json({ message: "Thông tin nhà cung cấp chưa hợp lệ." });
+    }
     const supplier = {
       id: store.nextId("suppliers", "sup-"), name,
-      contactName: String(req.body.contactName || ""), phone: String(req.body.phone || ""),
-      email: normalizeText(req.body.email), address: String(req.body.address || ""),
-      status: req.body.status === "inactive" ? "inactive" : "active",
+      contactName: String(req.body.contactName || ""), phone,
+      email, address: String(req.body.address || ""),
+      status,
       createdAt: new Date().toISOString(),
     };
     store.data.suppliers.push(supplier);
@@ -5043,7 +5214,21 @@ function createApp(options = {}) {
   admin.put("/suppliers/:id", allowRoles("admin"), (req, res) => {
     const supplier = store.data.suppliers.find((item) => item.id === req.params.id);
     if (!supplier) return notFound(res, "Nhà cung cấp");
-    ["name", "contactName", "phone", "email", "address", "status"].forEach((field) => {
+    const nextName = String(req.body.name ?? supplier.name).trim();
+    const nextPhone = String(req.body.phone ?? supplier.phone ?? "").trim();
+    const nextEmail = normalizeText(req.body.email ?? supplier.email ?? "");
+    const nextStatus = String(req.body.status ?? supplier.status ?? "active");
+    if (nextName.length < 2
+      || (nextPhone && !phonePattern.test(nextPhone))
+      || (nextEmail && !emailPattern.test(nextEmail))
+      || !["active", "inactive"].includes(nextStatus)) {
+      return res.status(400).json({ message: "Thông tin nhà cung cấp chưa hợp lệ." });
+    }
+    supplier.name = nextName;
+    supplier.phone = nextPhone;
+    supplier.email = nextEmail;
+    supplier.status = nextStatus;
+    ["contactName", "address"].forEach((field) => {
       if (req.body[field] !== undefined) supplier[field] = String(req.body[field]);
     });
     store.audit("update", "supplier", supplier.id, req.user);
@@ -5128,8 +5313,15 @@ function createApp(options = {}) {
     if (req.user.role !== "admin" && task.employeeId !== req.user.employeeId) {
       return res.status(403).json({ message: "Bạn không thể cập nhật công việc này." });
     }
-    if (["todo", "in_progress", "done"].includes(req.body.status)) task.status = req.body.status;
-    if (req.body.title && req.user.role === "admin") task.title = String(req.body.title).trim();
+    if (req.body.status !== undefined && !["todo", "in_progress", "done"].includes(req.body.status)) {
+      return res.status(400).json({ message: "Trạng thái công việc không hợp lệ." });
+    }
+    if (req.body.title !== undefined && req.user.role === "admin") {
+      const title = String(req.body.title).trim();
+      if (title.length < 3) return res.status(400).json({ message: "Tiêu đề công việc cần ít nhất 3 ký tự." });
+      task.title = title;
+    }
+    if (req.body.status !== undefined) task.status = req.body.status;
     task.updatedAt = new Date().toISOString();
     store.audit("update", "task", task.id, req.user);
     store.save();
