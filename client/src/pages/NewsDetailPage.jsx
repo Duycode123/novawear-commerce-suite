@@ -129,7 +129,7 @@ export default function NewsDetailPage() {
   const articlePath = `/tin-tuc/${article.id}`;
 
   return (
-    <main className="journal-article-page">
+    <div className="journal-article-page">
       <Seo
         title={`${article.title} | NOVA Journal`}
         description={article.excerpt}
@@ -190,6 +190,6 @@ export default function NewsDetailPage() {
           <div>{related.map((item) => <Link to={`/tin-tuc/${item.id}`} key={item.id}><SmartImage src={item.image} alt={item.title} /><span>{item.category}</span><h3>{item.title}</h3><b>Đọc bài →</b></Link>)}</div>
         </section>
       )}
-    </main>
+    </div>
   );
 }

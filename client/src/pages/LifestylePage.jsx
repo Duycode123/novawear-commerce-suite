@@ -98,7 +98,7 @@ export default function LifestylePage() {
   if (!config) return <Navigate to="/" replace />;
 
   return (
-    <main className={`lifestyle-page lifestyle-page--${style}`}>
+    <div className={`lifestyle-page lifestyle-page--${style}`}>
       <header className="lifestyle-hero">
         <figure>
           <SmartImage src={config.image} alt={config.imageAlt} loading="eager" />
@@ -152,6 +152,6 @@ export default function LifestylePage() {
           <Link className="button button--dark" to={config.catalogHref}>{config.catalogLabel} <span>→</span></Link>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

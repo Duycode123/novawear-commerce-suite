@@ -26,7 +26,7 @@ export default function WishlistPage() {
   }
 
   return (
-    <main className="wishlist-page">
+    <div className="wishlist-page">
       <header className="wishlist-hero">
         <div>
           <p className="eyebrow">NOVA SAVED EDIT</p>
@@ -48,6 +48,6 @@ export default function WishlistPage() {
           {wishlist.map((product) => <ProductCard product={product} key={product.id} />)}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

@@ -47,7 +47,7 @@ export default function NewsPage() {
   };
 
   return (
-    <main className="journal-page">
+    <div className="journal-page">
       <section className="journal-hero">
         <div className="journal-hero__copy">
           <p className="eyebrow">NOVA JOURNAL / 2026</p>
@@ -144,6 +144,6 @@ export default function NewsPage() {
           <small>{message || "Không gửi thư rác. Bạn có thể hủy đăng ký bất cứ lúc nào."}</small>
         </form>
       </section>
-    </main>
+    </div>
   );
 }

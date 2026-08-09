@@ -4,7 +4,7 @@ import { SmartImage } from "../components/Common";
 
 export default function AboutPage() {
   return (
-    <main className="nova-about-page">
+    <div className="nova-about-page">
       <section className="nova-about-hero">
         <div className="nova-about-hero__copy">
           <p className="eyebrow">VỀ NOVA / EST. VIETNAM</p>
@@ -106,6 +106,6 @@ export default function AboutPage() {
         <h2>Đừng mặc để trở thành ai khác.<br /><em>Hãy mặc để sống đúng nhịp của mình.</em></h2>
         <Link className="button button--accent" to="/cua-hang">Tìm món dành cho bạn <span>→</span></Link>
       </section>
-    </main>
+    </div>
   );
 }

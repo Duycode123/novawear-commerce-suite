@@ -29,7 +29,7 @@ export default function CartPage() {
   }
 
   return (
-    <main className="cart-page">
+    <div className="cart-page">
       <header className="cart-hero">
         <div>
           <p className="eyebrow">YOUR NOVA SELECTION</p>
@@ -102,6 +102,6 @@ export default function CartPage() {
           </div>
         </aside>
       </div>
-    </main>
+    </div>
   );
 }

@@ -43,7 +43,7 @@ export default function PoliciesPage() {
   const policy = POLICY_CONTENT[section] || POLICY_CONTENT["bao-mat"];
 
   return (
-    <main className="policy-page">
+    <div className="policy-page">
       <section className="policy-page__hero">
         <p className="eyebrow">{policy.eyebrow}</p>
         <h1>{policy.title}</h1>
@@ -76,6 +76,6 @@ export default function PoliciesPage() {
           <a href="tel:19000000">1900 0000</a>.
         </p>
       </section>
-    </main>
+    </div>
   );
 }

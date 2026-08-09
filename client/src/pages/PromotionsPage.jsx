@@ -78,7 +78,7 @@ export default function PromotionsPage() {
       </div>
     </header>
 
-    <main className="offers-content" id="uu-dai-hien-co">
+    <div className="offers-content" id="uu-dai-hien-co">
       <div className="offers-section-heading"><div><p className="eyebrow">ƯU ĐÃI HÔM NAY</p><h2>Chọn một mã, hoàn thiện đơn hàng.</h2></div></div>
       {error && <p className="muted">{error}</p>}
       <div className="offers-grid">
@@ -97,6 +97,6 @@ export default function PromotionsPage() {
       </section>
 
       <section className="offers-note"><div><span>?</span><p><strong>Cần hỗ trợ về mã ưu đãi?</strong> Đội ngũ NOVAWEAR sẵn sàng kiểm tra điều kiện đơn hàng cho bạn.</p></div><Link to="/ho-tro">Đến trung tâm hỗ trợ →</Link></section>
-    </main>
+    </div>
   </div>;
 }

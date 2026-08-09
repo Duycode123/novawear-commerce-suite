@@ -314,7 +314,7 @@ export default function AccountPage() {
           <Link to="/ho-tro"><span>07</span>Trợ giúp</Link>
         </aside>
 
-        <main className="account-content">
+        <div className="account-content">
           {loading && <div className="account-loading"><div className="skeleton skeleton--panel" /><div className="skeleton skeleton--panel" /></div>}
           {error && <ErrorState message={error} onRetry={load} />}
 
@@ -430,7 +430,7 @@ export default function AccountPage() {
               </form>
             </section>
           )}
-        </main>
+        </div>
       </div>
 
       <Modal open={Boolean(selectedOrder)} title={`Chi tiết ${selectedOrder?.id || ""}`} onClose={closeOrder} size="large">

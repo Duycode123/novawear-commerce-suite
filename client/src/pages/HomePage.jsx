@@ -278,7 +278,7 @@ export default function HomePage() {
     : "";
 
   return (
-    <main className="home-v4">
+    <div className="home-v4">
       <section className="home-v4-hero" id="home-top">
         <div className="home-v4-hero__media">
           <SmartImage src="/Images/nova-v3/home-hero.png" alt="Bộ sưu tập NOVAWEAR dành cho nhịp sống hiện đại" loading="eager" />
@@ -503,6 +503,6 @@ export default function HomePage() {
           <small>Không gửi thư rác. Bạn có thể hủy đăng ký bất cứ lúc nào.</small>
         </form>
       </section>
-    </main>
+    </div>
   );
 }

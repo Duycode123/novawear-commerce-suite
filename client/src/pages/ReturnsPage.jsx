@@ -149,7 +149,7 @@ export default function ReturnsPage() {
   };
 
   return (
-    <main className="returns-page">
+    <div className="returns-page">
       <header className="returns-hero"><div><p className="eyebrow">NOVA CARE</p><h1>Đổi trả rõ ràng,<br />theo dõi dễ dàng.</h1><p>Gửi yêu cầu cho đơn đã nhận trong vòng 30 ngày. Mỗi bước nhận hàng, kiểm tra và hoàn tiền đều được ghi lại.</p></div><div><span>01</span><p>Chọn đơn và sản phẩm</p><span>02</span><p>Gửi thông tin chính xác</p><span>03</span><p>Theo dõi xử lý hai chiều</p></div></header>
       <div className="returns-shell">
         <section className="returns-form-card">
@@ -172,6 +172,6 @@ export default function ReturnsPage() {
           {requests.length ? requests.map((item) => <article className={expandedRequest === item.id ? "is-expanded" : ""} key={item.id}><button className="return-history-summary" type="button" onClick={() => setExpandedRequest((current) => current === item.id ? "" : item.id)}><header><strong>{item.id}</strong><span>{RETURN_STATUS[item.status] || item.status}</span></header><p>Đơn {item.orderId} · {item.type === "exchange" ? "Đổi sản phẩm" : "Trả hàng"}</p><footer><small>{formatDate(item.createdAt)}</small><b>{item.type === "return" ? formatMoney(item.refundAmount) : "Xem tiến độ →"}</b></footer></button>{expandedRequest === item.id && <div className="return-history-detail"><div className="return-history-timeline">{(item.timeline || []).map((entry) => <div key={entry.id || `${entry.status}-${entry.at}`}><i>✓</i><span><strong>{entry.label || RETURN_STATUS[entry.status]}</strong>{entry.note && <p>{entry.note}</p>}<small>{entry.actorName || "Hệ thống NOVAWEAR"} · {formatDate(entry.at, { hour: "2-digit", minute: "2-digit" })}</small></span></div>)}</div>{item.type === "return" && <p><strong>Hoàn tiền:</strong> {item.refundStatus === "refunded" ? `Đã hoàn · ${item.refundReference}` : item.refundStatus === "pending" ? "Đang đối soát" : "Chờ kiểm tra sản phẩm"}</p>}{item.exchangeShipment?.trackingNumber && <p><strong>Giao sản phẩm đổi:</strong> {item.exchangeShipment.carrier} · {item.exchangeShipment.trackingNumber}</p>}{item.status === "requested" && <button type="button" disabled={saving} onClick={() => cancelRequest(item)}>Hủy yêu cầu</button>}</div>}</article>) : <div className="inline-empty"><p>Chưa có yêu cầu nào.</p></div>}
         </aside>
       </div>
-    </main>
+    </div>
   );
 }
