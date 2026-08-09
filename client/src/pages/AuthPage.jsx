@@ -172,7 +172,7 @@ export default function AuthPage({ mode = "login" }) {
   };
 
   return (
-    <div className={`auth-page auth-page--${isLogin ? "login" : "register"}`}>
+    <main className={`auth-page auth-page--${isLogin ? "login" : "register"}`}>
       <div className="auth-visual">
         <img src="/Images/nova-v3/auth-couple.webp" alt="Phong cách thành viên NOVAWEAR" width="853" height="1844" decoding="async" fetchpriority="high" />
         <div className="auth-visual__copy">
@@ -299,6 +299,6 @@ export default function AuthPage({ mode = "login" }) {
           </p>}
         </div>
       </section>
-    </div>
+    </main>
   );
 }
