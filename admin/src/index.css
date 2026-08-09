@@ -86,6 +86,34 @@ body {
   font-size: .7rem;
 }
 
+.ops-route-loading {
+  display: flex;
+  min-height: 52vh;
+  color: #66727d;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: .8rem;
+  letter-spacing: .04em;
+}
+
+.ops-route-loading span {
+  width: 17px;
+  height: 17px;
+  border: 2px solid #d8dde1;
+  border-top-color: #102131;
+  border-radius: 50%;
+  animation: ops-route-spin .7s linear infinite;
+}
+
+@keyframes ops-route-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-route-loading span { animation: none; }
+}
+
 body:has(.ops-modal-backdrop),
 body:has(.ops-sidebar.is-open) {
   overflow: hidden;

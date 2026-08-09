@@ -166,11 +166,12 @@ export function ProductGridSkeleton({ count = 4 }) {
   );
 }
 
-export function EmptyState({ title, copy, action, symbol = "○" }) {
+export function EmptyState({ title, copy, action, symbol = "○", headingLevel = 2 }) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
     <div className="empty-state">
       <span className="empty-state__symbol" aria-hidden="true">{symbol}</span>
-      <h2>{title}</h2>
+      <Heading>{title}</Heading>
       <p>{copy}</p>
       {action}
     </div>

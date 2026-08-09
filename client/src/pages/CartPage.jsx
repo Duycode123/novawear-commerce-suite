@@ -13,6 +13,7 @@ export default function CartPage() {
     return (
       <div className="cart-empty-page">
         <EmptyState
+          headingLevel={1}
           symbol="◇"
           title="Giỏ hàng đang trống"
           copy="Khám phá các thiết kế mới và thêm những món phù hợp với nhịp sống của bạn."

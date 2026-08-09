@@ -10,6 +10,7 @@ export default function WishlistPage() {
     return (
       <div className="wishlist-empty-page">
         <EmptyState
+          headingLevel={1}
           symbol="♡"
           title="Danh sách yêu thích đang trống"
           copy="Lưu lại những thiết kế bạn quan tâm để dễ dàng so sánh và quay lại mua khi sẵn sàng."

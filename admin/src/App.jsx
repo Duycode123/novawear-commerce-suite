@@ -1,25 +1,30 @@
-import React, { useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AdminLayout from "./components/AdminLayout";
 import { AdminProvider, useAdmin } from "./context/AdminContext";
 import LoginPage from "./pages/LoginPage";
-import DashboardPage from "./pages/DashboardPage";
-import WorkspacePage from "./pages/WorkspacePage";
-import OrdersPage from "./pages/OrdersPage";
-import ProductsPage from "./pages/ProductsPage";
-import CategoriesPage from "./pages/CategoriesPage";
-import InventoryPage from "./pages/InventoryPage";
-import PurchasesPage from "./pages/PurchasesPage";
-import CustomersPage from "./pages/CustomersPage";
-import EmployeesPage from "./pages/EmployeesPage";
-import AccountsPage from "./pages/AccountsPage";
-import SupportInboxPage from "./pages/SupportInboxPage";
-import NewsPage from "./pages/NewsPage";
-import CouponsPage from "./pages/CouponsPage";
-import TasksPage from "./pages/TasksPage";
-import ReturnsPage from "./pages/ReturnsPage";
-import AuditPage from "./pages/AuditPage";
-import SuppliersPage from "./pages/SuppliersPage";
+
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const WorkspacePage = lazy(() => import("./pages/WorkspacePage"));
+const OrdersPage = lazy(() => import("./pages/OrdersPage"));
+const ProductsPage = lazy(() => import("./pages/ProductsPage"));
+const CategoriesPage = lazy(() => import("./pages/CategoriesPage"));
+const InventoryPage = lazy(() => import("./pages/InventoryPage"));
+const PurchasesPage = lazy(() => import("./pages/PurchasesPage"));
+const CustomersPage = lazy(() => import("./pages/CustomersPage"));
+const EmployeesPage = lazy(() => import("./pages/EmployeesPage"));
+const AccountsPage = lazy(() => import("./pages/AccountsPage"));
+const SupportInboxPage = lazy(() => import("./pages/SupportInboxPage"));
+const NewsPage = lazy(() => import("./pages/NewsPage"));
+const CouponsPage = lazy(() => import("./pages/CouponsPage"));
+const TasksPage = lazy(() => import("./pages/TasksPage"));
+const ReturnsPage = lazy(() => import("./pages/ReturnsPage"));
+const AuditPage = lazy(() => import("./pages/AuditPage"));
+const SuppliersPage = lazy(() => import("./pages/SuppliersPage"));
+
+function RouteFallback() {
+  return <main className="ops-route-loading" role="status" aria-live="polite"><span />Đang mở khu vực làm việc…</main>;
+}
 
 function ProtectedLayout() {
   const { user, bootstrapping } = useAdmin();
@@ -82,7 +87,7 @@ export default function App() {
   return (
     <BrowserRouter basename={process.env.REACT_APP_BASENAME || (process.env.NODE_ENV === "production" ? "/ops" : undefined)}>
       <AdminProvider>
-        <Routes>
+        <Suspense fallback={<RouteFallback />}><Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedLayout />}>
             <Route index element={<RoleHome />} />
@@ -110,7 +115,7 @@ export default function App() {
             <Route path="/Indexnv" element={<Navigate to="/employees" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-        </Routes>
+        </Routes></Suspense>
       </AdminProvider>
     </BrowserRouter>
   );
